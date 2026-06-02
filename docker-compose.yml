@@ -1,0 +1,59 @@
+# ============================================================
+# AetherOS — Docker Compose
+#
+# Servisler:
+#   aetheros   → Ana runtime + API
+#   (opsiyonel) prometheus, grafana — Faz 8
+# ============================================================
+
+services:
+  aetheros:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: aetheros:latest
+    container_name: aetheros
+    restart: unless-stopped
+
+    ports:
+      - "8080:8080"
+
+    volumes:
+      - aetheros_data:/data/db
+      - aetheros_logs:/data/logs
+
+    environment:
+      AETHEROS_ADDR: "0.0.0.0:8080"
+      AETHEROS_DB_PATH: "/data/db/aetheros.db"
+      AETHEROS_WORKERS: "4"
+      AETHEROS_MAX_CONCURRENT: "256"
+      AETHEROS_SHUTDOWN_TIMEOUT: "30"
+      AETHEROS_JSON_LOGS: "true"
+      RUST_LOG: "info,aetheros=debug"
+      # ANTHROPIC_API_KEY: "sk-ant-..."    ← .env dosyasından
+      # AETHEROS_JWT_SECRET: "..."         ← .env dosyasından
+
+    env_file:
+      - .env.local
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "2.0"
+        reservations:
+          memory: 128M
+          cpus: "0.5"
+
+volumes:
+  aetheros_data:
+    driver: local
+  aetheros_logs:
+    driver: local
