@@ -17,9 +17,6 @@ env:
   RUST_ANDROID_FEATURES: '--no-default-features --features backend-wasmi'
 
 jobs:
-  # ─────────────────────────────────────────────────────────
-  # JOB 1: Rust → .so (paralel)
-  # ─────────────────────────────────────────────────────────
   build-rust:
     name: 🦀 Rust → ${{ matrix.abi }}
     runs-on: ubuntu-latest
@@ -43,63 +40,19 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # ── Ortam tanı — tam hata görülmesi için ──────────
-      - name: 🔍 Android SDK ortamı kontrol
-        run: |
-          echo "=== SDK paths ==="
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          echo ""
-          echo "=== cmdline-tools içeriği ==="
-          ls "${ANDROID_SDK_ROOT}/cmdline-tools/" 2>/dev/null || \
-            echo "cmdline-tools dizini yok!"
-          echo ""
-          echo "=== sdkmanager konumu ==="
-          find "${ANDROID_SDK_ROOT}/cmdline-tools" \
-            -name "sdkmanager" -type f 2>/dev/null || \
-            echo "sdkmanager bulunamadı"
-          echo ""
-          echo "=== Kurulu NDK'lar ==="
-          ls "${ANDROID_SDK_ROOT}/ndk/" 2>/dev/null || \
-            echo "NDK dizini yok"
-
-      # ── NDK — sdkmanager'ı dinamik bul ──────────────
       - name: 📦 Android NDK ${{ env.NDK_VERSION }}
         run: |
-          # sdkmanager'ı bul (runner'a göre path değişebilir)
           SDKMANAGER=$(find "${ANDROID_SDK_ROOT}/cmdline-tools" \
             -name "sdkmanager" -type f 2>/dev/null | sort -V | tail -1)
-
-          if [ -z "$SDKMANAGER" ]; then
-            # Fallback: PATH'te var mı?
-            SDKMANAGER=$(which sdkmanager 2>/dev/null || true)
-          fi
-
-          if [ -z "$SDKMANAGER" ]; then
-            echo "❌ sdkmanager bulunamadı!"
-            echo "SDK root içeriği:"
-            ls "${ANDROID_SDK_ROOT}/" || true
-            exit 1
-          fi
-
-          echo "✅ sdkmanager: $SDKMANAGER"
-
-          # Lisansları onayla
+          [ -z "$SDKMANAGER" ] && SDKMANAGER=$(which sdkmanager 2>/dev/null || true)
+          [ -z "$SDKMANAGER" ] && { echo "❌ sdkmanager bulunamadı"; exit 1; }
           yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
-
-          # NDK kur
           "$SDKMANAGER" "ndk;${{ env.NDK_VERSION }}"
-
           NDK_PATH="${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}"
-          echo "ANDROID_NDK_HOME=$NDK_PATH"         >> $GITHUB_ENV
-          echo "NDK_HOME=$NDK_PATH"                 >> $GITHUB_ENV
-          echo "${NDK_PATH}/toolchains/llvm/prebuilt/linux-x86_64/bin" \
-            >> $GITHUB_PATH
+          echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+          echo "NDK_HOME=$NDK_PATH"         >> $GITHUB_ENV
+          echo "${NDK_PATH}/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-          echo "✅ NDK kuruldu: $NDK_PATH"
-          ls "$NDK_PATH" | head -5
-
-      # ── Rust ───────────────────────────────────────
       - name: 🦀 Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -111,7 +64,6 @@ jobs:
           key: android-${{ matrix.rust_target }}
           cache-on-failure: true
 
-      # cargo-ndk binary cache
       - name: 🔧 cargo-ndk cache
         id: cargo-ndk-cache
         uses: actions/cache@v4
@@ -121,20 +73,116 @@ jobs:
 
       - name: 🔧 cargo-ndk kur
         if: steps.cargo-ndk-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-ndk --version 3.5.4
+
+      # ══════════════════════════════════════════════════════
+      # Android kaynak uyumluluk patch'leri
+      # Bu adım, source dosyalarındaki Android-uyumsuz kodları
+      # build öncesinde düzeltir:
+      #
+      #   1. memory.rs   → wasmtime'a özgü; backend-wasmtime
+      #                    feature flag'i ile derle
+      #   2. bridge/api  → FRB 2.9.0'da olmayan fonksiyon
+      #   3. wasmi_host  → Dosya yoksa minimal stub oluştur
+      # ══════════════════════════════════════════════════════
+      - name: 🩹 Android kaynak patch'leri uygula
         run: |
-          # --locked kaldırıldı — bazı runner'larda Cargo.lock uyumsuzluğuna yol açıyor
-          cargo install cargo-ndk --version 3.5.4
+          echo "── Patch 1: memory.rs → backend-wasmtime cfg gate ──"
+          # mod.rs'de 'pub mod memory;' satırından önce cfg ekle
+          if ! grep -q 'cfg(feature = "backend-wasmtime")' src/wasm/mod.rs; then
+            sed -i '/^pub mod memory;/i #[cfg(feature = "backend-wasmtime")]' \
+              src/wasm/mod.rs
+            echo "  ✓ memory modülü gated"
+          else
+            echo "  ✓ zaten gated, atlandı"
+          fi
 
-      - name: ✅ cargo-ndk versiyon kontrol
-        run: cargo ndk --version
+          echo "── Patch 2: bridge/api.rs → FRB uyumsuz fonksiyon ──"
+          if grep -q 'setup_default_user_code_handler' src/bridge/api.rs; then
+            sed -i '/flutter_rust_bridge::setup_default_user_code_handler/d' \
+              src/bridge/api.rs
+            echo "  ✓ setup_default_user_code_handler kaldırıldı"
+          else
+            echo "  ✓ zaten düzgün, atlandı"
+          fi
 
-      # ── Derleme ────────────────────────────────────
+          echo "── Patch 3: wasmi_host.rs → dosya yoksa stub oluştur ──"
+          if [ ! -f src/wasm/wasmi_host.rs ]; then
+            cat > src/wasm/wasmi_host.rs << 'STUB'
+          // wasmi backend host fonksiyon tanımları (Android)
+          use wasmi::{Caller, Linker};
+          use crate::errors::wasm::WasmError;
+
+          pub struct WasmiHostContext {
+              pub fuel_limit: u64,
+              pub output: Vec<u8>,
+          }
+
+          impl WasmiHostContext {
+              pub fn new(fuel_limit: u64) -> Self {
+                  Self { fuel_limit, output: Vec::new() }
+              }
+          }
+
+          pub fn register_host_functions(
+              linker: &mut Linker<WasmiHostContext>,
+          ) -> Result<(), WasmError> {
+              linker
+                  .func_wrap(
+                      "env",
+                      "aetheros_log",
+                      |mut caller: Caller<WasmiHostContext>, ptr: i32, len: i32| {
+                          let mem = caller
+                              .get_export("memory")
+                              .and_then(|e| e.into_memory());
+                          if let Some(mem) = mem {
+                              let data = mem.data(&caller);
+                              let start = ptr as usize;
+                              let end = (start + len as usize).min(data.len());
+                              let msg = String::from_utf8_lossy(&data[start..end]);
+                              tracing::debug!(target: "wasmi_host", "{}", msg);
+                          }
+                      },
+                  )
+                  .map_err(|e| WasmError::LinkerFailure { message: e.to_string() })?;
+
+              linker
+                  .func_wrap(
+                      "env",
+                      "aetheros_now_ms",
+                      |_: Caller<WasmiHostContext>| -> i64 {
+                          std::time::SystemTime::now()
+                              .duration_since(std::time::UNIX_EPOCH)
+                              .map(|d| d.as_millis() as i64)
+                              .unwrap_or(0)
+                      },
+                  )
+                  .map_err(|e| WasmError::LinkerFailure { message: e.to_string() })?;
+
+              Ok(())
+          }
+          STUB
+            echo "  ✓ wasmi_host.rs stub oluşturuldu"
+          else
+            echo "  ✓ wasmi_host.rs mevcut, atlandı"
+          fi
+
+          echo ""
+          echo "=== Patch sonucu ==="
+          grep -n "memory\|wasmi_host" src/wasm/mod.rs
+          echo "---"
+          grep -n "setup_default" src/bridge/api.rs || echo "FRB fonk. yok ✓"
+          echo "---"
+          ls -la src/wasm/wasmi_host.rs
+
+      # ── Derleme ────────────────────────────────────────
       - name: 🏗️ Rust .so → ${{ matrix.abi }}
         run: |
           cargo ndk \
             --target ${{ matrix.rust_target }} \
             --output-dir flutter_app/android/app/src/main/jniLibs \
             build --release \
+            --lib \
             ${{ env.RUST_ANDROID_FEATURES }}
 
       - name: 📋 .so bilgisi
@@ -150,9 +198,6 @@ jobs:
           path: flutter_app/android/app/src/main/jniLibs/${{ matrix.abi }}/libaetheros.so
           retention-days: 1
 
-  # ─────────────────────────────────────────────────────────
-  # JOB 2: Flutter APK
-  # ─────────────────────────────────────────────────────────
   build-apk:
     name: 📱 Flutter APK
     runs-on: ubuntu-latest
