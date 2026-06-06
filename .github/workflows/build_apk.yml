@@ -1,0 +1,218 @@
+name: 🚀 Build Android APK
+
+on:
+  push:
+    branches: [main, develop, release/**]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'APK tipi'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+
+# Aynı branch'te paralel build'leri iptal et
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.24.5'
+  NDK_VERSION: '27.0.12077973'
+  CARGO_NDK_VERSION: '3.5.4'
+  # wasmi backend — Android/Play Store zorunlu (JIT yok)
+  RUST_ANDROID_FEATURES: '--no-default-features --features backend-wasmi'
+
+jobs:
+  # ─────────────────────────────────────────────────────────
+  # JOB 1: Rust → .so derleme (her mimari paralel)
+  # ─────────────────────────────────────────────────────────
+  build-rust:
+    name: 🦀 Rust → ${{ matrix.abi }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            rust_target: aarch64-linux-android
+          - abi: armeabi-v7a
+            rust_target: armv7-linux-androideabi
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: ☕ Java 17 (Android Gradle için)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: 🤖 Android SDK + NDK ${{ env.NDK_VERSION }}
+        uses: android-actions/setup-android@v3
+
+      - name: 📦 NDK kurulumu
+        run: |
+          sdkmanager "ndk;${{ env.NDK_VERSION }}"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}"         >> $GITHUB_ENV
+
+      - name: 🦀 Rust stable + Android target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: 🗃️ Rust build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: android-${{ matrix.rust_target }}
+          cache-on-failure: true
+
+      - name: 🔧 cargo-ndk kurulumu
+        run: |
+          cargo install cargo-ndk \
+            --version ${{ env.CARGO_NDK_VERSION }} \
+            --locked
+
+      - name: 🏗️ Rust .so derle — ${{ matrix.abi }}
+        run: |
+          cargo ndk \
+            --target ${{ matrix.rust_target }} \
+            --output-dir flutter_app/android/app/src/main/jniLibs \
+            build --release \
+            ${{ env.RUST_ANDROID_FEATURES }}
+
+      - name: 📋 .so dosya bilgisi
+        run: |
+          SO="flutter_app/android/app/src/main/jniLibs/${{ matrix.abi }}/libaetheros.so"
+          echo "Boyut: $(du -sh $SO)"
+          file "$SO"
+
+      - name: 📤 .so artifact yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-so-${{ matrix.abi }}
+          path: flutter_app/android/app/src/main/jniLibs/${{ matrix.abi }}/libaetheros.so
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────
+  # JOB 2: Flutter APK (Rust .so'ları bekler)
+  # ─────────────────────────────────────────────────────────
+  build-apk:
+    name: 📱 Flutter APK
+    runs-on: ubuntu-latest
+    needs: build-rust
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: ☕ Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: 🤖 Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 📁 jniLibs dizinleri oluştur
+        run: |
+          mkdir -p flutter_app/android/app/src/main/jniLibs/arm64-v8a
+          mkdir -p flutter_app/android/app/src/main/jniLibs/armeabi-v7a
+
+      - name: 📥 arm64-v8a .so indir
+        uses: actions/download-artifact@v4
+        with:
+          name: rust-so-arm64-v8a
+          path: flutter_app/android/app/src/main/jniLibs/arm64-v8a
+
+      - name: 📥 armeabi-v7a .so indir
+        uses: actions/download-artifact@v4
+        with:
+          name: rust-so-armeabi-v7a
+          path: flutter_app/android/app/src/main/jniLibs/armeabi-v7a
+
+      - name: ✅ .so dosyalarını doğrula
+        run: |
+          echo "=== jniLibs içeriği ==="
+          find flutter_app/android/app/src/main/jniLibs -name "*.so" -exec ls -lh {} \;
+
+      - name: 🦀 Rust (FRB codegen için)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 🗃️ Rust cache (codegen)
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: frb-codegen
+          cache-on-failure: true
+
+      - name: 🐦 Flutter ${{ env.FLUTTER_VERSION }}
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: 📦 Flutter pub get
+        working-directory: flutter_app
+        run: flutter pub get
+
+      - name: ⚙️ FRB Dart kodu üret
+        working-directory: flutter_app
+        run: dart run flutter_rust_bridge_codegen generate
+        # Codegen başarısız olursa placeholder'ı kullan
+        continue-on-error: true
+
+      - name: 🔍 Flutter analiz
+        working-directory: flutter_app
+        run: flutter analyze --no-fatal-infos
+        continue-on-error: true
+
+      - name: 🏗️ APK derle (release, ABI ayrık)
+        working-directory: flutter_app
+        run: |
+          flutter build apk \
+            --release \
+            --split-per-abi \
+            --build-number=${{ github.run_number }}
+
+      - name: 📋 APK boyutları
+        run: |
+          echo "=== Üretilen APK'lar ==="
+          find flutter_app/build/app/outputs/flutter-apk -name "*.apk" \
+            -exec ls -lh {} \;
+
+      - name: 📤 APK artifact yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: aetheros-apk-${{ github.run_number }}
+          path: flutter_app/build/app/outputs/flutter-apk/*.apk
+          retention-days: 30
+
+      - name: 📊 Build özeti
+        if: always()
+        run: |
+          echo "## 🚀 AetherOS Android Build" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Bilgi | Değer |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Build No | #${{ github.run_number }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Flutter | ${{ env.FLUTTER_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| NDK | ${{ env.NDK_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | wasmi (Android) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 APK Dosyaları" >> $GITHUB_STEP_SUMMARY
+          find flutter_app/build/app/outputs/flutter-apk -name "*.apk" 2>/dev/null | \
+            while read f; do
+              SIZE=$(du -sh "$f" | cut -f1)
+              echo "- \`$(basename $f)\` — $SIZE" >> $GITHUB_STEP_SUMMARY
+            done || echo "APK üretilemedi" >> $GITHUB_STEP_SUMMARY
