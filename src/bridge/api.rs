@@ -37,14 +37,17 @@ use crate::types::ids::TaskId;
 
 #[frb(init)]
 pub fn init_app() {
-    flutter_rust_bridge::setup_default_user_code_handler();
+    // FRB 2.x: setup_default_user_code_handler kaldırıldı,
+    // #[frb(init)] attribute'u zaten gerekli altyapıyı kurar.
 
     // Android: tracing → logcat
     #[cfg(target_os = "android")]
     {
         android_logger::init_once(
             android_logger::Config::default()
-                .with_max_level(log::LevelFilter::Debug)
+                .with_max_level(android_logger::FilterBuilder::new()
+                    .parse("debug")
+                    .build())
                 .with_tag("AetherOS"),
         );
     }
@@ -136,7 +139,7 @@ pub async fn submit_task(
         request.timeout_ms
     };
 
-    let task_id = TaskId::new();
+    let task_id = TaskId(uuid::Uuid::new_v4());
 
     let now = chrono::Utc::now();
 

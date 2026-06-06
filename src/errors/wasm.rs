@@ -26,8 +26,10 @@ pub enum WasmError {
     #[error("resource limit exceeded")]
     ResourceLimitExceeded,
 
-    #[error("invalid module")]
-    InvalidModule,
+    #[error("invalid module: {reason}")]
+    InvalidModule {
+        reason: String,
+    },
 
     /// [BUG #8] Yeni variant: timeout_ms == 0 gibi
     /// görev konfigürasyonu geçersizse bu döner.
