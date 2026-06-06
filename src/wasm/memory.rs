@@ -1,3 +1,5 @@
+#![cfg(feature = "backend-wasmtime")]
+
 use wasmtime::{
     ResourceLimiter,
     StoreLimits,
