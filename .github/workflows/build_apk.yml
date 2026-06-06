@@ -6,17 +6,7 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      build_type:
-        description: 'APK tipi'
-        required: true
-        default: 'release'
-        type: choice
-        options:
-          - release
-          - debug
 
-# Aynı branch'te paralel build'leri iptal et
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -24,13 +14,11 @@ concurrency:
 env:
   FLUTTER_VERSION: '3.24.5'
   NDK_VERSION: '27.0.12077973'
-  CARGO_NDK_VERSION: '3.5.4'
-  # wasmi backend — Android/Play Store zorunlu (JIT yok)
   RUST_ANDROID_FEATURES: '--no-default-features --features backend-wasmi'
 
 jobs:
   # ─────────────────────────────────────────────────────────
-  # JOB 1: Rust → .so derleme (her mimari paralel)
+  # JOB 1: Rust → .so (paralel)
   # ─────────────────────────────────────────────────────────
   build-rust:
     name: 🦀 Rust → ${{ matrix.abi }}
@@ -49,22 +37,70 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
-      - name: ☕ Java 17 (Android Gradle için)
+      - name: ☕ Java 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: 🤖 Android SDK + NDK ${{ env.NDK_VERSION }}
-        uses: android-actions/setup-android@v3
-
-      - name: 📦 NDK kurulumu
+      # ── Ortam tanı — tam hata görülmesi için ──────────
+      - name: 🔍 Android SDK ortamı kontrol
         run: |
-          sdkmanager "ndk;${{ env.NDK_VERSION }}"
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
-          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}"         >> $GITHUB_ENV
+          echo "=== SDK paths ==="
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo ""
+          echo "=== cmdline-tools içeriği ==="
+          ls "${ANDROID_SDK_ROOT}/cmdline-tools/" 2>/dev/null || \
+            echo "cmdline-tools dizini yok!"
+          echo ""
+          echo "=== sdkmanager konumu ==="
+          find "${ANDROID_SDK_ROOT}/cmdline-tools" \
+            -name "sdkmanager" -type f 2>/dev/null || \
+            echo "sdkmanager bulunamadı"
+          echo ""
+          echo "=== Kurulu NDK'lar ==="
+          ls "${ANDROID_SDK_ROOT}/ndk/" 2>/dev/null || \
+            echo "NDK dizini yok"
 
-      - name: 🦀 Rust stable + Android target
+      # ── NDK — sdkmanager'ı dinamik bul ──────────────
+      - name: 📦 Android NDK ${{ env.NDK_VERSION }}
+        run: |
+          # sdkmanager'ı bul (runner'a göre path değişebilir)
+          SDKMANAGER=$(find "${ANDROID_SDK_ROOT}/cmdline-tools" \
+            -name "sdkmanager" -type f 2>/dev/null | sort -V | tail -1)
+
+          if [ -z "$SDKMANAGER" ]; then
+            # Fallback: PATH'te var mı?
+            SDKMANAGER=$(which sdkmanager 2>/dev/null || true)
+          fi
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "❌ sdkmanager bulunamadı!"
+            echo "SDK root içeriği:"
+            ls "${ANDROID_SDK_ROOT}/" || true
+            exit 1
+          fi
+
+          echo "✅ sdkmanager: $SDKMANAGER"
+
+          # Lisansları onayla
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+
+          # NDK kur
+          "$SDKMANAGER" "ndk;${{ env.NDK_VERSION }}"
+
+          NDK_PATH="${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}"
+          echo "ANDROID_NDK_HOME=$NDK_PATH"         >> $GITHUB_ENV
+          echo "NDK_HOME=$NDK_PATH"                 >> $GITHUB_ENV
+          echo "${NDK_PATH}/toolchains/llvm/prebuilt/linux-x86_64/bin" \
+            >> $GITHUB_PATH
+
+          echo "✅ NDK kuruldu: $NDK_PATH"
+          ls "$NDK_PATH" | head -5
+
+      # ── Rust ───────────────────────────────────────
+      - name: 🦀 Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
@@ -75,13 +111,25 @@ jobs:
           key: android-${{ matrix.rust_target }}
           cache-on-failure: true
 
-      - name: 🔧 cargo-ndk kurulumu
-        run: |
-          cargo install cargo-ndk \
-            --version ${{ env.CARGO_NDK_VERSION }} \
-            --locked
+      # cargo-ndk binary cache
+      - name: 🔧 cargo-ndk cache
+        id: cargo-ndk-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-ndk
+          key: cargo-ndk-3.5.4-${{ runner.os }}-${{ runner.arch }}
 
-      - name: 🏗️ Rust .so derle — ${{ matrix.abi }}
+      - name: 🔧 cargo-ndk kur
+        if: steps.cargo-ndk-cache.outputs.cache-hit != 'true'
+        run: |
+          # --locked kaldırıldı — bazı runner'larda Cargo.lock uyumsuzluğuna yol açıyor
+          cargo install cargo-ndk --version 3.5.4
+
+      - name: ✅ cargo-ndk versiyon kontrol
+        run: cargo ndk --version
+
+      # ── Derleme ────────────────────────────────────
+      - name: 🏗️ Rust .so → ${{ matrix.abi }}
         run: |
           cargo ndk \
             --target ${{ matrix.rust_target }} \
@@ -89,13 +137,13 @@ jobs:
             build --release \
             ${{ env.RUST_ANDROID_FEATURES }}
 
-      - name: 📋 .so dosya bilgisi
+      - name: 📋 .so bilgisi
         run: |
           SO="flutter_app/android/app/src/main/jniLibs/${{ matrix.abi }}/libaetheros.so"
-          echo "Boyut: $(du -sh $SO)"
+          ls -lh "$SO"
           file "$SO"
 
-      - name: 📤 .so artifact yükle
+      - name: 📤 .so artifact
         uses: actions/upload-artifact@v4
         with:
           name: rust-so-${{ matrix.abi }}
@@ -103,7 +151,7 @@ jobs:
           retention-days: 1
 
   # ─────────────────────────────────────────────────────────
-  # JOB 2: Flutter APK (Rust .so'ları bekler)
+  # JOB 2: Flutter APK
   # ─────────────────────────────────────────────────────────
   build-apk:
     name: 📱 Flutter APK
@@ -120,32 +168,29 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: 🤖 Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: 📁 jniLibs dizinleri oluştur
+      - name: 📁 jniLibs dizinleri
         run: |
           mkdir -p flutter_app/android/app/src/main/jniLibs/arm64-v8a
           mkdir -p flutter_app/android/app/src/main/jniLibs/armeabi-v7a
 
-      - name: 📥 arm64-v8a .so indir
+      - name: 📥 arm64-v8a .so
         uses: actions/download-artifact@v4
         with:
           name: rust-so-arm64-v8a
           path: flutter_app/android/app/src/main/jniLibs/arm64-v8a
 
-      - name: 📥 armeabi-v7a .so indir
+      - name: 📥 armeabi-v7a .so
         uses: actions/download-artifact@v4
         with:
           name: rust-so-armeabi-v7a
           path: flutter_app/android/app/src/main/jniLibs/armeabi-v7a
 
-      - name: ✅ .so dosyalarını doğrula
+      - name: ✅ .so doğrula
         run: |
-          echo "=== jniLibs içeriği ==="
-          find flutter_app/android/app/src/main/jniLibs -name "*.so" -exec ls -lh {} \;
+          find flutter_app/android/app/src/main/jniLibs -name "*.so" \
+            -exec ls -lh {} \;
 
-      - name: 🦀 Rust (FRB codegen için)
+      - name: 🦀 Rust (FRB codegen)
         uses: dtolnay/rust-toolchain@stable
 
       - name: 🗃️ Rust cache (codegen)
@@ -168,15 +213,9 @@ jobs:
       - name: ⚙️ FRB Dart kodu üret
         working-directory: flutter_app
         run: dart run flutter_rust_bridge_codegen generate
-        # Codegen başarısız olursa placeholder'ı kullan
         continue-on-error: true
 
-      - name: 🔍 Flutter analiz
-        working-directory: flutter_app
-        run: flutter analyze --no-fatal-infos
-        continue-on-error: true
-
-      - name: 🏗️ APK derle (release, ABI ayrık)
+      - name: 🏗️ APK derle
         working-directory: flutter_app
         run: |
           flutter build apk \
@@ -186,11 +225,10 @@ jobs:
 
       - name: 📋 APK boyutları
         run: |
-          echo "=== Üretilen APK'lar ==="
           find flutter_app/build/app/outputs/flutter-apk -name "*.apk" \
             -exec ls -lh {} \;
 
-      - name: 📤 APK artifact yükle
+      - name: 📤 APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: aetheros-apk-${{ github.run_number }}
@@ -201,18 +239,15 @@ jobs:
         if: always()
         run: |
           echo "## 🚀 AetherOS Android Build" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Bilgi | Değer |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Build No | #${{ github.run_number }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | #${{ github.run_number }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Flutter | ${{ env.FLUTTER_VERSION }} |" >> $GITHUB_STEP_SUMMARY
           echo "| NDK | ${{ env.NDK_VERSION }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Backend | wasmi (Android) |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📦 APK Dosyaları" >> $GITHUB_STEP_SUMMARY
-          find flutter_app/build/app/outputs/flutter-apk -name "*.apk" 2>/dev/null | \
-            while read f; do
-              SIZE=$(du -sh "$f" | cut -f1)
-              echo "- \`$(basename $f)\` — $SIZE" >> $GITHUB_STEP_SUMMARY
-            done || echo "APK üretilemedi" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | wasmi |" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 APK'lar" >> $GITHUB_STEP_SUMMARY
+          find flutter_app/build/app/outputs/flutter-apk -name "*.apk" \
+            2>/dev/null | while read f; do
+            echo "- \`$(basename $f)\` ($(du -sh $f | cut -f1))" >> $GITHUB_STEP_SUMMARY
+          done || echo "APK üretilemedi" >> $GITHUB_STEP_SUMMARY
