@@ -1,0 +1,35 @@
+name: aetheros_app
+description: AetherOS — AI destekli yerel otomasyon runtime
+
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ── Flutter-Rust Bridge ─────────────────────────────────
+  # Dart ↔ Rust FFI köprüsü (Rust tarafıyla aynı versiyon)
+  flutter_rust_bridge: "=2.9.0"
+
+  # ── State yönetimi ──────────────────────────────────────
+  riverpod: ^2.5.1
+  flutter_riverpod: ^2.5.1
+
+  # ── UI ──────────────────────────────────────────────────
+  cupertino_icons: ^1.0.6
+  gap: ^3.0.1
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_rust_bridge_codegen: "=2.9.0"
+  ffigen: ^12.0.0
+
+flutter:
+  uses-material-design: true

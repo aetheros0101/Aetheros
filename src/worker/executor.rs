@@ -1,15 +1,23 @@
+// ── WorkerExecutor — backend-agnostic ────────────────────
+//
+// Arc<WasmEngine> → Arc<dyn WasmExecutor>
+//
+// Bu dosya hangi WASM backend'inin derlendiğini bilmez.
+// Yalnızca WasmExecutor trait'i üzerinden çalışır.
+// Derleme zamanında doğru implementasyon seçilir.
+
 use std::sync::Arc;
 
 use crate::errors::wasm::WasmError;
 use crate::task::task::TaskDefinition;
-use crate::wasm::engine::WasmEngine;
+use crate::wasm::WasmExecutor;
 
 pub struct WorkerExecutor {
-    engine: Arc<WasmEngine>,
+    engine: Arc<dyn WasmExecutor>,
 }
 
 impl WorkerExecutor {
-    pub fn new(engine: Arc<WasmEngine>) -> Self {
+    pub fn new(engine: Arc<dyn WasmExecutor>) -> Self {
         Self { engine }
     }
 
@@ -17,14 +25,9 @@ impl WorkerExecutor {
         &self,
         task: TaskDefinition,
     ) -> Result<Vec<u8>, WasmError> {
-        self.engine
-            .execute(task)
-            .await
-            .map_err(|error| {
-                WasmError::ExecutionFailure {
-                    message:
-                        error.to_string(),
-                }
-            })
+        // WasmError olduğu gibi döndürülüyor.
+        // InvalidModule / InvalidConfiguration → Permanent → retry yok.
+        // Retryable → RetryPolicy karar verir.
+        self.engine.execute(task).await
     }
 }

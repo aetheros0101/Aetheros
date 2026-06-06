@@ -31,7 +31,7 @@ use crate::errors::runtime::RuntimeError;
 use crate::events::bus::EventBus;
 use crate::persistence::engine::PersistenceEngine;
 use crate::task::queue::PriorityTaskQueue;
-use crate::wasm::engine::WasmEngine;
+use crate::wasm::WasmExecutor;
 use crate::worker::executor::WorkerExecutor;
 use crate::worker::message::WorkerMessage;
 use crate::worker::worker::Worker;
@@ -41,7 +41,9 @@ use crate::worker::worker::Worker;
 /// bu parametreleri tutar.
 pub struct WorkerSpawnParams {
     pub channel_capacity: usize,
-    pub engine: Arc<WasmEngine>,
+    /// Hangi backend (wasmtime / wasmi) olduğu önemli değil.
+    /// Derleme zamanında seçilir, runtime'da trait üzerinden çalışır.
+    pub engine: Arc<dyn WasmExecutor>,
     pub events: EventBus,
     pub persistence: Arc<PersistenceEngine>,
     pub retry_queue: Arc<PriorityTaskQueue>,

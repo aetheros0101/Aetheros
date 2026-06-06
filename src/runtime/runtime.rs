@@ -1,21 +1,14 @@
 // ============================================================
 // src/runtime/runtime.rs
 //
-// Faz 1 Düzeltmeleri:
+// Faz 1 Düzeltmeleri: (korunuyor)
+// Koşullu Geçiş: WasmEngine → Arc<dyn WasmExecutor>
 //
-// [BUG #1] dispatcher_handle.abort() loop içindeydi — her
-//          Some(task) branch'inden sonra çalışıyordu. Düzeltme:
-//          abort() + state güncellemesi loop DIŞINA taşındı.
+//   #[cfg(feature = "backend-wasmtime")]  → WasmEngine (server)
+//   #[cfg(feature = "backend-wasmi")]     → WasmiEngine (Android)
 //
-// [BUG #1b] Some(task) branch'ine açık `continue` eklendi —
-//           fall-through davranışını engeller, okunaklılık artar.
-//
-// [BUG] State sırası yanlıştı: Running, recovery'den ÖNCE
-//       set ediliyordu. Düzeltme: önce recovery, sonra Running.
-//
-// [BUG #6] Graceful shutdown eksikti: worker'lara Shutdown
-//          mesajı hiç gönderilmiyordu. Düzeltme: Stopping state +
-//          dispatcher.shutdown_workers() + handle await eklendi.
+//   Her iki yol da WasmExecutor trait'ini döndürür.
+//   Geri kalan runtime kodu değişmez.
 // ============================================================
 
 use std::sync::Arc;
@@ -44,12 +37,20 @@ use crate::runtime::backpressure::BackpressureController;
 use crate::runtime::lifecycle::RuntimeState;
 use crate::task::queue::PriorityTaskQueue;
 use crate::task::task::TaskDefinition;
-use crate::wasm::engine::WasmEngine;
-use crate::wasm::sandbox::SandboxLimits;
+use crate::wasm::WasmExecutor;
 use crate::worker::manager::WorkerManager;
 use crate::persistence::engine::PersistenceEngine;
 use crate::persistence::models::PersistedTask;
 use crate::persistence::recovery::RecoveryEngine;
+
+// ── Backend import'ları ───────────────────────────────────
+#[cfg(feature = "backend-wasmtime")]
+use crate::wasm::engine::WasmEngine;
+#[cfg(feature = "backend-wasmtime")]
+use crate::wasm::sandbox::SandboxLimits;
+
+#[cfg(feature = "backend-wasmi")]
+use crate::wasm::wasmi_engine::{WasmiEngine, WasmiSandboxLimits};
 
 pub struct Runtime {
     config: RuntimeConfig,
@@ -88,12 +89,32 @@ impl Runtime {
             crate::wasm::module_store::ModuleStore::new()
         );
 
-        let engine = Arc::new(
+        // ── WASM Engine — derleme zamanında seçilir ───────────
+        //
+        //   backend-wasmtime → JIT, Cranelift, server performansı
+        //   backend-wasmi    → Interpreter, Android/Play Store uyumlu
+        //
+        //   Her iki yol da Arc<dyn WasmExecutor> döndürür.
+        //   Geri kalan runtime kodu backend'i bilmez.
+
+        #[cfg(feature = "backend-wasmtime")]
+        let engine: Arc<dyn WasmExecutor> = Arc::new(
             WasmEngine::new(SandboxLimits {
                 memory_limit_bytes: 64 * 1024 * 1024,
                 execution_timeout: std::time::Duration::from_secs(30),
                 fuel_limit: 10_000_000,
             }, module_store.clone())?
+        );
+
+        #[cfg(feature = "backend-wasmi")]
+        let engine: Arc<dyn WasmExecutor> = Arc::new(
+            WasmiEngine::new(
+                WasmiSandboxLimits {
+                    fuel_limit:        10_000_000,
+                    execution_timeout: std::time::Duration::from_secs(30),
+                },
+                module_store.clone(),
+            )
         );
 
         let mut manager = WorkerManager::new();

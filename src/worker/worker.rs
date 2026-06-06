@@ -115,10 +115,22 @@ impl Worker {
         let task_id = task.id;
 
         // ── Deadline kontrolü ────────────────────────────────
+        // Deadline dolmuşsa task artık çalıştırılmamalı.
+        // Hâlâ kalan deneme hakkı varsa Retrying → queue;
+        // yoksa ya da retry policy izin vermiyorsa Failed.
         if deadline_expired(&task) {
-            if task.attempts < task.max_attempts {
+            let attempts = self
+                .persistence
+                .load_task(&task_id)
+                .ok()
+                .flatten()
+                .map(|p| p.attempts)
+                .unwrap_or(0);
+
+            if attempts < task.retry_policy.max_attempts {
+                self.increment_attempts(task_id);
+                self.update_state(task_id, TaskState::Retrying);
                 let mut retried = task;
-                retried.attempts += 1;
                 retried.state = TaskState::Queued;
                 let _ = self.retry_queue.push(retried).await;
             } else {

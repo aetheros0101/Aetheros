@@ -1,23 +1,18 @@
 // ============================================================
-// src/wasm/engine.rs  (v3)
+// src/wasm/engine.rs  (v4)
 //
-// Optimizasyon #1: ModuleStore entegrasyonu
+// Değişiklik: WasmExecutor trait implement edildi.
 //
 // ÖNCE:
-//   execute(task) → get_or_compile(&task.wasm_module)
-//   Binary task içinde taşınıyordu.
+//   impl WasmEngine { pub async fn execute(...) }
+//   → WorkerExecutor doğrudan Arc<WasmEngine> tutuyordu.
 //
 // SONRA:
-//   execute(task) → module_store.get(task.wasm_module_hash)
-//                → get_or_compile(&binary)
-//   Binary ModuleStore'dan Arc<Vec<u8>> olarak alınır.
-//   get_or_compile zaten SHA-256 compile cache'e sahip.
-//   Aynı hash → store lookup O(1) + cache hit O(1).
+//   impl WasmExecutor for WasmEngine
+//   → WorkerExecutor Arc<dyn WasmExecutor> tutar.
+//   → Hangi backend derlendiği worker/runtime'a görünmez.
 //
-// İki cache katmanı:
-//   L1: DashMap<ModuleHash, Arc<Vec<u8>>>  → binary store
-//   L2: DashMap<ModuleHash, Arc<Module>>   → compiled cache
-//   İkisi de aynı ModuleHash key'i kullanır.
+// Bu dosya yalnızca backend-wasmtime feature aktifken derlenir.
 // ============================================================
 
 use std::sync::Arc;
@@ -37,8 +32,11 @@ use wasmtime::{
     Store,
 };
 
+use async_trait::async_trait;
+
 use crate::errors::wasm::WasmError;
 use crate::task::task::TaskDefinition;
+use crate::wasm::WasmExecutor;
 use crate::wasm::host::{
     register_host_functions,
     HostContext,
@@ -89,17 +87,11 @@ impl WasmEngine {
             });
         }
 
-        // Boş modül kontrolü — retry storm engeller
-            if !task.has_module() {
-                return Err(WasmError::InvalidConfiguration {
-                    reason: "empty wasm module hash — no module registered".into(),
-                });
-            }
-
-        // Modül var mı?
+        // Boş modül kontrolü — retry storm engeller.
+        // Duplicate check kaldırıldı; tek kontrol yeterli.
         if !task.has_module() {
             return Err(WasmError::InvalidConfiguration {
-                reason: "task has no wasm_module_hash".into(),
+                reason: "empty wasm_module_hash — no module registered".into(),
             });
         }
 
@@ -108,10 +100,9 @@ impl WasmEngine {
             .module_store
             .get(&task.wasm_module_hash)
             .map_err(|_| WasmError::InvalidConfiguration {
-                // ÖNCE: WasmError::InvalidModule
-                // SONRA: InvalidConfiguration → Permanent → retry yok
+                // InvalidConfiguration → Permanent → retry yok
                 reason: "module not found in store".into(),
-            })?;;
+            })?;
 
         // L2: Compile cache'den al veya derle
         let module = self
@@ -215,5 +206,20 @@ impl WasmEngine {
 
     pub fn module_store(&self) -> Arc<ModuleStore> {
         Arc::clone(&self.module_store)
+    }
+}
+
+// ── WasmExecutor trait impl ───────────────────────────────
+//
+// Worker ve runtime katmanları artık sadece bu trait'i görür.
+// WasmEngine::execute() → trait metodu — zero-cost forwarding.
+
+#[async_trait]
+impl WasmExecutor for WasmEngine {
+    async fn execute(
+        &self,
+        task: TaskDefinition,
+    ) -> Result<Vec<u8>, WasmError> {
+        self.execute(task).await
     }
 }

@@ -1,0 +1,205 @@
+root@localhost:~/aetheros# bash ~/aetheros/stress_test.sh
+
+╔══════════════════════════════════════════════╗
+║       AetherOS Stres Testi v2                ║
+║  URL : http://localhost:8080
+╚══════════════════════════════════════════════╝
+Workers: 4  |  MaxConcurrent: 256  |  Channel: 1024
+
+══════════════════════════════════════════════════
+BÖLÜM 1: Ön Kontroller
+══════════════════════════════════════════════════
+
+── Sunucu erişilebilirlik ──
+Sunucu bekleniyor hazır! (0s)
+✓ Health: healthy=true (.healthy=true)
+✓ Health: version mevcut (.version=0.1.0)
+→ Başlangıç metrikleri: completed=0  failed=0  retried=0
+→ RAM: 44.0 MB
+
+══════════════════════════════════════════════════
+BÖLÜM 2: API Doğrulama
+══════════════════════════════════════════════════
+
+── POST /tasks — geçerli istek ──
+✓ POST /tasks → 202 Accepted
+✓ Response: status=queued (.status=queued)
+✓ Response: task_id UUID mevcut (9e47c303-c32f-47f0-95a6-0ca28f5e7263)
+
+── POST /tasks — geçersiz hex (400 beklenir) ──
+✓ Geçersiz hex → 400 (HTTP 400)
+
+── POST /tasks — boş entrypoint (202 beklenir, runtime handle eder) ──
+✓ Boş entrypoint → 202 (HTTP 202)
+
+── GET /tasks/{id} ──
+✓ GET /tasks/{id}: task_id doğru (.task_id=9e47c303-c32f-47f0-95a6-0ca28f5e7263)
+✓ GET /tasks/{id}: state geçerli ('Failed')
+
+── GET /tasks/{id} — var olmayan ID (404 beklenir) ──
+✓ Yok task → 404 (HTTP 404)
+
+── GET /metrics ──
+✓ Metrics: active_workers=0
+✓ Metrics: queued_tasks=0
+✓ Metrics: completed_tasks=0
+✓ Metrics: failed_tasks=2
+✓ Metrics: retried_tasks=0
+
+── POST /agents ──
+✓ Agent: status=started (.status=started)
+✓ Agent: execution_id mevcut
+
+── POST /workflows ──
+✓ Workflow: status=accepted (.status=accepted)
+✓ Workflow: name doğru (.name=test-workflow)
+
+══════════════════════════════════════════════════
+BÖLÜM 3: Öncelik Testi (4 Tier)
+══════════════════════════════════════════════════
+→ 4 öncelik seviyesi gönderiliyor...
+✓ Priority 'critical' → 202 Accepted
+✓ Priority 'high' → 202 Accepted
+✓ Priority 'normal' → 202 Accepted
+✓ Priority 'low' → 202 Accepted
+→ State doğrulaması (persistence roundtrip)...
+→   critical: state=Failed
+→   high: state=Failed
+→   normal: state=Failed
+→   low: state=Failed
+
+══════════════════════════════════════════════════
+BÖLÜM 4: Gecikme Benchmarkı
+══════════════════════════════════════════════════
+
+── Seri 200 task — p50/p95/p99 ölçümü ──
+→   50/200 tamamlandı...
+→   100/200 tamamlandı...
+→   150/200 tamamlandı...
+→   200/200 tamamlandı...
+✓ Gecikme testi: 200/200 başarılı gönderim
+Gecikme istatistikleri (ms):
+ort=177ms  p50=176ms  p95=194ms  p99=279ms  max=305ms  n=200
+✓ p99 gecikme kabul edilebilir aralıkta (244ms)
+
+══════════════════════════════════════════════════
+BÖLÜM 5: Throughput Testi
+══════════════════════════════════════════════════
+
+── 1000 task paralel batch (100'erli gruplar) ──
+→   100/1000 gönderildi | RAM: 46.3 MB
+→   200/1000 gönderildi | RAM: 46.8 MB
+→   300/1000 gönderildi | RAM: 47.6 MB
+→   400/1000 gönderildi | RAM: 47.9 MB
+→   500/1000 gönderildi | RAM: 48.1 MB
+→   600/1000 gönderildi | RAM: 48.8 MB
+→   700/1000 gönderildi | RAM: 49.1 MB
+→   800/1000 gönderildi | RAM: 50.3 MB
+→   900/1000 gönderildi | RAM: 50.4 MB
+→   1000/1000 gönderildi | RAM: 50.4 MB
+✓ 1000 task gönderildi: 27575ms
+→ Gönderim throughput: 36.2 task/sn
+✓ Throughput 36.2 task/sn (dev build; release build'de 3-5x daha yüksek beklenir)
+
+══════════════════════════════════════════════════
+BÖLÜM 6: Backpressure Testi
+══════════════════════════════════════════════════
+
+── 300 eş zamanlı task (kanal kapasitesi sınırı testi) ──
+✓ Backpressure: 300 kabul edildi, 0 reddedildi (503)
+✓ Backpressure: sunucu çökmedi (300 eş zamanlı istek survive)
+
+══════════════════════════════════════════════════
+BÖLÜM 7: İptal (Cancellation) Roundtrip
+══════════════════════════════════════════════════
+
+── 10 task gönder → hepsini iptal et → state doğrula ──
+→ 10 task submit edildi, iptal ediliyor...
+✓ İptal: 10/10 başarılı
+→ State doğrulaması...
+✓ Persistence: 10/10 task state=Cancelled
+
+══════════════════════════════════════════════════
+BÖLÜM 8: Retry Storm Doğrulaması (BUG #2 Regresyon)
+══════════════════════════════════════════════════
+
+── 100 task gönderi → retry storm olmamalı ──
+→ Gönderiliyor (max_attempts=3)...
+→ İşleme bekleniyor (3s)...
+→ Δ failed=100  Δ retried=0
+✓ Retry storm YOK: retried_tasks artmadı (Δ=0) ✓
+✓ failed_tasks arttı: Δ=100
+
+══════════════════════════════════════════════════
+BÖLÜM 9: Ajan & Workflow Yükü
+══════════════════════════════════════════════════
+
+── 20 ajan paralel başlatma ──
+✓ Ajan: 20/20 başarıyla başlatıldı
+
+── 20 workflow gönderimi ──
+✓ Workflow: 20/20 başarıyla gönderildi
+
+══════════════════════════════════════════════════
+BÖLÜM 10: WebSocket Testi
+══════════════════════════════════════════════════
+
+── 10.1 Upgrade & bağlantı ──
+✓ WS: bağlantı kuruldu ve açık kaldı (timeout=beklenen)
+
+── 10.2 Event akışı (task gönder → event al) ──
+→   Alınan toplam event: 16
+✓ WS: event akışı çalışıyor (16 event)
+→   Event türleri:
+→     16 "type":"task"
+✓ WS: task event'leri alındı
+✓ WS: TaskFailed event'i doğrulandı
+
+── 10.3 Çoklu eş zamanlı bağlantı (3 client) ──
+✓ WS: 3/3 client event aldı (broadcast doğrulandı)
+
+── 10.4 Anlık disconnect → sunucu kararlılığı ──
+✓ WS: 5 ani disconnect sonrası sunucu kararlı
+
+── 10.5 WebSocket Ping/Pong (protokol seviyesi) ──
+✓ WS: Ping/Pong doğrulandı
+
+══════════════════════════════════════════════════
+BÖLÜM 11: Dayanıklılık & Bellek Sızıntısı Testi
+══════════════════════════════════════════════════
+
+── 5 tur × 100 task — RAM takibi ──
+→   Tur 1: 2763ms | RAM: 51.4 MB
+→   Tur 2: 2709ms | RAM: 51.4 MB
+→   Tur 3: 2777ms | RAM: 51.9 MB
+→   Tur 4: 2675ms | RAM: 51.9 MB
+→   Tur 5: 2730ms | RAM: 52.0 MB
+✓ RAM stabil: +.6MB (51.4→52.0 MB)
+
+══════════════════════════════════════════════════
+BÖLÜM 12: Metrik Tutarlılık Doğrulaması
+══════════════════════════════════════════════════
+
+── Tüm testler bittikten sonra metrik anlık görüntüsü ──
+Başlangıç → Bitiş:
+completed : 0 → 0  (Δ=0)
+failed    : 0    → 2129     (Δ=2129)
+retried   : 0   → 0    (Δ=0)
+active_w  : 0
+✓ Retry storm yok: toplam retried delta=0 ✓
+✓ Görev işleme çalışıyor: Δfailed=2129
+
+══════════════════════════════════════════════════
+SONUÇ RAPORU
+══════════════════════════════════════════════════
+
+Toplam süre   : 145s
+RAM (şimdi)   : 52.0 MB
+
+PASSED : 45
+FAILED : 0
+WARNED : 0
+
+✅ Tüm testler geçti
+
+root@localhost:~/aetheros#

@@ -16,13 +16,18 @@ pub mod remote;
 pub mod sdk;
 pub mod security;
 
-
 pub mod agents;
 pub mod ai;
 pub mod orchestration;
 pub mod workflows;
 pub mod logging;
 pub mod scripting;
+
+// ── Flutter-Rust Bridge ───────────────────────────────────
+// Mobil FFI katmanı. flutter_rust_bridge_codegen bu modülü
+// tarayarak flutter_app/lib/src/rust/ altına Dart dosyaları üretir.
+// Sunucu build'inde de derlenir; binary boyutuna etkisi minimumdur.
+pub mod bridge;
 
 pub use runtime::api::RuntimeHandle;
 pub use runtime::bootstrap::RuntimeBootstrap;

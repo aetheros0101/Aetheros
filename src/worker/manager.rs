@@ -24,7 +24,7 @@ use tokio::sync::{
 use crate::events::bus::EventBus;
 use crate::persistence::engine::PersistenceEngine;
 use crate::task::queue::PriorityTaskQueue;
-use crate::wasm::engine::WasmEngine;
+use crate::wasm::WasmExecutor;
 use crate::worker::message::WorkerMessage;
 use crate::worker::supervisor::{
     WorkerSpawnParams,
@@ -60,7 +60,7 @@ impl WorkerManager {
         &mut self,
         count: usize,
         channel_capacity: usize,
-        engine: Arc<WasmEngine>,
+        engine: Arc<dyn WasmExecutor>,
         events: EventBus,
         persistence: Arc<PersistenceEngine>,
         retry_queue: Arc<PriorityTaskQueue>,

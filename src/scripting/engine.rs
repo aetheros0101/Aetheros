@@ -1,16 +1,10 @@
 // ============================================================
 // src/scripting/engine.rs
 //
-// ScriptEngine: ScriptDefinition → WasmEngine → ScriptResult
+// ScriptEngine: ScriptDefinition → WasmExecutor → ScriptResult
 //
-// WasmEngine'i doğrudan kullanır:
-//   - Module cache devralınır (SHA-256)
-//   - Sandbox limits uygulanır
-//   - Timeout kontrolü devralınır
-//
-// ScriptDefinition → TaskDefinition dönüşümü yapılır çünkü
-// WasmEngine TaskDefinition bekliyor. Bu sayede tüm WASM
-// altyapısı (cache, fuel, timeout) script'lerde de çalışır.
+// WasmEngine → Arc<dyn WasmExecutor>
+// Hangi backend (wasmtime/wasmi) olduğu bu katmana görünmez.
 // ============================================================
 
 use std::sync::Arc;
@@ -34,14 +28,14 @@ use crate::task::task::{
     TaskState,
 };
 use crate::types::ids::TaskId;
-use crate::wasm::engine::WasmEngine;
+use crate::wasm::WasmExecutor;
 
 pub struct ScriptEngine {
-    wasm: Arc<WasmEngine>,
+    wasm: Arc<dyn WasmExecutor>,
 }
 
 impl ScriptEngine {
-    pub fn new(wasm: Arc<WasmEngine>) -> Self {
+    pub fn new(wasm: Arc<dyn WasmExecutor>) -> Self {
         Self { wasm }
     }
 

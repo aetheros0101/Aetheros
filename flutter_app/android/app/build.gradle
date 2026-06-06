@@ -1,0 +1,72 @@
+// flutter_app/android/app/build.gradle
+//
+// AetherOS Android build konfigürasyonu.
+// Rust .so dosyasını jniLibs'den yükler.
+//
+// Rust .so şu komutla üretilir (scripts/build_android.sh):
+//   cargo ndk -t arm64-v8a -t armeabi-v7a \
+//             -o ../flutter_app/android/app/src/main/jniLibs \
+//             build --release \
+//             --no-default-features --features backend-wasmi
+
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+android {
+    namespace "com.aetheros.app"
+
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = "27.0.12077973"  // cargo-ndk ile uyumlu
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_11
+    }
+
+    defaultConfig {
+        applicationId "com.aetheros.app"
+        minSdk 24           // Rust std + wasmi için Android 7.0+
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+
+        // Rust .so yükleyici
+        ndk {
+            // Hedef mimariler — cargo ndk ile eşleşmeli
+            abiFilters "arm64-v8a", "armeabi-v7a"
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+            // Rust release zaten strip=true ile derleniyor
+            // Burada ek küçültme gerekmez
+        }
+    }
+
+    // Rust tarafından üretilen .so dosyaları buraya kopyalanır:
+    // android/app/src/main/jniLibs/
+    //   arm64-v8a/   → libaetheros.so
+    //   armeabi-v7a/ → libaetheros.so
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ["src/main/jniLibs"]
+        }
+    }
+}
+
+flutter {
+    source "../.."
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+}

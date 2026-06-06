@@ -81,9 +81,9 @@ impl AgentRuntime {
         objective: String,
     ) -> Result<Uuid, RuntimeError> {
         // ── 1. Plan ───────────────────────────────────────────
-        // Faz 6: AnthropicProvider.infer(plan_prompt) ile dinamik
+        // AI destekli plan; API yoksa otomatik fallback.
         let plan =
-            AgentPlanner::plan(objective.clone());
+            AgentPlanner::plan(objective.clone()).await;
 
         info!(
             plan_id = %plan.id,

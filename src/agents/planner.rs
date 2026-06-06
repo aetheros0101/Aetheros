@@ -1,38 +1,16 @@
 // ============================================================
-// src/agents/planner.rs  (v2)
+// src/agents/planner.rs  (v3)
 //
-// Faz 6: AnthropicProvider ile gerçek AI planning.
-//
-// ÖNCE: plan() → sabit "initialize" adımı döndüren stub.
-//
-// SONRA:
-//   1. AnthropicProvider ile objective → JSON plan üret
-//   2. JSON parse başarısızsa → fallback sabit plan
-//   3. Structured output: adım listesi
-//
-// API Prompt yapısı:
-//   system: "AetherOS planner. JSON çıktı ver."
-//   user:   "Objective: {objective}\nAdımları listele."
-//
-// Fallback garantisi:
-//   API çağrısı veya parse başarısız olursa
-//   runtime donmaz — minimal plan ile devam eder.
+// plan() artık async. ai_plan() önce denenir;
+// API key yoksa, rate-limit varsa veya parse başarısızsa
+// fallback_plan() devreye girer → runtime hiç donmaz.
 // ============================================================
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
-use tracing::{
-    debug,
-    warn,
-};
+use serde::{Deserialize, Serialize};
+use tracing::debug;
 use uuid::Uuid;
 
-use crate::agents::plans::{
-    AgentPlan,
-    AgentPlanStep,
-};
+use crate::agents::plans::{AgentPlan, AgentPlanStep};
 use crate::ai::inference::request::InferenceRequest;
 use crate::ai::providers::anthropic::AnthropicProvider;
 use crate::ai::providers::provider::ModelProvider;
@@ -54,19 +32,18 @@ pub struct AgentPlanner;
 impl AgentPlanner {
     /// Objective'den plan üret.
     ///
-    /// AnthropicProvider mevcutsa AI destekli plan.
-    /// Değilse (API key yok, rate limit vb.) fallback plan.
-    pub fn plan(objective: String) -> AgentPlan {
-        // Direkt fallback plan — AI planning Faz sonrası
-        Self::fallback_plan(objective)
+    /// AnthropicProvider mevcutsa AI destekli plan (ai_plan).
+    /// Değilse (API key yok, rate-limit, parse hatası) fallback_plan.
+    pub async fn plan(objective: String) -> AgentPlan {
+        match Self::ai_plan(objective.clone()).await {
+            Some(plan) => plan,
+            None => Self::fallback_plan(objective),
+        }
     }
 
     /// AnthropicProvider ile objective → structured plan.
-    async fn ai_plan(
-        objective: String,
-    ) -> Option<AgentPlan> {
-        let provider =
-            AnthropicProvider::new().ok()?;
+    async fn ai_plan(objective: String) -> Option<AgentPlan> {
+        let provider = AnthropicProvider::new().ok()?;
 
         let system = r#"You are an AetherOS agent planner.
 Given an objective, output a JSON plan with this exact structure:
@@ -74,21 +51,16 @@ Given an objective, output a JSON plan with this exact structure:
 Output ONLY valid JSON, no explanation."#;
 
         let prompt = format!(
-            "Objective: {objective}\n\
-             Create a concise execution plan with 2-5 steps."
+            "Objective: {objective}\nCreate a concise execution plan with 2-5 steps."
         );
 
         let request = InferenceRequest::new(prompt, 512)
             .with_system(system)
             .with_temperature(0.3); // Düşük temperature → tutarlı JSON
 
-        let response =
-            provider.infer(request).await.ok()?;
+        let response = provider.infer(request).await.ok()?;
 
-        debug!(
-            tokens = response.tokens_used,
-            "AI plan response received"
-        );
+        debug!(tokens = response.tokens_used, "AI plan response received");
 
         // JSON fence'leri temizle (```json ... ``` varsa)
         let cleaned = response
@@ -99,8 +71,7 @@ Output ONLY valid JSON, no explanation."#;
             .trim_end_matches("```")
             .trim();
 
-        let plan_resp: PlanResponse =
-            serde_json::from_str(cleaned).ok()?;
+        let plan_resp: PlanResponse = serde_json::from_str(cleaned).ok()?;
 
         let steps = plan_resp
             .steps
@@ -138,10 +109,7 @@ Output ONLY valid JSON, no explanation."#;
                     id: Uuid::new_v4(),
                     name: format!(
                         "execute: {}",
-                        objective
-                            .chars()
-                            .take(40)
-                            .collect::<String>()
+                        objective.chars().take(40).collect::<String>()
                     ),
                     retryable: true,
                 },

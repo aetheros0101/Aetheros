@@ -108,6 +108,11 @@ impl ApiKey {
         constant_time_eq(&provided_hash, &self.hash)
     }
 
+    /// Ham API key'i döndür (log maskeleme veya audit için).
+    pub fn raw(&self) -> &str {
+        &self.raw
+    }
+
     pub fn hash(&self) -> &str {
         &self.hash
     }
