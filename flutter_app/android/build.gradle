@@ -1,19 +1,6 @@
-// flutter_app/android/build.gradle
-// Android proje kök build dosyası.
-
-buildscript {
-    ext.kotlin_version = '1.9.22'
-
-    repositories {
-        google()
-        mavenCentral()
-    }
-
-    dependencies {
-        classpath 'com.android.tools.build:gradle:8.3.2'
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-    }
-}
+// flutter_app/android/build.gradle (root)
+// Flutter 3.16+ — plugin tanımları settings.gradle'a taşındı.
+// Bu dosya artık yalnızca subproject config için kullanılır.
 
 allprojects {
     repositories {
@@ -22,11 +9,11 @@ allprojects {
     }
 }
 
-rootProject.buildDir = '../build'
+rootProject.buildDir = "../build"
 
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
-    project.evaluationDependsOn(':app')
+    project.evaluationDependsOn(":app")
 }
 
 tasks.register("clean", Delete) {

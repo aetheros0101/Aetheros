@@ -256,6 +256,15 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: 📝 local.properties oluştur
+        run: |
+          # Flutter Gradle plugin'i flutter.sdk path'ini gerektirir.
+          # CI'da local.properties yoktur — FLUTTER_ROOT'tan üretiriz.
+          echo "flutter.sdk=${FLUTTER_ROOT}" > flutter_app/android/local.properties
+          echo "sdk.dir=${ANDROID_SDK_ROOT}" >> flutter_app/android/local.properties
+          echo "✓ local.properties:"
+          cat flutter_app/android/local.properties
+
       - name: 📦 Flutter pub get
         working-directory: flutter_app
         run: flutter pub get
