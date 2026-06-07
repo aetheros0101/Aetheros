@@ -15,6 +15,8 @@ env:
   FLUTTER_VERSION: '3.24.5'
   NDK_VERSION: '27.0.12077973'
   RUST_ANDROID_FEATURES: '--no-default-features --features backend-wasmi'
+  # Node.js 24 — 16 Haziran 2026'dan itibaren zorunlu, önceden opt-in
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true'
 
 jobs:
   build-rust:

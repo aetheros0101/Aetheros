@@ -31,8 +31,9 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
-  # Dart'ta exact pin: "=" olmadan
-  flutter_rust_bridge_codegen: "2.9.0"
+  # NOT: flutter_rust_bridge_codegen pub.dev'de ayrı paket değil.
+  # FRB v2'de codegen, flutter_rust_bridge içinde gelir.
+  # Çalıştırma: dart run flutter_rust_bridge_codegen generate
   ffigen: ^12.0.0
 
 flutter:
