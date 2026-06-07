@@ -1,74 +1,29 @@
 // ============================================================
 // flutter_app/lib/src/rust/frb_generated.dart
 //
-// ⚠️  BU DOSYA OTOMATİK ÜRETİLİR — EL İLE DÜZENLEMEYİN
+// FRB v2.9.0 minimal stub.
+// main.dart'ın ihtiyacı: RustLib.init()
 //
-// Üretmek için:
-//   cd flutter_app
-//   dart run flutter_rust_bridge_codegen generate
-//
-// Bu dosya şu an sadece derleme için bir placeholder.
-// Gerçek dosya codegen sonrası oluşur ve dart pub get ile
-// projeye dahil edilir.
+// Gerçek codegen: flutter_rust_bridge_codegen generate
+// Şu an: stub, APK derlemek için yeterli.
 // ============================================================
 
-import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
+// ignore_for_file: invalid_use_of_internal_member, unused_import
 
-// ignore_for_file: unused_import, prefer_const_constructors
+/// AetherOS Flutter-Rust Bridge giriş noktası.
+///
+/// Gerçek uygulamada bu sınıf flutter_rust_bridge_codegen
+/// tarafından otomatik üretilir ve libaetheros.so'ya bağlanır.
+/// Şu an stub implementasyon — API yüzeyi aynı.
+class RustLib {
+  static bool _initialized = false;
 
-class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
-  @internal
-  static final instance = RustLib._();
-
-  RustLib._();
-
-  static Future<void> init({
-    RustLibApi? api,
-    BaseHandler? handler,
-    ExternalLibrary? externalLibrary,
-  }) async {
-    await instance.initImpl(
-      api: api,
-      handler: handler,
-      externalLibrary: externalLibrary,
-    );
+  /// FRB runtime'ını başlatır.
+  /// Stub: gerçek implementasyon codegen sonrası .so'ya bağlanır.
+  static Future<void> init() async {
+    if (_initialized) return;
+    _initialized = true;
   }
 
-  @override
-  ApiImplConstructor<RustLibApiImpl, RustLibWire> get apiImplConstructor =>
-      RustLibApiImpl.new;
-
-  @override
-  WireConstructor<RustLibWire> get wireConstructor =>
-      RustLibWire.fromExternalLibrary;
-
-  @override
-  Future<void> executeRustInitializers() async {
-    // Rust init_app() çağrısı codegen sonrası buraya eklenir
-  }
-
-  @override
-  ExternalLibraryLoaderConfig get defaultExternalLibraryLoaderConfig =>
-      kDefaultExternalLibraryLoaderConfig;
-
-  @override
-  String get codegenVersion => '2.9.0';
-
-  @override
-  int get rustContentHash => 0; // codegen günceller
+  static bool get isInitialized => _initialized;
 }
-
-// Bu sınıflar codegen tarafından doldurulur:
-abstract class RustLibApi extends BaseApi {}
-class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
-  RustLibApiImpl({required super.handler});
-}
-class RustLibWire extends BaseWire {
-  RustLibWire.fromExternalLibrary(super.lib);
-}
-
-const kDefaultExternalLibraryLoaderConfig = ExternalLibraryLoaderConfig(
-  stem: 'aetheros',
-  ioDirectory: 'rust/target/release/',
-  webPrefix: 'pkg/',
-);
