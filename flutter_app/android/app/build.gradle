@@ -38,10 +38,8 @@ android {
         versionName = flutter.versionName
 
         // Rust .so yükleyici
-        ndk {
-            // Hedef mimariler — cargo ndk ile eşleşmeli
-            abiFilters "arm64-v8a", "armeabi-v7a"
-        }
+        // ndk.abiFilters KALDIRILDI — flutter --split-per-abi ile çakışıyor.
+        // Flutter, splits.abi üzerinden ABI yönetimini kendisi yapar.
     }
 
     buildTypes {
