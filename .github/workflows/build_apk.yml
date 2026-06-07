@@ -32,10 +32,10 @@ jobs:
 
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: ☕ Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -66,7 +66,7 @@ jobs:
 
       - name: 🔧 cargo-ndk cache
         id: cargo-ndk-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cargo/bin/cargo-ndk
           key: cargo-ndk-3.5.4-${{ runner.os }}-${{ runner.arch }}
@@ -87,15 +87,18 @@ jobs:
       # ══════════════════════════════════════════════════════
       - name: 🩹 Android kaynak patch'leri uygula
         run: |
-          echo "── Patch 1: memory.rs → backend-wasmtime cfg gate ──"
-          # mod.rs'de 'pub mod memory;' satırından önce cfg ekle
-          if ! grep -q 'cfg(feature = "backend-wasmtime")' src/wasm/mod.rs; then
-            sed -i '/^pub mod memory;/i #[cfg(feature = "backend-wasmtime")]' \
-              src/wasm/mod.rs
-            echo "  ✓ memory modülü gated"
+          echo "── Patch 1: memory.rs → inner cfg gate (wasmtime-only) ──"
+          # memory.rs dosyasının TEPESINE #![cfg(...)] inner attribute ekle.
+          # mod.rs sed yerine dosyanın kendisini gateliyoruz — daha güvenilir.
+          if ! head -3 src/wasm/memory.rs | grep -q "cfg(feature"; then
+            { printf "#![cfg(feature = \"backend-wasmtime\")]\n"; \
+              cat src/wasm/memory.rs; } > /tmp/memory_patched.rs
+            mv /tmp/memory_patched.rs src/wasm/memory.rs
+            echo "  ✓ inner cfg eklendi"
           else
             echo "  ✓ zaten gated, atlandı"
           fi
+          echo "  İlk satır: $(head -1 src/wasm/memory.rs)"
 
           echo "── Patch 2: bridge/api.rs → FRB uyumsuz fonksiyon ──"
           if grep -q 'setup_default_user_code_handler' src/bridge/api.rs; then
@@ -192,7 +195,7 @@ jobs:
           file "$SO"
 
       - name: 📤 .so artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: rust-so-${{ matrix.abi }}
           path: flutter_app/android/app/src/main/jniLibs/${{ matrix.abi }}/libaetheros.so
@@ -205,10 +208,10 @@ jobs:
 
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: ☕ Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -219,13 +222,13 @@ jobs:
           mkdir -p flutter_app/android/app/src/main/jniLibs/armeabi-v7a
 
       - name: 📥 arm64-v8a .so
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: rust-so-arm64-v8a
           path: flutter_app/android/app/src/main/jniLibs/arm64-v8a
 
       - name: 📥 armeabi-v7a .so
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: rust-so-armeabi-v7a
           path: flutter_app/android/app/src/main/jniLibs/armeabi-v7a
@@ -274,7 +277,7 @@ jobs:
             -exec ls -lh {} \;
 
       - name: 📤 APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: aetheros-apk-${{ github.run_number }}
           path: flutter_app/build/app/outputs/flutter-apk/*.apk
