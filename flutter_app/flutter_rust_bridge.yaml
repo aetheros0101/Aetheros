@@ -1,32 +1,18 @@
 # flutter_app/flutter_rust_bridge.yaml
+# FRB v2.9.0 konfigürasyonu
 #
-# FRB v2 kod üretici konfigürasyonu.
+# v2'de rust_input dosya yolu değil, Rust crate modül yolu:
+#   crate::bridge::api  →  src/bridge/api.rs
 #
 # Kullanım:
 #   cd flutter_app
-#   dart run flutter_rust_bridge_codegen generate
-#
-# Bu komut src/bridge/api.rs'i tarayarak
-# lib/src/rust/api/aetheros.dart dosyasını üretir.
+#   flutter_rust_bridge_codegen generate
 
-rust_input:
-  - "../src/bridge/api.rs"
+rust_input: "crate::bridge::api"
 
-dart_output:
-  - "lib/src/rust/api/aetheros.dart"
+dart_output: "lib/src/rust/"
 
-# Rust crate kökü
 rust_root: ".."
 
-# Üretilen Dart dosyasının import prefix'i
 dart_preamble: |
   // ignore_for_file: unused_import, camel_case_types, depend_on_referenced_packages
-
-# Tip eşlemeleri
-dart_enums_style: true
-
-# Android: libaetheros.so
-# iOS:     libaetheros.dylib
-# macOS:   libaetheros.dylib
-android_dynamic_library_url: "libaetheros.so"
-ios_static_library: "libaetheros.a"
