@@ -269,14 +269,21 @@ jobs:
         working-directory: flutter_app
         run: flutter pub get
 
-      - name: ⚙️ FRB codegen (cargo binary)
+      - name: ⚙️ FRB codegen araçları kur
         run: |
-          # flutter_rust_bridge_codegen bir Cargo binary'dir, Dart paketi değil.
-          # Üretilen dart dosyaları repo'da commit edilmişse bu adım atlanabilir.
-          if cargo install flutter_rust_bridge_codegen --version 2.9.0 --locked 2>/dev/null; then
-            cd flutter_app && flutter_rust_bridge_codegen generate || true
+          # cargo-expand: FRB'nin macro expansion için ihtiyacı var
+          cargo install cargo-expand --locked 2>/dev/null ||             cargo install cargo-expand 2>/dev/null ||             echo "⚠️ cargo-expand kurulamadı, atlanıyor"
+          # FRB codegen binary
+          cargo install flutter_rust_bridge_codegen --version 2.9.0 2>/dev/null ||             echo "⚠️ FRB codegen kurulamadı — repo'daki mevcut dart dosyaları kullanılır"
+        continue-on-error: true
+
+      - name: ⚙️ FRB Dart kodu üret
+        working-directory: flutter_app
+        run: |
+          if command -v flutter_rust_bridge_codegen &>/dev/null; then
+            flutter_rust_bridge_codegen generate ||               echo "⚠️ Codegen uyarılarla tamamlandı, devam ediliyor"
           else
-            echo "⚠️ FRB codegen kurulamadı — repo'daki üretilmiş dosyalar kullanılacak"
+            echo "⚠️ FRB codegen bulunamadı — repo'daki mevcut dart dosyaları kullanılır"
           fi
         continue-on-error: true
 

@@ -68,5 +68,7 @@ flutter {
 }
 
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+    // kotlin-stdlib AGP 8.x + kotlin-android plugin tarafından otomatik eklenir.
+    // Eski: implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+    // Bu satır yeni Flutter Gradle sisteminde kotlin_version undefined hatasına yol açar.
 }
