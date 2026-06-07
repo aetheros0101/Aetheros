@@ -29,7 +29,10 @@ backend-wasmi    = ["dep:wasmi"]
 # staticlib: iOS static linking için.
 [lib]
 name        = "aetheros"
-crate-type  = ["cdylib", "staticlib"]
+# cdylib    → Android JNI (.so)
+# staticlib → iOS / static linking
+# rlib      → yerel binary build için (src/main.rs → use aetheros::...)
+crate-type  = ["cdylib", "staticlib", "rlib"]
 
 # ── Binary (sunucu) ───────────────────────────────────────
 [[bin]]

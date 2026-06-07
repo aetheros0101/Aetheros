@@ -45,9 +45,7 @@ pub fn init_app() {
     {
         android_logger::init_once(
             android_logger::Config::default()
-                .with_max_level(android_logger::FilterBuilder::new()
-                    .parse("debug")
-                    .build())
+                .with_max_level(log::LevelFilter::Debug)
                 .with_tag("AetherOS"),
         );
     }

@@ -133,7 +133,7 @@ impl WasmEngine {
         let module =
             tokio::task::spawn_blocking(move || {
                 Module::new(&engine, &binary)
-                    .map_err(|_| WasmError::InvalidModule)
+                    .map_err(|e| WasmError::InvalidModule { reason: e.to_string() })
             })
             .await
             .map_err(|_| WasmError::EngineFailure {

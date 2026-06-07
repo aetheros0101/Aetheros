@@ -53,7 +53,7 @@ impl ScriptDefinition {
     ) -> Result<Self, WasmError> {
         let wasm_binary =
             wat::parse_str(wat_source).map_err(|_e| {
-                WasmError::InvalidModule
+                WasmError::InvalidModule { reason: _e.to_string() }
             })?;
 
         Ok(Self {
@@ -90,7 +90,7 @@ impl ScriptDefinition {
         timeout_ms: u64,
     ) -> Result<Self, WasmError> {
         let wasm_binary = hex::decode(hex_str)
-            .map_err(|_e| WasmError::InvalidModule)?;
+            .map_err(|_e| WasmError::InvalidModule { reason: _e.to_string() })?;
 
         Ok(Self::from_binary(
             name,

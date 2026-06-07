@@ -75,7 +75,7 @@ impl RetryPolicy {
             WasmError::ResourceLimitExceeded => RetryClassification::Retryable,
 
             // Kalıcı hatalar — modül/config sorunu, retry'a gerek yok
-            WasmError::InvalidModule => RetryClassification::Permanent,
+            WasmError::InvalidModule { .. } => RetryClassification::Permanent,
             WasmError::InvalidConfiguration { .. } => RetryClassification::Permanent,
             WasmError::CapabilityDenied => RetryClassification::Permanent,
             WasmError::MissingEntrypoint => RetryClassification::Permanent,

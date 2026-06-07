@@ -57,7 +57,9 @@ fn resource_limit_is_retryable() {
 #[test]
 fn invalid_module_is_permanent() {
     assert_eq!(
-        RetryPolicy::classify_wasm_error(&WasmError::InvalidModule),
+        RetryPolicy::classify_wasm_error(&WasmError::InvalidModule {
+            reason: "test".into(),
+        }),
         RetryClassification::Permanent
     );
 }
@@ -125,7 +127,7 @@ fn no_retry_when_max_attempts_reached() {
 fn no_retry_for_permanent_errors() {
     let p = policy(10);
     assert!(
-        !p.should_retry(1, &WasmError::InvalidModule),
+        !p.should_retry(1, &WasmError::InvalidModule { reason: "test".into() }),
         "Permanent hata retry edilmemeli"
     );
     assert!(
