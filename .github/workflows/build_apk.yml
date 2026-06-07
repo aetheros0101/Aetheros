@@ -16,7 +16,7 @@ env:
   NDK_VERSION: '27.0.12077973'
   RUST_ANDROID_FEATURES: '--no-default-features --features backend-wasmi'
   # Node.js 24 — 16 Haziran 2026'dan itibaren zorunlu, önceden opt-in
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-rust:
@@ -260,9 +260,15 @@ jobs:
         working-directory: flutter_app
         run: flutter pub get
 
-      - name: ⚙️ FRB Dart kodu üret
-        working-directory: flutter_app
-        run: dart run flutter_rust_bridge_codegen generate
+      - name: ⚙️ FRB codegen (cargo binary)
+        run: |
+          # flutter_rust_bridge_codegen bir Cargo binary'dir, Dart paketi değil.
+          # Üretilen dart dosyaları repo'da commit edilmişse bu adım atlanabilir.
+          if cargo install flutter_rust_bridge_codegen --version 2.9.0 --locked 2>/dev/null; then
+            cd flutter_app && flutter_rust_bridge_codegen generate || true
+          else
+            echo "⚠️ FRB codegen kurulamadı — repo'daki üretilmiş dosyalar kullanılacak"
+          fi
         continue-on-error: true
 
       - name: 🏗️ APK derle
