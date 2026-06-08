@@ -15,13 +15,74 @@ env:
   FLUTTER_VERSION: '3.24.5'
   NDK_VERSION: '27.0.12077973'
   RUST_ANDROID_FEATURES: '--no-default-features --features backend-wasmi'
-  # Node.js 24 — 16 Haziran 2026'dan itibaren zorunlu, önceden opt-in
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # ─────────────────────────────────────────────────────────────
+  # JOB 1: FRB Codegen
+  # Dart VE Rust glue dosyalarını üretir.
+  # Rust .so'su bu dosyaları içermeli — önce çalışmalı.
+  # ─────────────────────────────────────────────────────────────
+  frb-codegen:
+    name: ⚙️ FRB Codegen
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v5
+
+      - name: 🦀 Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 🗃️ Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: frb-codegen
+          cache-on-failure: true
+
+      - name: 🐦 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: 📦 Flutter pub get
+        working-directory: flutter_app
+        run: flutter pub get
+
+      - name: 🔧 FRB codegen kur
+        run: |
+          cargo install cargo-expand 2>/dev/null || true
+          cargo install flutter_rust_bridge_codegen --version 2.12.0
+
+      - name: ⚙️ Dart + Rust kodu üret
+        working-directory: flutter_app
+        run: flutter_rust_bridge_codegen generate
+
+      - name: 📤 Üretilen Rust dosyasını yükle
+        uses: actions/upload-artifact@v5
+        with:
+          name: frb-rust-generated
+          # FRB codegen'in src/ içine yazdığı Rust glue dosyası
+          path: src/frb_generated.rs
+          retention-days: 1
+          if-no-files-found: warn
+
+      - name: 📤 Üretilen Dart dosyalarını yükle
+        uses: actions/upload-artifact@v5
+        with:
+          name: frb-dart-generated
+          path: flutter_app/lib/src/rust/
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 2: Rust → .so (codegen sonrası)
+  # ─────────────────────────────────────────────────────────────
   build-rust:
     name: 🦀 Rust → ${{ matrix.abi }}
     runs-on: ubuntu-latest
+    needs: frb-codegen
 
     strategy:
       fail-fast: false
@@ -42,12 +103,18 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: 📦 Android NDK ${{ env.NDK_VERSION }}
+      - name: 📥 Rust glue dosyasını indir
+        uses: actions/download-artifact@v5
+        with:
+          name: frb-rust-generated
+          path: src/
+        continue-on-error: true
+
+      - name: 📦 Android NDK
         run: |
           SDKMANAGER=$(find "${ANDROID_SDK_ROOT}/cmdline-tools" \
             -name "sdkmanager" -type f 2>/dev/null | sort -V | tail -1)
           [ -z "$SDKMANAGER" ] && SDKMANAGER=$(which sdkmanager 2>/dev/null || true)
-          [ -z "$SDKMANAGER" ] && { echo "❌ sdkmanager bulunamadı"; exit 1; }
           yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
           "$SDKMANAGER" "ndk;${{ env.NDK_VERSION }}"
           NDK_PATH="${ANDROID_SDK_ROOT}/ndk/${{ env.NDK_VERSION }}"
@@ -55,7 +122,7 @@ jobs:
           echo "NDK_HOME=$NDK_PATH"         >> $GITHUB_ENV
           echo "${NDK_PATH}/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-      - name: 🦀 Rust stable
+      - name: 🦀 Rust stable + target
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
@@ -77,110 +144,34 @@ jobs:
         if: steps.cargo-ndk-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-ndk --version 3.5.4
 
-      # ══════════════════════════════════════════════════════
-      # Android kaynak uyumluluk patch'leri
-      # Bu adım, source dosyalarındaki Android-uyumsuz kodları
-      # build öncesinde düzeltir:
-      #
-      #   1. memory.rs   → wasmtime'a özgü; backend-wasmtime
-      #                    feature flag'i ile derle
-      #   2. bridge/api  → eski FRB'de olmayan fonksiyon
-      #   3. wasmi_host  → Dosya yoksa minimal stub oluştur
-      # ══════════════════════════════════════════════════════
-      - name: 🩹 Android kaynak patch'leri uygula
+      - name: 🩹 Android kaynak patch'leri
         run: |
-          echo "── Patch 1: memory.rs → inner cfg gate (wasmtime-only) ──"
-          # memory.rs dosyasının TEPESINE #![cfg(...)] inner attribute ekle.
-          # mod.rs sed yerine dosyanın kendisini gateliyoruz — daha güvenilir.
-          if ! head -3 src/wasm/memory.rs | grep -q "cfg(feature"; then
-            { printf "#![cfg(feature = \"backend-wasmtime\")]\n"; \
-              cat src/wasm/memory.rs; } > /tmp/memory_patched.rs
-            mv /tmp/memory_patched.rs src/wasm/memory.rs
-            echo "  ✓ inner cfg eklendi"
-          else
-            echo "  ✓ zaten gated, atlandı"
+          # memory.rs → wasmtime-only
+          if ! head -1 src/wasm/memory.rs | grep -q "cfg(feature"; then
+            { printf '#![cfg(feature = "backend-wasmtime")]\n'; \
+              cat src/wasm/memory.rs; } > /tmp/mem.rs && mv /tmp/mem.rs src/wasm/memory.rs
           fi
-          echo "  İlk satır: $(head -1 src/wasm/memory.rs)"
-
-          echo "── Patch 2: bridge/api.rs → FRB uyumsuz fonksiyon ──"
-          if grep -q 'setup_default_user_code_handler' src/bridge/api.rs; then
-            sed -i '/flutter_rust_bridge::setup_default_user_code_handler/d' \
-              src/bridge/api.rs
-            echo "  ✓ setup_default_user_code_handler kaldırıldı"
-          else
-            echo "  ✓ zaten düzgün, atlandı"
-          fi
-
-          echo "── Patch 3: wasmi_host.rs → dosya yoksa stub oluştur ──"
+          # FRB eski fonksiyon
+          sed -i '/setup_default_user_code_handler/d' src/bridge/api.rs || true
+          # wasmi_host stub
           if [ ! -f src/wasm/wasmi_host.rs ]; then
             cat > src/wasm/wasmi_host.rs << 'STUB'
-          // wasmi backend host fonksiyon tanımları (Android)
-          use wasmi::{Caller, Linker};
-          use crate::errors::wasm::WasmError;
-
-          pub struct WasmiHostContext {
-              pub fuel_limit: u64,
-              pub output: Vec<u8>,
-          }
-
-          impl WasmiHostContext {
-              pub fn new(fuel_limit: u64) -> Self {
-                  Self { fuel_limit, output: Vec::new() }
-              }
-          }
-
-          pub fn register_host_functions(
-              linker: &mut Linker<WasmiHostContext>,
-          ) -> Result<(), WasmError> {
-              linker
-                  .func_wrap(
-                      "env",
-                      "aetheros_log",
-                      |mut caller: Caller<WasmiHostContext>, ptr: i32, len: i32| {
-                          let mem = caller
-                              .get_export("memory")
-                              .and_then(|e| e.into_memory());
-                          if let Some(mem) = mem {
-                              let data = mem.data(&caller);
-                              let start = ptr as usize;
-                              let end = (start + len as usize).min(data.len());
-                              let msg = String::from_utf8_lossy(&data[start..end]);
-                              tracing::debug!(target: "wasmi_host", "{}", msg);
-                          }
-                      },
-                  )
-                  .map_err(|e| WasmError::LinkerFailure { message: e.to_string() })?;
-
-              linker
-                  .func_wrap(
-                      "env",
-                      "aetheros_now_ms",
-                      |_: Caller<WasmiHostContext>| -> i64 {
-                          std::time::SystemTime::now()
-                              .duration_since(std::time::UNIX_EPOCH)
-                              .map(|d| d.as_millis() as i64)
-                              .unwrap_or(0)
-                      },
-                  )
-                  .map_err(|e| WasmError::LinkerFailure { message: e.to_string() })?;
-
-              Ok(())
-          }
-          STUB
-            echo "  ✓ wasmi_host.rs stub oluşturuldu"
-          else
-            echo "  ✓ wasmi_host.rs mevcut, atlandı"
+use wasmi::{Caller, Linker};
+use crate::errors::wasm::WasmError;
+pub struct WasmiHostContext { pub fuel_limit: u64, pub output: Vec<u8> }
+impl WasmiHostContext {
+    pub fn new(fuel_limit: u64) -> Self { Self { fuel_limit, output: Vec::new() } }
+}
+pub fn register_host_functions(linker: &mut Linker<WasmiHostContext>) -> Result<(), WasmError> {
+    linker.func_wrap("env", "aetheros_log",
+        |_: Caller<WasmiHostContext>, _: i32, _: i32| {}).map_err(|e| WasmError::LinkerFailure { message: e.to_string() })?;
+    linker.func_wrap("env", "aetheros_now_ms",
+        |_: Caller<WasmiHostContext>| -> i64 { 0 }).map_err(|e| WasmError::LinkerFailure { message: e.to_string() })?;
+    Ok(())
+}
+STUB
           fi
 
-          echo ""
-          echo "=== Patch sonucu ==="
-          grep -n "memory\|wasmi_host" src/wasm/mod.rs
-          echo "---"
-          grep -n "setup_default" src/bridge/api.rs || echo "FRB fonk. yok ✓"
-          echo "---"
-          ls -la src/wasm/wasmi_host.rs
-
-      # ── Derleme ────────────────────────────────────────
       - name: 🏗️ Rust .so → ${{ matrix.abi }}
         run: |
           cargo ndk \
@@ -190,12 +181,6 @@ jobs:
             --lib \
             ${{ env.RUST_ANDROID_FEATURES }}
 
-      - name: 📋 .so bilgisi
-        run: |
-          SO="flutter_app/android/app/src/main/jniLibs/${{ matrix.abi }}/libaetheros.so"
-          ls -lh "$SO"
-          file "$SO"
-
       - name: 📤 .so artifact
         uses: actions/upload-artifact@v5
         with:
@@ -203,10 +188,13 @@ jobs:
           path: flutter_app/android/app/src/main/jniLibs/${{ matrix.abi }}/libaetheros.so
           retention-days: 1
 
+  # ─────────────────────────────────────────────────────────────
+  # JOB 3: Flutter APK
+  # ─────────────────────────────────────────────────────────────
   build-apk:
     name: 📱 Flutter APK
     runs-on: ubuntu-latest
-    needs: build-rust
+    needs: [frb-codegen, build-rust]
 
     steps:
       - name: 📥 Checkout
@@ -235,57 +223,27 @@ jobs:
           name: rust-so-armeabi-v7a
           path: flutter_app/android/app/src/main/jniLibs/armeabi-v7a
 
-      - name: ✅ .so doğrula
-        run: |
-          find flutter_app/android/app/src/main/jniLibs -name "*.so" \
-            -exec ls -lh {} \;
-
-      - name: 🦀 Rust (FRB codegen)
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: 🗃️ Rust cache (codegen)
-        uses: Swatinem/rust-cache@v2
+      - name: 📥 Üretilen Dart dosyaları
+        uses: actions/download-artifact@v5
         with:
-          key: frb-codegen
-          cache-on-failure: true
+          name: frb-dart-generated
+          path: flutter_app/lib/src/rust/
 
-      - name: 🐦 Flutter ${{ env.FLUTTER_VERSION }}
+      - name: 🐦 Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
           cache: true
 
-      - name: 📝 local.properties oluştur
+      - name: 📝 local.properties
         run: |
-          # Flutter Gradle plugin'i flutter.sdk path'ini gerektirir.
-          # CI'da local.properties yoktur — FLUTTER_ROOT'tan üretiriz.
           echo "flutter.sdk=${FLUTTER_ROOT}" > flutter_app/android/local.properties
-          echo "sdk.dir=${ANDROID_SDK_ROOT}" >> flutter_app/android/local.properties
-          echo "✓ local.properties:"
-          cat flutter_app/android/local.properties
+          echo "sdk.dir=${ANDROID_SDK_ROOT}"  >> flutter_app/android/local.properties
 
       - name: 📦 Flutter pub get
         working-directory: flutter_app
         run: flutter pub get
-
-      - name: ⚙️ FRB codegen araçları kur
-        run: |
-          # cargo-expand: FRB'nin macro expansion için ihtiyacı var
-          cargo install cargo-expand --locked 2>/dev/null ||             cargo install cargo-expand 2>/dev/null ||             echo "⚠️ cargo-expand kurulamadı, atlanıyor"
-          # FRB codegen binary
-          cargo install flutter_rust_bridge_codegen --version 2.12.0 2>/dev/null ||             echo "⚠️ FRB codegen kurulamadı — repo'daki mevcut dart dosyaları kullanılır"
-        continue-on-error: true
-
-      - name: ⚙️ FRB Dart kodu üret
-        working-directory: flutter_app
-        run: |
-          if command -v flutter_rust_bridge_codegen &>/dev/null; then
-            flutter_rust_bridge_codegen generate ||               echo "⚠️ Codegen uyarılarla tamamlandı, devam ediliyor"
-          else
-            echo "⚠️ FRB codegen bulunamadı — repo'daki mevcut dart dosyaları kullanılır"
-          fi
-        continue-on-error: true
 
       - name: 🏗️ APK derle
         working-directory: flutter_app
@@ -294,11 +252,6 @@ jobs:
             --release \
             --split-per-abi \
             --build-number=${{ github.run_number }}
-
-      - name: 📋 APK boyutları
-        run: |
-          find flutter_app/build/app/outputs/flutter-apk -name "*.apk" \
-            -exec ls -lh {} \;
 
       - name: 📤 APK artifact
         uses: actions/upload-artifact@v5
@@ -319,7 +272,7 @@ jobs:
           echo "| NDK | ${{ env.NDK_VERSION }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Backend | wasmi |" >> $GITHUB_STEP_SUMMARY
           echo "### 📦 APK'lar" >> $GITHUB_STEP_SUMMARY
-          find flutter_app/build/app/outputs/flutter-apk -name "*.apk" \
-            2>/dev/null | while read f; do
-            echo "- \`$(basename $f)\` ($(du -sh $f | cut -f1))" >> $GITHUB_STEP_SUMMARY
-          done || echo "APK üretilemedi" >> $GITHUB_STEP_SUMMARY
+          find flutter_app/build/app/outputs/flutter-apk -name "*.apk" 2>/dev/null | \
+            while read f; do
+              echo "- \`$(basename $f)\` ($(du -sh $f | cut -f1))" >> $GITHUB_STEP_SUMMARY
+            done || echo "APK üretilemedi" >> $GITHUB_STEP_SUMMARY

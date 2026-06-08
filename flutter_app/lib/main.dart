@@ -1,19 +1,3 @@
-// ============================================================
-// flutter_app/lib/main.dart
-//
-// AetherOS mobil uygulaması giriş noktası.
-//
-// BAŞLANGIÇ SIRASI:
-//   1. FRB altyapısı init et  (RustLib.init)
-//   2. AetherOS runtime başlat (Rust tarafı)
-//   3. Flutter UI başlat
-//
-// Tüm Rust çağrıları `aetheros/` Dart API'si üzerinden yapılır.
-// Dart kodu hiçbir zaman native FFI'ya doğrudan erişmez.
-// ============================================================
-
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -25,27 +9,37 @@ import 'screens/home_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. FRB platform kanallarını başlat
-  await RustLib.init();
+  String? initError;
 
-  // 2. Veritabanı yolunu belirle
-  final docDir = await getApplicationDocumentsDirectory();
-  final dbPath = '${docDir.path}/aetheros.db';
+  try {
+    // 1. FRB bridge başlat
+    await RustLib.init();
 
-  // 3. AetherOS runtime başlat
-  //    worker_count: cihazın çekirdek sayısına göre (2-4 önerilir)
-  await aether.initializeRuntime(
-    dbPath: dbPath,
-    workerCount: 2,
-  );
+    // 2. DB yolu
+    final docDir = await getApplicationDocumentsDirectory();
+    final dbPath = '${docDir.path}/aetheros.db';
+
+    // 3. Rust runtime başlat
+    await aether.initializeRuntime(
+      dbPath: dbPath,
+      workerCount: 2,
+    );
+  } catch (e, stack) {
+    // Hata yakalandı — siyah ekran yerine hata göster
+    initError = '$e\n\n$stack';
+    debugPrint('AetherOS init error: $e\n$stack');
+  }
 
   runApp(
-    const ProviderScope(
-      child: AetherOSApp(),
+    ProviderScope(
+      child: initError != null
+          ? _ErrorApp(error: initError!)
+          : const AetherOSApp(),
     ),
   );
 }
 
+/// Normal uygulama
 class AetherOSApp extends StatelessWidget {
   const AetherOSApp({super.key});
 
@@ -60,9 +54,63 @@ class AetherOSApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
         useMaterial3: true,
-        fontFamily: 'Roboto',
       ),
       home: const HomeScreen(),
+    );
+  }
+}
+
+/// Başlatma hatası ekranı — siyah ekran yerine hatayı gösterir
+class _ErrorApp extends StatelessWidget {
+  final String error;
+  const _ErrorApp({required this.error});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark(),
+      home: Scaffold(
+        backgroundColor: const Color(0xFF1a1a2e),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(children: [
+                  Icon(Icons.error_outline, color: Colors.red, size: 28),
+                  SizedBox(width: 8),
+                  Text('AetherOS Başlatma Hatası',
+                      style: TextStyle(
+                          color: Colors.red,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold)),
+                ]),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.black45,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: SingleChildScrollView(
+                      child: SelectableText(
+                        error,
+                        style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 11,
+                            fontFamily: 'monospace'),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
