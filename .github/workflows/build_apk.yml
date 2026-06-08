@@ -84,7 +84,7 @@ jobs:
       #
       #   1. memory.rs   → wasmtime'a özgü; backend-wasmtime
       #                    feature flag'i ile derle
-      #   2. bridge/api  → FRB 2.9.0'da olmayan fonksiyon
+      #   2. bridge/api  → eski FRB'de olmayan fonksiyon
       #   3. wasmi_host  → Dosya yoksa minimal stub oluştur
       # ══════════════════════════════════════════════════════
       - name: 🩹 Android kaynak patch'leri uygula
@@ -274,7 +274,7 @@ jobs:
           # cargo-expand: FRB'nin macro expansion için ihtiyacı var
           cargo install cargo-expand --locked 2>/dev/null ||             cargo install cargo-expand 2>/dev/null ||             echo "⚠️ cargo-expand kurulamadı, atlanıyor"
           # FRB codegen binary
-          cargo install flutter_rust_bridge_codegen --version 2.9.0 2>/dev/null ||             echo "⚠️ FRB codegen kurulamadı — repo'daki mevcut dart dosyaları kullanılır"
+          cargo install flutter_rust_bridge_codegen --version 2.12.0 2>/dev/null ||             echo "⚠️ FRB codegen kurulamadı — repo'daki mevcut dart dosyaları kullanılır"
         continue-on-error: true
 
       - name: ⚙️ FRB Dart kodu üret
