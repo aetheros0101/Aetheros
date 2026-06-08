@@ -153,24 +153,8 @@ jobs:
           fi
           # FRB eski fonksiyon
           sed -i '/setup_default_user_code_handler/d' src/bridge/api.rs || true
-          # wasmi_host stub
-          if [ ! -f src/wasm/wasmi_host.rs ]; then
-            cat > src/wasm/wasmi_host.rs << 'STUB'
-use wasmi::{Caller, Linker};
-use crate::errors::wasm::WasmError;
-pub struct WasmiHostContext { pub fuel_limit: u64, pub output: Vec<u8> }
-impl WasmiHostContext {
-    pub fn new(fuel_limit: u64) -> Self { Self { fuel_limit, output: Vec::new() } }
-}
-pub fn register_host_functions(linker: &mut Linker<WasmiHostContext>) -> Result<(), WasmError> {
-    linker.func_wrap("env", "aetheros_log",
-        |_: Caller<WasmiHostContext>, _: i32, _: i32| {}).map_err(|e| WasmError::LinkerFailure { message: e.to_string() })?;
-    linker.func_wrap("env", "aetheros_now_ms",
-        |_: Caller<WasmiHostContext>| -> i64 { 0 }).map_err(|e| WasmError::LinkerFailure { message: e.to_string() })?;
-    Ok(())
-}
-STUB
-          fi
+          # wasmi_host.rs repoda mevcut olmalı
+          ls src/wasm/wasmi_host.rs && echo "✓ wasmi_host.rs mevcut" || echo "⚠️ wasmi_host.rs eksik!" 
 
       - name: 🏗️ Rust .so → ${{ matrix.abi }}
         run: |
