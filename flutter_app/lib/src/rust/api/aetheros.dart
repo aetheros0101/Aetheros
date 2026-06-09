@@ -95,11 +95,11 @@ Future<void> initializeRuntime({
 bool isRuntimeReady() => false;
 
 RuntimeInfo getRuntimeInfo() => const RuntimeInfo(
-  version: '0.1.0',
-  isRunning: false,
-  backend: 'wasmi',
-  workerCount: 0,
-);
+      version: '0.1.0',
+      isRunning: false,
+      backend: 'wasmi',
+      workerCount: 0,
+    );
 
 Future<String> submitTask({required TaskRequest request}) async =>
     throw UnimplementedError('codegen bekleniyor');
@@ -115,9 +115,9 @@ Future<ModuleUploadResponse> uploadWasmModule({
     throw UnimplementedError('codegen bekleniyor');
 
 Future<MetricsSnapshot> getMetrics() async => const MetricsSnapshot(
-  activeWorkers: 0,
-  queuedTasks: 0,
-  completedTasks: 0,
-  failedTasks: 0,
-  retriedTasks: 0,
-);
+      activeWorkers: 0,
+      queuedTasks: 0,
+      completedTasks: 0,
+      failedTasks: 0,
+      retriedTasks: 0,
+    );

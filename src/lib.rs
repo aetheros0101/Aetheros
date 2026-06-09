@@ -29,6 +29,8 @@ pub mod scripting;
 // Sunucu build'inde de derlenir; binary boyutuna etkisi minimumdur.
 pub mod bridge;
 
+pub mod frb_generated; 
+
 pub use runtime::api::RuntimeHandle;
 pub use runtime::bootstrap::RuntimeBootstrap;
 pub use runtime::config::RuntimeConfig;

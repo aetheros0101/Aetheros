@@ -18,71 +18,13 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  # ─────────────────────────────────────────────────────────────
-  # JOB 1: FRB Codegen
-  # Dart VE Rust glue dosyalarını üretir.
-  # Rust .so'su bu dosyaları içermeli — önce çalışmalı.
-  # ─────────────────────────────────────────────────────────────
-  frb-codegen:
-    name: ⚙️ FRB Codegen
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@v5
-
-      - name: 🦀 Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: 🗃️ Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: frb-codegen
-          cache-on-failure: true
-
-      - name: 🐦 Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: 'stable'
-          cache: true
-
-      - name: 📦 Flutter pub get
-        working-directory: flutter_app
-        run: flutter pub get
-
-      - name: 🔧 FRB codegen kur
-        run: |
-          cargo install cargo-expand 2>/dev/null || true
-          cargo install flutter_rust_bridge_codegen --version 2.12.0
-
-      - name: ⚙️ Dart + Rust kodu üret
-        working-directory: flutter_app
-        run: flutter_rust_bridge_codegen generate
-
-      - name: 📤 Üretilen Rust dosyasını yükle
-        uses: actions/upload-artifact@v5
-        with:
-          name: frb-rust-generated
-          # FRB codegen'in src/ içine yazdığı Rust glue dosyası
-          path: src/frb_generated.rs
-          retention-days: 1
-          if-no-files-found: warn
-
-      - name: 📤 Üretilen Dart dosyalarını yükle
-        uses: actions/upload-artifact@v5
-        with:
-          name: frb-dart-generated
-          path: flutter_app/lib/src/rust/
-          retention-days: 1
-
-  # ─────────────────────────────────────────────────────────────
-  # JOB 2: Rust → .so (codegen sonrası)
-  # ─────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────
+  # JOB 1: Rust → .so
+  # src/frb_generated.rs repoda mevcut — codegen job'a gerek yok
+  # ─────────────────────────────────────────────────────────
   build-rust:
     name: 🦀 Rust → ${{ matrix.abi }}
     runs-on: ubuntu-latest
-    needs: frb-codegen
 
     strategy:
       fail-fast: false
@@ -103,13 +45,6 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: 📥 Rust glue dosyasını indir
-        uses: actions/download-artifact@v5
-        with:
-          name: frb-rust-generated
-          path: src/
-        continue-on-error: true
-
       - name: 📦 Android NDK
         run: |
           SDKMANAGER=$(find "${ANDROID_SDK_ROOT}/cmdline-tools" \
@@ -122,12 +57,12 @@ jobs:
           echo "NDK_HOME=$NDK_PATH"         >> $GITHUB_ENV
           echo "${NDK_PATH}/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-      - name: 🦀 Rust stable + target
+      - name: 🦀 Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
 
-      - name: 🗃️ Rust build cache
+      - name: 🗃️ Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           key: android-${{ matrix.rust_target }}
@@ -151,10 +86,20 @@ jobs:
             { printf '#![cfg(feature = "backend-wasmtime")]\n'; \
               cat src/wasm/memory.rs; } > /tmp/mem.rs && mv /tmp/mem.rs src/wasm/memory.rs
           fi
-          # FRB eski fonksiyon
+          # FRB eski fonksiyon kaldır
           sed -i '/setup_default_user_code_handler/d' src/bridge/api.rs || true
-          # wasmi_host.rs repoda mevcut olmalı
-          ls src/wasm/wasmi_host.rs && echo "✓ wasmi_host.rs mevcut" || echo "⚠️ wasmi_host.rs eksik!" 
+          # frb_generated.rs lib.rs'e bağlı mı?
+          if [ -f src/frb_generated.rs ]; then
+            if ! grep -q "mod frb_generated" src/lib.rs; then
+              printf '\npub mod frb_generated;\n' >> src/lib.rs
+              echo "✓ mod frb_generated eklendi"
+            else
+              echo "✓ mod frb_generated zaten var"
+            fi
+          else
+            echo "❌ src/frb_generated.rs YOK — repoya ekle!"
+            exit 1
+          fi
 
       - name: 🏗️ Rust .so → ${{ matrix.abi }}
         run: |
@@ -172,13 +117,13 @@ jobs:
           path: flutter_app/android/app/src/main/jniLibs/${{ matrix.abi }}/libaetheros.so
           retention-days: 1
 
-  # ─────────────────────────────────────────────────────────────
-  # JOB 3: Flutter APK
-  # ─────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────
+  # JOB 2: Flutter APK
+  # ─────────────────────────────────────────────────────────
   build-apk:
     name: 📱 Flutter APK
     runs-on: ubuntu-latest
-    needs: [frb-codegen, build-rust]
+    needs: build-rust
 
     steps:
       - name: 📥 Checkout
@@ -206,12 +151,6 @@ jobs:
         with:
           name: rust-so-armeabi-v7a
           path: flutter_app/android/app/src/main/jniLibs/armeabi-v7a
-
-      - name: 📥 Üretilen Dart dosyaları
-        uses: actions/download-artifact@v5
-        with:
-          name: frb-dart-generated
-          path: flutter_app/lib/src/rust/
 
       - name: 🐦 Flutter
         uses: subosito/flutter-action@v2
