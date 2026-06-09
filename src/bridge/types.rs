@@ -65,15 +65,9 @@ pub struct TaskStatusResponse {
 }
 
 // ── Metrik anlık görüntüsü ────────────────────────────────
-
-#[frb(dart_metadata = ("freezed"))]
-pub struct MetricsSnapshot {
-    pub active_workers:  u64,
-    pub queued_tasks:    u64,
-    pub completed_tasks: u64,
-    pub failed_tasks:    u64,
-    pub retried_tasks:   u64,
-}
+// metrics::runtime::MetricsSnapshot ile aynı alanlar —
+// pub use ile tek tip kalır, FRB SseEncode impl çakışmaz.
+pub use crate::metrics::runtime::MetricsSnapshot;
 
 // ── Runtime bilgisi ───────────────────────────────────────
 

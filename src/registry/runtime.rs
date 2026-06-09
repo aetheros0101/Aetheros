@@ -25,14 +25,14 @@ use serde::{
 use crate::types::ids::RuntimeId;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RuntimeInfo {
+pub struct RegistryEntry {
     pub id: RuntimeId,
     pub label: String,
     pub healthy: bool,
 }
 
 pub struct RuntimeRegistry {
-    runtimes: DashMap<RuntimeId, RuntimeInfo>,
+    runtimes: DashMap<RuntimeId, RegistryEntry>,
 }
 
 impl RuntimeRegistry {
@@ -44,7 +44,7 @@ impl RuntimeRegistry {
 
     pub fn register(
         &self,
-        info: RuntimeInfo,
+        info: RegistryEntry,
     ) {
         self.runtimes.insert(info.id, info);
     }
@@ -52,7 +52,7 @@ impl RuntimeRegistry {
     pub fn get(
         &self,
         id: &RuntimeId,
-    ) -> Option<RuntimeInfo> {
+    ) -> Option<RegistryEntry> {
         self.runtimes
             .get(id)
             .map(|entry| entry.clone())
@@ -62,7 +62,7 @@ impl RuntimeRegistry {
         self.runtimes.remove(id);
     }
 
-    pub fn list(&self) -> Vec<RuntimeInfo> {
+    pub fn list(&self) -> Vec<RegistryEntry> {
         self.runtimes
             .iter()
             .map(|entry| entry.value().clone())
