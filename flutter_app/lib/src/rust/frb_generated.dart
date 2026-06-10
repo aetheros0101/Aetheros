@@ -15,7 +15,6 @@ import 'frb_generated.io.dart'
 import 'metrics/runtime.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:uuid/uuid.dart';
-import 'registry/runtime.dart';
 import 'types/ids.dart';
 
 /// Main entrypoint of the Rust API
@@ -438,12 +437,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   RuntimeInfo dco_decode_runtime_info(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 3)
-      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
     return RuntimeInfo(
-      id: dco_decode_runtime_id(arr[0]),
-      label: dco_decode_String(arr[1]),
-      healthy: dco_decode_bool(arr[2]),
+      version: dco_decode_String(arr[0]),
+      isRunning: dco_decode_bool(arr[1]),
+      backend: dco_decode_String(arr[2]),
+      workerCount: dco_decode_u_32(arr[3]),
     );
   }
 
@@ -608,10 +608,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   RuntimeInfo sse_decode_runtime_info(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    var var_id = sse_decode_runtime_id(deserializer);
-    var var_label = sse_decode_String(deserializer);
-    var var_healthy = sse_decode_bool(deserializer);
-    return RuntimeInfo(id: var_id, label: var_label, healthy: var_healthy);
+    var var_version = sse_decode_String(deserializer);
+    var var_isRunning = sse_decode_bool(deserializer);
+    var var_backend = sse_decode_String(deserializer);
+    var var_workerCount = sse_decode_u_32(deserializer);
+    return RuntimeInfo(version: var_version, isRunning: var_isRunning, backend: var_backend, workerCount: var_workerCount);
   }
 
   @protected
@@ -774,9 +775,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   void sse_encode_runtime_info(RuntimeInfo self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    sse_encode_runtime_id(self.id, serializer);
-    sse_encode_String(self.label, serializer);
-    sse_encode_bool(self.healthy, serializer);
+    sse_encode_String(self.version, serializer);
+    sse_encode_bool(self.isRunning, serializer);
+    sse_encode_String(self.backend, serializer);
+    sse_encode_u_32(self.workerCount, serializer);
   }
 
   @protected

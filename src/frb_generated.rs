@@ -470,16 +470,18 @@ impl SseDecode for crate::types::ids::RuntimeId {
     }
 }
 
-impl SseDecode for crate::registry::runtime::RuntimeInfo {
+impl SseDecode for crate::bridge::types::RuntimeInfo {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        let mut var_id = <crate::types::ids::RuntimeId>::sse_decode(deserializer);
-        let mut var_label = <String>::sse_decode(deserializer);
-        let mut var_healthy = <bool>::sse_decode(deserializer);
-        return crate::registry::runtime::RuntimeInfo {
-            id: var_id,
-            label: var_label,
-            healthy: var_healthy,
+        let mut var_version = <String>::sse_decode(deserializer);
+        let mut var_is_running = <bool>::sse_decode(deserializer);
+        let mut var_backend = <String>::sse_decode(deserializer);
+        let mut var_worker_count = <u32>::sse_decode(deserializer);
+        return crate::bridge::types::RuntimeInfo {
+            version: var_version,
+            is_running: var_is_running,
+            backend: var_backend,
+            worker_count: var_worker_count,
         };
     }
 }
@@ -651,24 +653,25 @@ impl flutter_rust_bridge::IntoIntoDart<crate::types::ids::RuntimeId>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for crate::registry::runtime::RuntimeInfo {
+impl flutter_rust_bridge::IntoDart for crate::bridge::types::RuntimeInfo {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
-            self.id.into_into_dart().into_dart(),
-            self.label.into_into_dart().into_dart(),
-            self.healthy.into_into_dart().into_dart(),
+            self.version.into_into_dart().into_dart(),
+            self.is_running.into_into_dart().into_dart(),
+            self.backend.into_into_dart().into_dart(),
+            self.worker_count.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
 }
 impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
-    for crate::registry::runtime::RuntimeInfo
+    for crate::bridge::types::RuntimeInfo
 {
 }
-impl flutter_rust_bridge::IntoIntoDart<crate::registry::runtime::RuntimeInfo>
-    for crate::registry::runtime::RuntimeInfo
+impl flutter_rust_bridge::IntoIntoDart<crate::bridge::types::RuntimeInfo>
+    for crate::bridge::types::RuntimeInfo
 {
-    fn into_into_dart(self) -> crate::registry::runtime::RuntimeInfo {
+    fn into_into_dart(self) -> crate::bridge::types::RuntimeInfo {
         self
     }
 }
@@ -806,12 +809,13 @@ impl SseEncode for crate::types::ids::RuntimeId {
     }
 }
 
-impl SseEncode for crate::registry::runtime::RuntimeInfo {
+impl SseEncode for crate::bridge::types::RuntimeInfo {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <crate::types::ids::RuntimeId>::sse_encode(self.id, serializer);
-        <String>::sse_encode(self.label, serializer);
-        <bool>::sse_encode(self.healthy, serializer);
+        <String>::sse_encode(self.version, serializer);
+        <bool>::sse_encode(self.is_running, serializer);
+        <String>::sse_encode(self.backend, serializer);
+        <u32>::sse_encode(self.worker_count, serializer);
     }
 }
 

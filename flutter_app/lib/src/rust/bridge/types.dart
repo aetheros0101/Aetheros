@@ -45,3 +45,36 @@ sealed class TaskStatusResponse with _$TaskStatusResponse {
     String? errorMessage,
   }) = _TaskStatusResponse;
 }
+
+// ── Runtime bilgisi ───────────────────────────────────────
+// FRB codegen bunu bridge/types.rs RuntimeInfo'dan üretir.
+// #[frb(dart_metadata=("freezed"))] yerine plain class kullanılıyor
+// çünkü build_runner CI'da çalıştırılmıyor.
+
+class RuntimeInfo {
+  final String version;
+  final bool isRunning;
+  final String backend;
+  final int workerCount;
+
+  const RuntimeInfo({
+    required this.version,
+    required this.isRunning,
+    required this.backend,
+    required this.workerCount,
+  });
+
+  @override
+  int get hashCode =>
+      version.hashCode ^ isRunning.hashCode ^ backend.hashCode ^ workerCount.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RuntimeInfo &&
+          runtimeType == other.runtimeType &&
+          version == other.version &&
+          isRunning == other.isRunning &&
+          backend == other.backend &&
+          workerCount == other.workerCount;
+}

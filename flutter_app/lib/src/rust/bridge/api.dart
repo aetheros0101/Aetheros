@@ -7,7 +7,6 @@
 
 import '../frb_generated.dart';
 import '../metrics/runtime.dart';
-import '../registry/runtime.dart';
 import '../types/ids.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:uuid/uuid.dart';

@@ -10,12 +10,16 @@ import '../types/ids.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:uuid/uuid.dart';
 
-class RuntimeInfo {
+// RuntimeInfo bu modülden kaldırıldı → bridge/types.dart kullanın.
+// crate::registry::runtime::RegistryEntry FRB bridge'e expose edilmediği için
+// bu dosya artık sadece stub olarak tutulmaktadır.
+
+class RegistryEntry {
   final RuntimeId id;
   final String label;
   final bool healthy;
 
-  const RuntimeInfo({
+  const RegistryEntry({
     required this.id,
     required this.label,
     required this.healthy,
@@ -27,7 +31,7 @@ class RuntimeInfo {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is RuntimeInfo &&
+      other is RegistryEntry &&
           runtimeType == other.runtimeType &&
           id == other.id &&
           label == other.label &&
