@@ -78,7 +78,19 @@ pub async fn initialize_runtime(
 ) -> Result<(), String> {
     info!(db = %db_path, workers = worker_count, "initialize_runtime çağrıldı");
 
-    init_mobile_runtime(db_path, worker_count as usize)
+    // FRB kendi Tokio runtime'ını çalıştırıyor.
+    // init_mobile_runtime() içinde tokio.block_on() var — aynı thread'de
+    // çağrılırsa "Cannot start a runtime from within a runtime" paniği olur.
+    //
+    // Çözüm: spawn_blocking → blocking thread pool'da çalıştır.
+    // Bu thread'lerde aktif Tokio context YOK, dolayısıyla block_on güvenli.
+    let r = tokio::task::spawn_blocking(move || {
+        init_mobile_runtime(db_path, worker_count as usize)
+    })
+    .await
+    .map_err(|e| format!("Thread başlatma hatası: {e}"))?;
+
+    r
 }
 
 /// Runtime'ın çalışıp çalışmadığını kontrol et.
