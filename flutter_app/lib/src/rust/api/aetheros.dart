@@ -1,18 +1,23 @@
 // ============================================================
 // flutter_app/lib/src/rust/api/aetheros.dart
 //
-// ⚠️  BU DOSYA OTOMATİK ÜRETİLİR — EL İLE DÜZENLEMEYİN
+// ⚡ STUB DEĞİL — Gerçek FRB bridge adapter'ı
 //
-// Gerçek dosya şu komutla üretilir:
-//   cd flutter_app && dart run flutter_rust_bridge_codegen generate
-//
-// Bu stub; IDE'nin kırmızı çizgi göstermeden çalışması ve
-// uygulama yapısını test edebilmek için var.
+// FRB codegen bu dosyaya DOKUNMAZ.
+// Bu dosya bridge/api.dart'ı çağırır, BigInt↔int dönüşümlerini
+// kapsüller ve tüm ekranların beklediği arayüzü sağlar.
 // ============================================================
 
 // ignore_for_file: unused_import, camel_case_types
 
-// ── Tipler ───────────────────────────────────────────────
+import 'dart:async';
+
+import '../frb_generated.dart';
+import '../bridge/api.dart' as _bridge;
+import '../bridge/types.dart' as _bt;
+import '../metrics/runtime.dart' as _bm;
+
+// ── Ekranların beklediği tipler (int tabanlı, değişmez) ──────
 
 class TaskRequest {
   final String wasmModuleHash;
@@ -85,39 +90,80 @@ class ModuleUploadResponse {
   const ModuleUploadResponse({required this.hash, required this.size});
 }
 
-// ── Fonksiyonlar (codegen sonrası gerçek implementasyona bağlanır) ──
+// ── Gerçek bridge fonksiyonları ───────────────────────────────
 
 Future<void> initializeRuntime({
   required String dbPath,
   required int workerCount,
-}) async {}
+}) =>
+    _bridge.initializeRuntime(dbPath: dbPath, workerCount: workerCount);
 
-bool isRuntimeReady() => false;
+Future<bool> isRuntimeReady() => _bridge.isRuntimeReady();
 
-RuntimeInfo getRuntimeInfo() => const RuntimeInfo(
-      version: '0.1.0',
-      isRunning: false,
-      backend: 'wasmi',
-      workerCount: 0,
+Future<RuntimeInfo> getRuntimeInfo() async {
+  final r = await _bridge.getRuntimeInfo();
+  return RuntimeInfo(
+    version: r.version,
+    isRunning: r.isRunning,
+    backend: r.backend,
+    workerCount: r.workerCount, // u32 → int: doğrudan uyumlu
+  );
+}
+
+Future<String> submitTask({required TaskRequest request}) =>
+    _bridge.submitTask(
+      request: _bt.TaskRequest(
+        wasmModuleHash: request.wasmModuleHash,
+        entrypoint: request.entrypoint,
+        priority: request.priority,
+        timeoutMs: BigInt.from(request.timeoutMs), // int → BigInt (u64)
+        maxRetries: request.maxRetries,             // u32 → int: doğrudan uyumlu
+      ),
     );
 
-Future<String> submitTask({required TaskRequest request}) async =>
-    throw UnimplementedError('codegen bekleniyor');
+Future<TaskStatusResponse> getTaskStatus({required String taskId}) async {
+  final r = await _bridge.getTaskStatus(taskId: taskId);
+  return TaskStatusResponse(
+    taskId: r.taskId,
+    state: r.state,
+    createdAt: r.createdAt.toInt(), // PlatformInt64 → int
+    updatedAt: r.updatedAt.toInt(),
+    attempts: r.attempts,
+    errorMessage: r.errorMessage,
+  );
+}
 
-Future<TaskStatusResponse> getTaskStatus({required String taskId}) async =>
-    throw UnimplementedError('codegen bekleniyor');
-
-Future<List<TaskStatusResponse>> listTasks({required int limit}) async => [];
+Future<List<TaskStatusResponse>> listTasks({required int limit}) async {
+  final list = await _bridge.listTasks(limit: limit);
+  return list
+      .map((r) => TaskStatusResponse(
+            taskId: r.taskId,
+            state: r.state,
+            createdAt: r.createdAt.toInt(),
+            updatedAt: r.updatedAt.toInt(),
+            attempts: r.attempts,
+            errorMessage: r.errorMessage,
+          ))
+      .toList();
+}
 
 Future<ModuleUploadResponse> uploadWasmModule({
   required List<int> bytes,
-}) async =>
-    throw UnimplementedError('codegen bekleniyor');
+}) async {
+  final r = await _bridge.uploadWasmModule(bytes: bytes);
+  return ModuleUploadResponse(
+    hash: r.hash,
+    size: r.size.toInt(), // BigInt (u64) → int
+  );
+}
 
-Future<MetricsSnapshot> getMetrics() async => const MetricsSnapshot(
-      activeWorkers: 0,
-      queuedTasks: 0,
-      completedTasks: 0,
-      failedTasks: 0,
-      retriedTasks: 0,
-    );
+Future<MetricsSnapshot> getMetrics() async {
+  final s = await _bridge.getMetrics();
+  return MetricsSnapshot(
+    activeWorkers:  s.activeWorkers.toInt(),  // BigInt (u64) → int
+    queuedTasks:    s.queuedTasks.toInt(),
+    completedTasks: s.completedTasks.toInt(),
+    failedTasks:    s.failedTasks.toInt(),
+    retriedTasks:   s.retriedTasks.toInt(),
+  );
+}

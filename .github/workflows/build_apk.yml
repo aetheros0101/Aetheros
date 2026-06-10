@@ -57,7 +57,10 @@ jobs:
         run: |
           flutter pub get
           flutter_rust_bridge_codegen generate
-          echo "✅ Codegen tamamlandı"
+          # ── Freezed & json_serializable implementation üret ──
+          # bridge/types.dart @freezed sınıfları için gerekli
+          dart run build_runner build --delete-conflicting-outputs
+          echo "✅ Codegen + build_runner tamamlandı"
 
       - name: 📤 Üretilen dosyaları artifact olarak yükle
         uses: actions/upload-artifact@v5
