@@ -111,7 +111,7 @@ class HomeScreen extends ConsumerWidget {
                     builder: (_) => const SubmitTaskScreen(),
                   ),
                 ),
-                icon: const Icon(Icons.rocket_launch_rounded),
+                icon: const Icon(Icons.rocket_launch),
                 label: const Text(
                   'Task Gönder',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -219,25 +219,25 @@ class _MetricsGrid extends StatelessWidget {
           label: 'Tamamlandı',
           value: snapshot?.completedTasks,
           color: const Color(0xFF4CAF50),
-          icon: Icons.check_circle_outline_rounded,
+          icon: Icons.check_circle_outline,
         ),
         _MetricTile(
           label: 'Başarısız',
           value: snapshot?.failedTasks,
           color: const Color(0xFFEF5350),
-          icon: Icons.error_outline_rounded,
+          icon: Icons.error_outline,
         ),
         _MetricTile(
           label: 'Kuyrukta',
           value: snapshot?.queuedTasks,
           color: const Color(0xFFFFB74D),
-          icon: Icons.pending_outlined,
+          icon: Icons.hourglass_bottom,
         ),
         _MetricTile(
           label: 'Yeniden Deneme',
           value: snapshot?.retriedTasks,
           color: const Color(0xFF7E57C2),
-          icon: Icons.refresh_rounded,
+          icon: Icons.refresh,
         ),
       ],
     );
@@ -316,7 +316,7 @@ class _AetherLogo extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: const Icon(
-        Icons.bolt_rounded,
+        Icons.offline_bolt,
         color: Colors.white,
         size: 20,
       ),

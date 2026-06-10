@@ -133,7 +133,7 @@ class _SubmitTaskScreenState extends State<SubmitTaskScreen> {
                           color: Colors.white,
                         ),
                       )
-                    : const Icon(Icons.send_rounded),
+                    : const Icon(Icons.send),
                 label: Text(
                   _loading ? 'Gönderiliyor...' : 'Gönder',
                   style: const TextStyle(
