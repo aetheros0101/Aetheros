@@ -63,6 +63,13 @@ class AetherApi {
   // ── Modül yönetimi ─────────────────────────────────────
 
   /// WASM binary yükle → SHA-256 hash döner.
+  static Future<rust.ModuleUploadResponse> uploadWasmModule({
+    required List<int> bytes,
+  }) async {
+    return rust.uploadWasmModule(bytes: bytes);
+  }
+
+  /// Eski isim — geriye dönük uyumluluk için korundu.
   static Future<rust.ModuleUploadResponse> uploadModule(
     List<int> bytes,
   ) async {
