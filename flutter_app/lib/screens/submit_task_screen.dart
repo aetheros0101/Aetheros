@@ -8,7 +8,8 @@ import '../api/aetheros_api.dart';
 import 'task_list_screen.dart';
 
 class SubmitTaskScreen extends StatefulWidget {
-  const SubmitTaskScreen({super.key});
+  final String? prefilledHash;
+  const SubmitTaskScreen({super.key, this.prefilledHash});
   @override
   State<SubmitTaskScreen> createState() => _SubmitTaskScreenState();
 }

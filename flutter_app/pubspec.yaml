@@ -19,14 +19,16 @@ dependencies:
   cupertino_icons: ^1.0.6
   gap: ^3.0.1
   intl: ^0.19.0
-  # freezed_annotation — FRB bridge/types.rs #[frb(dart_metadata=("freezed"))] için
   freezed_annotation: ^2.4.4
+
+  # Sprint 3 — WASM modül yükleyici + lokal depolama
+  file_picker: ^8.1.2
+  shared_preferences: ^2.3.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
   ffigen: ^12.0.0
-  # freezed codegen — FRB codegen'in ihtiyacı
   freezed: ^2.5.7
   build_runner: ^2.4.12
