@@ -84,7 +84,7 @@ class GeminiService {
       url,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(body),
-    ).timeout(const Duration(seconds: 30));
+    ).timeout(const Duration(seconds: 60));
 
     return _parseResponse(response);
   }
