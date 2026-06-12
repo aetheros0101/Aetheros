@@ -12,6 +12,7 @@ import 'submit_task_screen.dart';
 import 'task_list_screen.dart';
 import 'wasm_module_screen.dart';
 import 'script_editor_screen.dart';
+import 'ai_chat_screen.dart';
 
 // ── Provider ──────────────────────────────────────────────
 
@@ -90,6 +91,8 @@ class HomeScreen extends ConsumerWidget {
                   MaterialPageRoute(builder: (_) => const ScriptEditorScreen())),
               onTasks:  () => Navigator.push(context,
                   MaterialPageRoute(builder: (_) => const TaskListScreen())),
+              onAi:     () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const AiChatScreen())),
             ),
             const Spacer(),
 
@@ -125,35 +128,48 @@ class _QuickActions extends StatelessWidget {
   final VoidCallback onWasm;
   final VoidCallback onScript;
   final VoidCallback onTasks;
+  final VoidCallback onAi;
 
   const _QuickActions({
     required this.onWasm,
     required this.onScript,
     required this.onTasks,
+    required this.onAi,
   });
 
   @override
-  Widget build(BuildContext context) => Row(children: [
-    _ActionTile(
-      icon: Icons.memory,
-      label: 'WASM\nModüller',
-      color: const Color(0xFF4DB6AC),
-      onTap: onWasm,
-    ),
-    const SizedBox(width: 10),
-    _ActionTile(
-      icon: Icons.code,
-      label: 'Script\nEditör',
-      color: const Color(0xFFFFB74D),
-      onTap: onScript,
-    ),
-    const SizedBox(width: 10),
-    _ActionTile(
-      icon: Icons.format_list_bulleted,
-      label: 'Task\nListesi',
-      color: const Color(0xFF7E57C2),
-      onTap: onTasks,
-    ),
+  Widget build(BuildContext context) => Column(children: [
+    Row(children: [
+      _ActionTile(
+        icon: Icons.memory,
+        label: 'WASM\nModüller',
+        color: const Color(0xFF4DB6AC),
+        onTap: onWasm,
+      ),
+      const SizedBox(width: 10),
+      _ActionTile(
+        icon: Icons.code,
+        label: 'Script\nEditör',
+        color: const Color(0xFFFFB74D),
+        onTap: onScript,
+      ),
+    ]),
+    const SizedBox(height: 10),
+    Row(children: [
+      _ActionTile(
+        icon: Icons.format_list_bulleted,
+        label: 'Task\nListesi',
+        color: const Color(0xFF7E57C2),
+        onTap: onTasks,
+      ),
+      const SizedBox(width: 10),
+      _ActionTile(
+        icon: Icons.auto_awesome,
+        label: 'AI\nAsistan',
+        color: const Color(0xFF6C63FF),
+        onTap: onAi,
+      ),
+    ]),
   ]);
 }
 
