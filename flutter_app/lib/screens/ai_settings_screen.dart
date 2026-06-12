@@ -19,17 +19,21 @@ class AiSettingsScreen extends StatefulWidget {
 class _AiSettingsScreenState extends State<AiSettingsScreen> {
   final _keyCtrl   = TextEditingController();
   bool  _obscure   = true;
-  String _model    = 'gemini-2.0-flash';
+  String _model    = 'gemini-flash-latest';
   bool  _testing   = false;
   bool? _testOk;
   String _testMsg  = '';
   bool  _saved     = false;
 
+  // Google'ın "latest" alias'ları her zaman o anki en güncel
+  // modele yönlenir — model isimleri değişse de kod bozulmaz.
+  // Sabit sürüm isimleri (örn. gemini-2.0-flash) zamanla
+  // kullanımdan kaldırılabilir; alias'lar tercih edilmeli.
   static const _models = [
-    ('gemini-2.0-flash',      'Gemini 2.0 Flash   (Ücretsiz, Hızlı)'),
-    ('gemini-1.5-flash',      'Gemini 1.5 Flash   (Ücretsiz)'),
-    ('gemini-1.5-flash-8b',   'Gemini 1.5 Flash 8B (Ücretsiz, Hafif)'),
-    ('gemini-1.5-pro',        'Gemini 1.5 Pro      (Sınırlı Ücretsiz)'),
+    ('gemini-flash-latest',   'Gemini Flash (En Güncel — Ücretsiz)'),
+    ('gemini-pro-latest',     'Gemini Pro (En Güncel — Sınırlı Ücretsiz)'),
+    ('gemini-2.0-flash',      'Gemini 2.0 Flash (Sabit Sürüm)'),
+    ('gemini-2.5-flash',      'Gemini 2.5 Flash (Sabit Sürüm)'),
   ];
 
   @override
@@ -45,7 +49,7 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
     final p = await SharedPreferences.getInstance();
     setState(() {
       _keyCtrl.text = p.getString(_keyApiKey) ?? '';
-      _model        = p.getString(_keyModel)  ?? 'gemini-2.0-flash';
+      _model        = p.getString(_keyModel)  ?? 'gemini-flash-latest';
     });
   }
 
@@ -282,6 +286,6 @@ Future<({String apiKey, String model})> loadAiSettings() async {
   final p = await SharedPreferences.getInstance();
   return (
     apiKey: p.getString(_keyApiKey) ?? '',
-    model:  p.getString(_keyModel)  ?? 'gemini-2.0-flash',
+    model:  p.getString(_keyModel)  ?? 'gemini-flash-latest',
   );
 }

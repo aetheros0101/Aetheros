@@ -41,7 +41,7 @@ class GeminiService {
   static Future<String> chat({
     required String prompt,
     required String apiKey,
-    String model = 'gemini-2.0-flash',
+    String model = 'gemini-flash-latest',
     String? system,
     List<ChatMessage> history = const [],
   }) async {
@@ -93,7 +93,7 @@ class GeminiService {
   static Future<String> generateWorkflow({
     required String description,
     required String apiKey,
-    String model = 'gemini-2.0-flash',
+    String model = 'gemini-flash-latest',
   }) async {
     const system =
         'Sen bir AetherOS workflow uzmanısın. '
@@ -115,7 +115,7 @@ class GeminiService {
   static Future<String> generateWat({
     required String description,
     required String apiKey,
-    String model = 'gemini-2.0-flash',
+    String model = 'gemini-flash-latest',
   }) async {
     const system =
         'Sen bir WebAssembly Text (WAT) uzmanısın. '
@@ -135,7 +135,7 @@ class GeminiService {
   /// API anahtarını test et.
   static Future<({bool ok, String message})> testApiKey(
     String apiKey, {
-    String model = 'gemini-2.0-flash',
+    String model = 'gemini-flash-latest',
   }) async {
     try {
       final result = await chat(
