@@ -25,6 +25,16 @@ class _SubmitTaskScreenState extends State<SubmitTaskScreen> {
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    // WASM Modüller ekranından "Task Gönder" ile gelindiyse
+    // hash alanını otomatik doldur.
+    if (widget.prefilledHash != null && widget.prefilledHash!.isNotEmpty) {
+      _hashCtrl.text = widget.prefilledHash!;
+    }
+  }
+
+  @override
   void dispose() {
     _entrypointCtrl.dispose();
     _hashCtrl.dispose();
