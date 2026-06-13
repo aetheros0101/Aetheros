@@ -42,6 +42,7 @@ use crate::worker::manager::WorkerManager;
 use crate::persistence::engine::PersistenceEngine;
 use crate::persistence::models::PersistedTask;
 use crate::persistence::recovery::RecoveryEngine;
+use crate::wasm::module_store::ModuleStore;
 
 // ── Backend import'ları ───────────────────────────────────
 #[cfg(feature = "backend-wasmtime")]
@@ -60,6 +61,7 @@ pub struct Runtime {
     scheduler: Arc<Scheduler>,
     dispatcher: Arc<Dispatcher>,
     persistence: Arc<PersistenceEngine>,
+    module_store: Arc<ModuleStore>,
     state: Arc<AtomicU8>,
 }
 
@@ -150,6 +152,7 @@ impl Runtime {
             scheduler,
             dispatcher,
             persistence,
+            module_store,
         })
     }
 
@@ -287,6 +290,15 @@ impl Runtime {
 
     pub fn persistence(&self) -> Arc<PersistenceEngine> {
         self.persistence.clone()
+    }
+
+    /// WASM modül deposu — upload edilen binary'lerin
+    /// hash → bytes eşlemesi. Bridge katmanı (upload_wasm_module)
+    /// bu handle üzerinden yeni modülleri kaydeder; WasmiEngine
+    /// (worker'lar içinde) aynı Arc'ı paylaşır, böylece upload
+    /// edilen modül execute sırasında bulunabilir.
+    pub fn module_store(&self) -> Arc<ModuleStore> {
+        self.module_store.clone()
     }
 
     pub fn state(&self) -> RuntimeState {

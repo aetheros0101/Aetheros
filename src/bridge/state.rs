@@ -30,6 +30,7 @@ use crate::persistence::engine::PersistenceEngine;
 use crate::runtime::api::RuntimeHandle;
 use crate::runtime::bootstrap::RuntimeBootstrap;
 use crate::runtime::config::RuntimeConfig;
+use crate::wasm::module_store::ModuleStore;
 
 // ── Global state ─────────────────────────────────────────
 
@@ -47,6 +48,10 @@ pub struct MobileRuntime {
 
     /// Runtime metrikleri — anlık görüntü için.
     pub metrics: Arc<RuntimeMetrics>,
+
+    /// WASM modül deposu — upload_wasm_module() buraya yazar,
+    /// WasmiEngine (worker'lar) aynı Arc'tan okur.
+    pub module_store: Arc<ModuleStore>,
 
     /// Tokio runtime — FRB bu üzerinden spawn eder.
     /// Option<> olması shutdown() sonrası temiz drop için.
@@ -92,10 +97,11 @@ pub fn init_mobile_runtime(
         })
         .map_err(|e| format!("Bootstrap hatası: {e}"))?;
 
-    let handle      = bootstrap.runtime_handle();
-    let runtime     = bootstrap.runtime();
-    let events      = runtime.events();
-    let persistence = runtime.persistence();
+    let handle       = bootstrap.runtime_handle();
+    let runtime      = bootstrap.runtime();
+    let events       = runtime.events();
+    let persistence  = runtime.persistence();
+    let module_store = runtime.module_store();
 
     // ── Metrics collector ────────────────────────────────
     let metrics = Arc::new(RuntimeMetrics::new());
@@ -118,6 +124,7 @@ pub fn init_mobile_runtime(
         events,
         persistence,
         metrics,
+        module_store,
         tokio,
     };
 

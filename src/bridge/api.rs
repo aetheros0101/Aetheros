@@ -78,19 +78,7 @@ pub async fn initialize_runtime(
 ) -> Result<(), String> {
     info!(db = %db_path, workers = worker_count, "initialize_runtime çağrıldı");
 
-    // FRB kendi Tokio runtime'ını çalıştırıyor.
-    // init_mobile_runtime() içinde tokio.block_on() var — aynı thread'de
-    // çağrılırsa "Cannot start a runtime from within a runtime" paniği olur.
-    //
-    // Çözüm: spawn_blocking → blocking thread pool'da çalıştır.
-    // Bu thread'lerde aktif Tokio context YOK, dolayısıyla block_on güvenli.
-    let r = tokio::task::spawn_blocking(move || {
-        init_mobile_runtime(db_path, worker_count as usize)
-    })
-    .await
-    .map_err(|e| format!("Thread başlatma hatası: {e}"))?;
-
-    r
+    init_mobile_runtime(db_path, worker_count as usize)
 }
 
 /// Runtime'ın çalışıp çalışmadığını kontrol et.
@@ -277,25 +265,24 @@ pub async fn list_tasks(
 pub async fn upload_wasm_module(
     bytes: Vec<u8>,
 ) -> Result<ModuleUploadResponse, String> {
-    // ModuleStore'u almak için runtime gerekli
-    // Ancak ModuleStore'a erişim için WasmEngine'e ihtiyaç var
-    // Şimdilik hash hesaplayıp döndürüyoruz; store entegrasyonu
-    // bootstrap sırasında handle üzerinden yapılacak.
-    use sha2::{Digest, Sha256};
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     let size = bytes.len() as u64;
 
-    let mut hasher = Sha256::new();
-    hasher.update(&bytes);
-    let hash_bytes = hasher.finalize();
-    let hash = hex::encode(hash_bytes);
+    // ModuleStore::store(): SHA-256 hesaplar, binary'yi
+    // hash → Arc<Vec<u8>> olarak kaydeder (idempotent —
+    // aynı binary tekrar yüklenirse üzerine yazmaz).
+    // Bu binary artık WasmiEngine (worker'lar) tarafından
+    // execute sırasında module_store.get(&hash) ile bulunabilir.
+    let hash_bytes = rt
+        .module_store
+        .store(bytes)
+        .map_err(|e| format!("Modül kaydedilemedi: {e}"))?;
 
-    // TODO: ModuleStore'a kaydet
-    // rt.module_store.insert(hash_bytes.into(), bytes)
-    // Bu adım flutter_app'e özel bir module_store handle
-    // eklenince tamamlanacak.
+    let hash = crate::wasm::module_store::ModuleStore::hash_to_hex(&hash_bytes);
 
-    info!(hash = %hash, size = size, "WASM modülü yüklendi (store pending)");
+    info!(hash = %hash, size = size, "WASM modülü yüklendi ve kaydedildi");
 
     Ok(ModuleUploadResponse { hash, size })
 }
