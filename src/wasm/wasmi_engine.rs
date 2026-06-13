@@ -97,15 +97,10 @@ impl WasmiEngine {
             .start(&mut store)
             .map_err(|_| WasmError::ExecutionPanic)?;
 
-        let func = instance
-            .get_typed_func::<(), ()>(&store, &entrypoint)
-            .map_err(|_| WasmError::MissingEntrypoint)?;
-
-        func.call(&mut store, ())
-            .map_err(|_| WasmError::ExecutionPanic)?;
+        let output = call_entrypoint(&mut store, &instance, &entrypoint)?;
 
         debug!(entrypoint = %entrypoint, "wasmi execution OK");
-        Ok(Vec::new())
+        Ok(output)
     }
 }
 
@@ -163,20 +158,74 @@ impl WasmExecutor for WasmiEngine {
                 .start(&mut store)
                 .map_err(|_| WasmError::ExecutionPanic)?;
 
-            let func = instance
-                .get_typed_func::<(), ()>(&store, &entrypoint)
-                .map_err(|_| WasmError::MissingEntrypoint)?;
+            let output = call_entrypoint(&mut store, &instance, &entrypoint)?;
 
-            func.call(&mut store, ())
-                .map_err(|_| WasmError::ExecutionPanic)?;
-
-            Ok::<Vec<u8>, WasmError>(Vec::new())
+            Ok::<Vec<u8>, WasmError>(output)
         }))
         .await
         .map_err(|_| WasmError::Timeout)?;
 
         result.map_err(|_| WasmError::ExecutionPanic)?
     }
+}
+
+// ── Entrypoint çağırma — çoklu imza desteği ───────────────
+//
+// WASM modülleri farklı dönüş tipleriyle export edilebilir:
+//   (func (export "run") (result i32) ...)   ← en yaygın
+//   (func (export "run") (result i64) ...)
+//   (func (export "run") (result f32) ...)
+//   (func (export "run") (result f64) ...)
+//   (func (export "run") ...)                ← dönüş yok
+//
+// get_typed_func<(), ()> SADECE dönüşsüz fonksiyonları kabul
+// eder; i32 dönen "Merhaba Dünya" gibi temel örnekler bile
+// MissingEntrypoint ile başarısız olurdu. Bu fonksiyon en
+// yaygın imzaları sırayla dener ve sonucu little-endian byte
+// dizisine kodlar (TaskStatusResponse içinde gösterilebilir).
+fn call_entrypoint(
+    store:      &mut Store<WasmiHostContext>,
+    instance:   &wasmi::Instance,
+    entrypoint: &str,
+) -> Result<Vec<u8>, WasmError> {
+    // 1) Parametresiz, dönüşsüz: () -> ()
+    if let Ok(f) = instance.get_typed_func::<(), ()>(&*store, entrypoint) {
+        f.call(&mut *store, ())
+            .map_err(|_| WasmError::ExecutionPanic)?;
+        return Ok(Vec::new());
+    }
+
+    // 2) () -> i32  (en yaygın — "Merhaba Dünya", Fibonacci, vb.)
+    if let Ok(f) = instance.get_typed_func::<(), i32>(&*store, entrypoint) {
+        let r = f.call(&mut *store, ())
+            .map_err(|_| WasmError::ExecutionPanic)?;
+        return Ok(r.to_le_bytes().to_vec());
+    }
+
+    // 3) () -> i64
+    if let Ok(f) = instance.get_typed_func::<(), i64>(&*store, entrypoint) {
+        let r = f.call(&mut *store, ())
+            .map_err(|_| WasmError::ExecutionPanic)?;
+        return Ok(r.to_le_bytes().to_vec());
+    }
+
+    // 4) () -> f32
+    if let Ok(f) = instance.get_typed_func::<(), f32>(&*store, entrypoint) {
+        let r = f.call(&mut *store, ())
+            .map_err(|_| WasmError::ExecutionPanic)?;
+        return Ok(r.to_le_bytes().to_vec());
+    }
+
+    // 5) () -> f64
+    if let Ok(f) = instance.get_typed_func::<(), f64>(&*store, entrypoint) {
+        let r = f.call(&mut *store, ())
+            .map_err(|_| WasmError::ExecutionPanic)?;
+        return Ok(r.to_le_bytes().to_vec());
+    }
+
+    // Hiçbiri eşleşmedi — export yok veya desteklenmeyen imza
+    // (örn. parametre alan fonksiyonlar — v1'de desteklenmiyor)
+    Err(WasmError::MissingEntrypoint)
 }
 
 // ── Host fonksiyonları ────────────────────────────────────

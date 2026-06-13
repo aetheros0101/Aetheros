@@ -35,3 +35,13 @@ dev_dependencies:
   ffigen: ^12.0.0
   freezed: ^2.5.7
   build_runner: ^2.4.12
+
+# ============================================================
+# KRİTİK: Bu bölüm olmadan Material Icons fontu APK'ya dahil
+# edilmez ve TÜM ikonlar (Icons.* — geri ok, arama, ayarlar,
+# her şey) kutu (□) olarak görünür. _rounded/_outlined
+# varyantlarıyla ilgisi yok — bu eksik bölüm yüzünden font
+# hiç paketlenmiyordu.
+# ============================================================
+flutter:
+  uses-material-design: true
