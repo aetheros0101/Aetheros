@@ -209,22 +209,13 @@ fn call_entrypoint(
         return Ok(r.to_le_bytes().to_vec());
     }
 
-    // 4) () -> f32
-    if let Ok(f) = instance.get_typed_func::<(), f32>(&*store, entrypoint) {
-        let r = f.call(&mut *store, ())
-            .map_err(|_| WasmError::ExecutionPanic)?;
-        return Ok(r.to_le_bytes().to_vec());
-    }
-
-    // 5) () -> f64
-    if let Ok(f) = instance.get_typed_func::<(), f64>(&*store, entrypoint) {
-        let r = f.call(&mut *store, ())
-            .map_err(|_| WasmError::ExecutionPanic)?;
-        return Ok(r.to_le_bytes().to_vec());
-    }
+    // NOT: f32/f64 wasmi 0.31'de WasmResults trait'ini implement
+    // etmiyor (sadece (), i32, i64, u32, u64 desteklenir).
+    // (result f32)/(result f64) export eden modüller v1'de
+    // desteklenmez — MissingEntrypoint döner.
 
     // Hiçbiri eşleşmedi — export yok veya desteklenmeyen imza
-    // (örn. parametre alan fonksiyonlar — v1'de desteklenmiyor)
+    // (örn. f32/f64 dönüşü veya parametre alan fonksiyonlar)
     Err(WasmError::MissingEntrypoint)
 }
 
