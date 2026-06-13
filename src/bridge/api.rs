@@ -206,10 +206,16 @@ pub async fn get_task_status(
 
     let state_str = format!("{:?}", persisted.task.state);
 
+    // Gerçek hata mesajı persistence'tan (worker.fail_task ile
+    // kaydedildi). Eski kayıtlarda last_error=None olabilir —
+    // bu durumda genel bir mesaja düş.
     let error_message = match &persisted.task.state {
-        crate::task::task::TaskState::Failed => {
-            Some("WASM yürütme başarısız".to_string())
-        }
+        crate::task::task::TaskState::Failed => Some(
+            persisted
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "WASM yürütme başarısız (detay yok)".to_string()),
+        ),
         _ => None,
     };
 
@@ -242,9 +248,11 @@ pub async fn list_tasks(
         .map(|p| {
             let state_str = format!("{:?}", p.task.state);
             let error_message = match &p.task.state {
-                crate::task::task::TaskState::Failed => {
-                    Some("WASM yürütme başarısız".to_string())
-                }
+                crate::task::task::TaskState::Failed => Some(
+                    p.last_error
+                        .clone()
+                        .unwrap_or_else(|| "WASM yürütme başarısız (detay yok)".to_string()),
+                ),
                 _ => None,
             };
             TaskStatusResponse {

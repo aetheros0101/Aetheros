@@ -134,7 +134,10 @@ impl Worker {
                 retried.state = TaskState::Queued;
                 let _ = self.retry_queue.push(retried).await;
             } else {
-                self.update_state(task_id, TaskState::Failed);
+                self.fail_task(
+                    task_id,
+                    "deadline aşıldı, retry hakkı tükendi".to_string(),
+                );
                 self.events.publish(SystemEvent::Task(
                     TaskEvent::TaskFailed { task_id },
                 ));
@@ -220,7 +223,10 @@ impl Worker {
 
                 } else {
                     // ── Kalıcı başarısızlık ──────────────────
-                    self.update_state(task_id, TaskState::Failed);
+                    // wasm_err.to_string() → WasmError'ın thiserror
+                    // #[error("...")] mesajı (örn. "missing entrypoint",
+                    // "invalid module: module not found in store").
+                    self.fail_task(task_id, wasm_err.to_string());
                     self.events.publish(SystemEvent::Task(
                         TaskEvent::TaskFailed { task_id },
                     ));
@@ -249,6 +255,21 @@ impl Worker {
         if let Err(_e) = self
             .persistence
             .update_task_state(&task_id, state)
+        {
+            // Faz 3: tracing::warn!
+        }
+    }
+
+    /// Task'ı Failed yap + gerçek hata mesajını persist et.
+    /// UI bu mesajı TaskStatusResponse.error_message'da gösterir.
+    fn fail_task(
+        &self,
+        task_id: crate::types::ids::TaskId,
+        error: String,
+    ) {
+        if let Err(_e) = self
+            .persistence
+            .set_task_failed(&task_id, error)
         {
             // Faz 3: tracing::warn!
         }

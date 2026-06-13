@@ -225,6 +225,7 @@ impl Runtime {
                                 created_at: chrono::Utc::now(),
                                 updated_at: chrono::Utc::now(),
                                 attempts: 0,
+                                last_error: None,
                             };
 
                             self.persistence

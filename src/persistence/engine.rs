@@ -111,6 +111,29 @@ impl PersistenceEngine {
         self.persist_task(&persisted)
     }
 
+    /// Task'ı Failed durumuna geçir VE gerçek hata mesajını kaydet.
+    ///
+    /// Worker, WasmError::to_string() çıktısını buraya geçirir
+    /// (örn. "missing entrypoint", "invalid module: module not
+    /// found in store"). Bridge katmanı bu mesajı doğrudan
+    /// TaskStatusResponse.error_message'a yansıtır — böylece
+    /// ADB olmadan gerçek hata UI'da görülebilir.
+    pub fn set_task_failed(
+        &self,
+        task_id: &TaskId,
+        error: String,
+    ) -> Result<(), PersistenceError> {
+        let mut persisted = self
+            .load_task(task_id)?
+            .ok_or(PersistenceError::StorageFailure)?;
+
+        persisted.task.state = TaskState::Failed;
+        persisted.last_error = Some(error);
+        persisted.updated_at = chrono::Utc::now();
+
+        self.persist_task(&persisted)
+    }
+
     pub fn load_task(
         &self,
         task_id: &TaskId,
