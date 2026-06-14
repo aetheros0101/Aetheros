@@ -23,9 +23,8 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
-use crate::events::bus::EventBus;
+use crate::events::bus::{EventBus, SystemEvent};
 use crate::events::task::TaskEvent;
-use crate::events::bus::SystemEvent;
 
 const MAX_ENTRIES: usize = 500;
 

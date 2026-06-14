@@ -36,7 +36,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 🦀 Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -53,12 +53,25 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: 🔧 flutter_rust_bridge_codegen kur
+      # Binary cache: ilk run'da derler (~6dk), sonraki run'larda cache'den gelir (~5sn)
+      - name: 🔧 flutter_rust_bridge_codegen (binary cache)
+        id: frb-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/flutter_rust_bridge_codegen
+          key: frb-bin-${{ env.FRB_VERSION }}-${{ runner.os }}
+
+      - name: 🔧 flutter_rust_bridge_codegen kur (cache miss)
+        if: steps.frb-cache.outputs.cache-hit != 'true'
         run: |
           cargo install flutter_rust_bridge_codegen \
             --version ${{ env.FRB_VERSION }} \
             --locked
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          echo "✅ FRB binary derlendi ve cache'lendi"
+
+      - name: 🔧 flutter_rust_bridge_codegen (cache hit)
+        if: steps.frb-cache.outputs.cache-hit == 'true'
+        run: echo "✅ FRB binary cache'den yüklendi (derleme atlandı)"
 
       - name: ⚙️ FRB codegen çalıştır
         working-directory: flutter_app
@@ -67,15 +80,8 @@ jobs:
           flutter_rust_bridge_codegen generate
           echo "✅ FRB codegen tamamlandı"
 
-      - name: 🏗️ build_runner (@freezed + json_serializable)
-        working-directory: flutter_app
-        run: |
-          dart run build_runner build --delete-conflicting-outputs
-          echo "✅ build_runner tamamlandı"
-
       - name: 🔍 Üretilen Dart bridge'i doğrula
         run: |
-          # Sprint 7 fonksiyonlarının Dart binding'lerini kontrol et
           BRIDGE="flutter_app/lib/src/rust/api/aetheros.dart"
           for fn in \
             "getRecentLogs" \
@@ -84,15 +90,15 @@ jobs:
             "resubmitTask" \
             "uploadWasmModule"; do
             if grep -q "$fn" "$BRIDGE"; then
-              echo "✅ $fn → Dart binding'i var"
+              echo "✅ $fn → OK"
             else
-              echo "❌ $fn → Dart binding'i YOK!"
+              echo "❌ $fn → YOK!"
               exit 1
             fi
           done
 
       - name: 📤 Üretilen dosyaları artifact olarak yükle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: frb-generated-${{ github.sha }}
           path: |
@@ -119,16 +125,16 @@ jobs:
 
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 📥 FRB artifact indir
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: frb-generated-${{ github.sha }}
           path: .
 
       - name: ☕ Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -223,7 +229,7 @@ jobs:
           fi
 
       - name: 📤 .so artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: rust-so-${{ matrix.abi }}-${{ github.sha }}
           path: flutter_app/android/app/src/main/jniLibs/${{ matrix.abi }}/libaetheros.so
@@ -239,16 +245,16 @@ jobs:
 
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 📥 FRB artifact indir
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: frb-generated-${{ github.sha }}
           path: .
 
       - name: ☕ Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -259,13 +265,13 @@ jobs:
           mkdir -p flutter_app/android/app/src/main/jniLibs/armeabi-v7a
 
       - name: 📥 arm64-v8a .so
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: rust-so-arm64-v8a-${{ github.sha }}
           path: flutter_app/android/app/src/main/jniLibs/arm64-v8a
 
       - name: 📥 armeabi-v7a .so
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: rust-so-armeabi-v7a-${{ github.sha }}
           path: flutter_app/android/app/src/main/jniLibs/armeabi-v7a
@@ -301,7 +307,7 @@ jobs:
             --build-number=${{ github.run_number }}
 
       - name: 📤 APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: aetheros-apk-${{ github.run_number }}
           path: flutter_app/build/app/outputs/flutter-apk/*.apk
