@@ -93,14 +93,30 @@ pub struct LogBuffer {
 }
 
 impl LogBuffer {
+    // new/clear/len: LogEntry'ye dokunmuyor → pub kalabilir
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(VecDeque::with_capacity(MAX_ENTRIES))),
         }
     }
 
+    pub fn clear(&self) {
+        self.inner.lock().unwrap().clear();
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.lock().unwrap().len()
+    }
+
+    // push/recent/by_task: pub(crate) LogEntry alıyor/döndürüyor.
+    //
+    // Rust E0446: "restricted type `LogEntry` in public interface"
+    // → pub fn'in parametresi veya dönüş tipi pub(crate) olamaz.
+    // Çözüm: bu metodları da pub(crate) yap.
+    // bridge/api.rs aynı crate içinde olduğu için erişim sorunsuz.
+
     /// Log entry ekle. Kapasite doluysa en eski silinir.
-    pub fn push(&self, entry: LogEntry) {
+    pub(crate) fn push(&self, entry: LogEntry) {
         let mut buf = self.inner.lock().unwrap();
         if buf.len() >= MAX_ENTRIES {
             buf.pop_front();
@@ -109,7 +125,7 @@ impl LogBuffer {
     }
 
     /// Son `limit` kadar entry döndür (yeniden eskiye sıralı).
-    pub fn recent(&self, limit: usize) -> Vec<LogEntry> {
+    pub(crate) fn recent(&self, limit: usize) -> Vec<LogEntry> {
         let buf = self.inner.lock().unwrap();
         buf.iter()
             .rev()
@@ -119,7 +135,7 @@ impl LogBuffer {
     }
 
     /// Belirli task_id'ye ait entry'leri döndür.
-    pub fn by_task(&self, task_id: &str, limit: usize) -> Vec<LogEntry> {
+    pub(crate) fn by_task(&self, task_id: &str, limit: usize) -> Vec<LogEntry> {
         let buf = self.inner.lock().unwrap();
         buf.iter()
             .rev()
@@ -127,15 +143,6 @@ impl LogBuffer {
             .take(limit)
             .cloned()
             .collect()
-    }
-
-    /// Buffer'ı temizle (test / debug için).
-    pub fn clear(&self) {
-        self.inner.lock().unwrap().clear();
-    }
-
-    pub fn len(&self) -> usize {
-        self.inner.lock().unwrap().len()
     }
 }
 
