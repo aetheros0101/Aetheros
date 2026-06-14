@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::events::bus::EventBus;
 use crate::events::task::TaskEvent;
-use crate::events::SystemEvent;
+use crate::events::bus::SystemEvent;
 
 const MAX_ENTRIES: usize = 500;
 
