@@ -30,19 +30,25 @@ use crate::events::SystemEvent;
 const MAX_ENTRIES: usize = 500;
 
 // ── Log entry ─────────────────────────────────────────────
+//
+// pub(crate) — FRB bu struct'ı görmemeli.
+// Dart'a açık LogEntry bridge::types::LogEntry'dir.
+// İkisi aynı ismi taşırsa FRB rastgele birini seçer ve
+// &'static str lifetime'ı nedeniyle binding üretemez →
+// getRecentLogs/getTaskLogs Dart tarafında kaybolur.
 
 #[derive(Debug, Clone)]
-pub struct LogEntry {
+pub(crate) struct LogEntry {
     /// Unix ms
-    pub timestamp_ms: i64,
+    pub(crate) timestamp_ms: i64,
     /// "INFO" | "WARN" | "ERROR"
-    pub level: &'static str,
-    /// Varsa task UUID (hex string)
-    pub task_id: Option<String>,
+    pub(crate) level: &'static str,
+    /// Varsa task UUID
+    pub(crate) task_id: Option<String>,
     /// Türkçe kısa açıklama
-    pub message: String,
-    /// "TaskStarted" | "TaskFailed" | ... (debug / filtre için)
-    pub event_type: &'static str,
+    pub(crate) message: String,
+    /// "TaskStarted" | "TaskFailed" | ...
+    pub(crate) event_type: &'static str,
 }
 
 impl LogEntry {
