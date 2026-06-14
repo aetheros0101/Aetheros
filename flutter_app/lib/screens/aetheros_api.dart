@@ -93,6 +93,26 @@ class AetherApi {
     return rust.resubmitTask(taskId: taskId);
   }
 
+  // ── Log izleme ─────────────────────────────────────────
+
+  /// Son `limit` kadar log entry döndür (yeniden eskiye).
+  ///
+  /// LogScreen 2 saniyede bir bu fonksiyonu polling ile çeker.
+  /// limit: 0 → varsayılan 100.
+  static Future<List<rust.LogEntry>> getRecentLogs({int limit = 100}) async {
+    return rust.getRecentLogs(limit: limit);
+  }
+
+  /// Belirli bir task'a ait log entry'leri döndür.
+  ///
+  /// Task detay modalındaki "Loglar" sekmesi için.
+  static Future<List<rust.LogEntry>> getTaskLogs(
+    String taskId, {
+    int limit = 50,
+  }) async {
+    return rust.getTaskLogs(taskId: taskId, limit: limit);
+  }
+
   // ── Metrikler ──────────────────────────────────────────
 
   static Future<rust.MetricsSnapshot> getMetrics() async {

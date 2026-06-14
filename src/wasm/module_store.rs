@@ -103,6 +103,41 @@ impl ModuleStore {
         Ok(hash)
     }
 
+    /// Zaten bilinen hash ile binary'yi depola (startup recovery için).
+    ///
+    /// Disk'ten yüklenen modüllerde hash yeniden hesaplamaya gerek
+    /// yok — sled key olarak zaten doğru hash saklandı.
+    /// Hash-binary tutarsızlığına karşı yine de SHA-256 doğrulaması
+    /// yapılır; eşleşmezse InvalidBinary döner.
+    pub fn store_with_hash(
+        &self,
+        hash: ModuleHash,
+        binary: Vec<u8>,
+    ) -> Result<(), ModuleStoreError> {
+        if binary.is_empty() {
+            return Err(ModuleStoreError::InvalidBinary);
+        }
+
+        // Bütünlük kontrolü: disk'ten okunan binary hash'i
+        // beklenenden farklıysa kabul etme (veri bozulması).
+        let actual: ModuleHash = Sha256::digest(&binary).into();
+        if actual != hash {
+            warn!(
+                expected = %hex::encode(hash),
+                actual   = %hex::encode(actual),
+                "Modül hash uyuşmazlığı — atlandı (veri bozulmuş olabilir)"
+            );
+            return Err(ModuleStoreError::InvalidBinary);
+        }
+
+        self.modules
+            .entry(hash)
+            .or_insert_with(|| Arc::new(binary));
+
+        debug!(hash = %hex::encode(hash), "Module restored from disk");
+        Ok(())
+    }
+
     /// Hash'e göre binary'yi al.
     pub fn get(
         &self,

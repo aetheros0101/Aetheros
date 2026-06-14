@@ -88,3 +88,28 @@ pub struct ModuleUploadResponse {
     /// Bayt cinsinden modül boyutu
     pub size: u64,
 }
+
+// ── Log entry ─────────────────────────────────────────────
+
+/// Tek bir log satırı.
+///
+/// EventBus olaylarından üretilir, `get_recent_logs()` ile çekilir.
+/// Flutter tarafı bunu LogScreen'de render eder.
+#[frb(dart_metadata = ("freezed"))]
+pub struct LogEntry {
+    /// Unix milisaniye — `DateTime.fromMillisecondsSinceEpoch()`
+    pub timestamp_ms: i64,
+
+    /// "INFO" | "WARN" | "ERROR"
+    pub level: String,
+
+    /// Varsa ilgili task'ın UUID'si
+    pub task_id: Option<String>,
+
+    /// Kullanıcıya gösterilecek kısa mesaj (Türkçe)
+    pub message: String,
+
+    /// İç olay tipi — "TaskStarted" | "TaskFailed" | ...
+    /// Filtre ve debug için kullanılır.
+    pub event_type: String,
+}

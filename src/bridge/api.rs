@@ -22,7 +22,7 @@ use tracing::info;
 
 use crate::bridge::state::{get_runtime, init_mobile_runtime};
 use crate::bridge::types::{
-    MetricsSnapshot, ModuleUploadResponse,
+    LogEntry, MetricsSnapshot, ModuleUploadResponse,
     RuntimeInfo, TaskRequest, TaskStatusResponse,
 };
 use crate::task::priority::TaskPriority;
@@ -290,21 +290,159 @@ pub async fn upload_wasm_module(
 
     let size = bytes.len() as u64;
 
-    // ModuleStore::store(): SHA-256 hesaplar, binary'yi
-    // hash → Arc<Vec<u8>> olarak kaydeder (idempotent —
-    // aynı binary tekrar yüklenirse üzerine yazmaz).
-    // Bu binary artık WasmiEngine (worker'lar) tarafından
-    // execute sırasında module_store.get(&hash) ile bulunabilir.
+    // 1) ModuleStore'a kaydet (RAM — hızlı lookup için)
     let hash_bytes = rt
         .module_store
-        .store(bytes)
+        .store(bytes.clone())
         .map_err(|e| format!("Modül kaydedilemedi: {e}"))?;
+
+    // 2) Sled'e kaydet (disk — restart sonrası recovery için)
+    //
+    // Bu adım olmazsa uygulama yeniden başladığında modül kaybolur
+    // ve "invalid module: module not found in store" hatası çıkar.
+    rt.persistence
+        .persist_module(&hash_bytes, &bytes)
+        .map_err(|e| format!("Modül diske kaydedilemedi: {e:?}"))?;
 
     let hash = crate::wasm::module_store::ModuleStore::hash_to_hex(&hash_bytes);
 
-    info!(hash = %hash, size = size, "WASM modülü yüklendi ve kaydedildi");
+    info!(hash = %hash, size = size, "WASM modülü yüklendi (RAM + disk)");
 
     Ok(ModuleUploadResponse { hash, size })
+}
+
+// ── Modül durum kontrolü ──────────────────────────────────
+
+/// Bir WASM modülünün runtime'da hazır olup olmadığını kontrol et.
+///
+/// Flutter, modül listesini SharedPreferences'tan gösterirken bu
+/// fonksiyonla hangi modüllerin gerçekten kullanılabilir olduğunu
+/// doğrulayabilir. Disk'ten yüklenmemiş veya hiç upload edilmemiş
+/// hash'ler için false döner → UI "yeniden yükle" uyarısı gösterebilir.
+pub fn check_module_exists(hash_hex: String) -> Result<bool, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    let hash = parse_hash(&hash_hex)?;
+    Ok(rt.module_store.contains(&hash))
+}
+
+/// Mevcut bir task'ı yeni bir task olarak yeniden gönder.
+///
+/// "Yeniden Dene" butonu için: orijinal task ayarlarını
+/// (hash, entrypoint, priority, retry policy) kopyalayıp
+/// yeni UUID ile kuyruğa ekler.
+///
+/// NOT: `InvalidModule` (Permanent) hatalarında bile çalışır —
+/// kullanıcı modülü yeniden yükledikten sonra aynı task'ı
+/// retry edebilir.
+pub async fn resubmit_task(
+    task_id: String,
+) -> Result<String, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    let uuid = uuid::Uuid::parse_str(&task_id)
+        .map_err(|_| format!("Geçersiz task_id: {task_id}"))?;
+
+    let tid = TaskId(uuid);
+
+    let persisted = rt
+        .persistence
+        .load_task(&tid)
+        .map_err(|e| format!("Persistence hatası: {e:?}"))?
+        .ok_or_else(|| format!("Task bulunamadı: {task_id}"))?;
+
+    let now = chrono::Utc::now();
+    let new_id = TaskId(uuid::Uuid::new_v4());
+
+    // Orijinal task tanımını kopyala, sadece id ve timestamp yenile
+    let new_task = TaskDefinition {
+        id:         new_id.clone(),
+        parent:     persisted.task.parent,
+        orchestration: persisted.task.orchestration,
+        priority:   persisted.task.priority,
+        deadline:   None, // deadline sıfırla
+        timeout_ms: persisted.task.timeout_ms,
+        retry_policy: persisted.task.retry_policy,
+        metadata:   persisted.task.metadata,
+        wasm_module_hash: persisted.task.wasm_module_hash,
+        entrypoint: persisted.task.entrypoint,
+        state:      TaskState::Created,
+        created_at: now,
+        updated_at: now,
+    };
+
+    rt.handle
+        .submit(new_task)
+        .await
+        .map_err(|e| format!("Resubmit hatası: {e:?}"))?;
+
+    info!(
+        original = %task_id,
+        new      = %new_id.0,
+        "Task yeniden gönderildi"
+    );
+
+    Ok(new_id.0.to_string())
+}
+
+// ── Log izleme ────────────────────────────────────────────
+
+/// Son `limit` kadar log entry'yi yeniden eskiye sıralı döndür.
+///
+/// Flutter LogScreen, 2 saniyede bir bu fonksiyonu polling'le çeker.
+/// Limit: 0 → varsayılan 100, max 500.
+pub fn get_recent_logs(limit: u32) -> Result<Vec<LogEntry>, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    let n = match limit {
+        0          => 100,
+        n if n > 500 => 500,
+        n          => n as usize,
+    };
+
+    Ok(rt.log_buffer
+        .recent(n)
+        .into_iter()
+        .map(bridge_log_entry)
+        .collect())
+}
+
+/// Belirli bir task'a ait log entry'lerini döndür.
+///
+/// Task detail modalında "Bu task'ın logları" için kullanılır.
+/// limit: 0 → son 50 entry.
+pub fn get_task_logs(
+    task_id: String,
+    limit: u32,
+) -> Result<Vec<LogEntry>, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    let n = match limit {
+        0          => 50,
+        n if n > 200 => 200,
+        n          => n as usize,
+    };
+
+    Ok(rt.log_buffer
+        .by_task(&task_id, n)
+        .into_iter()
+        .map(bridge_log_entry)
+        .collect())
+}
+
+/// `logging::buffer::LogEntry` → `bridge::types::LogEntry` dönüşümü.
+fn bridge_log_entry(e: crate::logging::buffer::LogEntry) -> LogEntry {
+    LogEntry {
+        timestamp_ms: e.timestamp_ms,
+        level:        e.level.to_owned(),
+        task_id:      e.task_id,
+        message:      e.message,
+        event_type:   e.event_type.to_owned(),
+    }
 }
 
 // ── Metrikler ─────────────────────────────────────────────

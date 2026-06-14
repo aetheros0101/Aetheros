@@ -1,6 +1,6 @@
 // ============================================================
 // flutter_app/lib/screens/home_screen.dart
-// Sprint 3 — WASM + Script navigasyonu eklendi
+// Sprint 7 — Log izleme navigasyonu eklendi
 // ============================================================
 
 import 'dart:async';
@@ -14,6 +14,7 @@ import 'wasm_module_screen.dart';
 import 'script_editor_screen.dart';
 import 'ai_chat_screen.dart';
 import 'backup_screen.dart';
+import 'log_screen.dart';
 
 // ── Provider ──────────────────────────────────────────────
 
@@ -96,6 +97,8 @@ class HomeScreen extends ConsumerWidget {
                   MaterialPageRoute(builder: (_) => const AiChatScreen())),
               onBackup: () => Navigator.push(context,
                   MaterialPageRoute(builder: (_) => const BackupScreen())),
+              onLogs:   () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const LogScreen())),
             ),
             const Spacer(),
 
@@ -133,6 +136,7 @@ class _QuickActions extends StatelessWidget {
   final VoidCallback onTasks;
   final VoidCallback onAi;
   final VoidCallback onBackup;
+  final VoidCallback onLogs;
 
   const _QuickActions({
     required this.onWasm,
@@ -140,6 +144,7 @@ class _QuickActions extends StatelessWidget {
     required this.onTasks,
     required this.onAi,
     required this.onBackup,
+    required this.onLogs,
   });
 
   @override
@@ -176,33 +181,59 @@ class _QuickActions extends StatelessWidget {
       ),
     ]),
     const SizedBox(height: 10),
-    // ── Sprint 5: Yedekleme — tam genişlik ────────────
-    GestureDetector(
-      onTap: onBackup,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF42A5F5).withOpacity(0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF42A5F5).withOpacity(0.25)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.shield_outlined,
-                color: const Color(0xFF42A5F5).withOpacity(0.85), size: 20),
-            const SizedBox(width: 8),
-            Text('Yedekleme / Geri Yükleme',
-                style: TextStyle(
-                    color: const Color(0xFF42A5F5).withOpacity(0.85),
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold)),
-          ],
+    // ── Log izleme + Yedekleme yan yana ──────────────
+    Row(children: [
+      Expanded(
+        child: GestureDetector(
+          onTap: onLogs,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF26C6DA).withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: const Color(0xFF26C6DA).withOpacity(0.25)),
+            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(Icons.terminal,
+                  color: const Color(0xFF26C6DA).withOpacity(0.85), size: 18),
+              const SizedBox(width: 6),
+              Text('Runtime Logları',
+                  style: TextStyle(
+                      color: const Color(0xFF26C6DA).withOpacity(0.85),
+                      fontSize: 12, fontWeight: FontWeight.bold)),
+            ]),
+          ),
         ),
       ),
-    ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: GestureDetector(
+          onTap: onBackup,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF42A5F5).withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: const Color(0xFF42A5F5).withOpacity(0.25)),
+            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(Icons.shield_outlined,
+                  color: const Color(0xFF42A5F5).withOpacity(0.85), size: 18),
+              const SizedBox(width: 6),
+              Text('Yedekleme',
+                  style: TextStyle(
+                      color: const Color(0xFF42A5F5).withOpacity(0.85),
+                      fontSize: 12, fontWeight: FontWeight.bold)),
+            ]),
+          ),
+        ),
+      ),
+    ]),
   ]);
+
+  // build metodu yukarıda (yeni onLogs içeren versiyon) zaten tanımlı.
 }
 
 class _ActionTile extends StatelessWidget {

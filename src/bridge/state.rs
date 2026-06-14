@@ -25,6 +25,7 @@ use tokio::runtime::Runtime as TokioRuntime;
 use tracing::info;
 
 use crate::events::bus::EventBus;
+use crate::logging::buffer::{log_collector, LogBuffer};
 use crate::metrics::runtime::RuntimeMetrics;
 use crate::persistence::engine::PersistenceEngine;
 use crate::runtime::api::RuntimeHandle;
@@ -52,6 +53,11 @@ pub struct MobileRuntime {
     /// WASM modül deposu — upload_wasm_module() buraya yazar,
     /// WasmiEngine (worker'lar) aynı Arc'tan okur.
     pub module_store: Arc<ModuleStore>,
+
+    /// Sprint 7: In-memory dairesel log tamponu.
+    /// log_collector() tokio task'ı EventBus olaylarını buraya yazar.
+    /// get_recent_logs() / get_task_logs() bridge fonksiyonları okur.
+    pub log_buffer: LogBuffer,
 
     /// Tokio runtime — FRB bu üzerinden spawn eder.
     /// Option<> olması shutdown() sonrası temiz drop için.
@@ -103,9 +109,49 @@ pub fn init_mobile_runtime(
     let persistence  = runtime.persistence();
     let module_store = runtime.module_store();
 
+    // ── Startup: disk'ten ModuleStore'u yeniden doldur ───
+    //
+    // Runtime yeniden başladığında ModuleStore boş gelir (DashMap).
+    // Önceki oturumlarda persist_module() ile kaydedilen binary'leri
+    // sled'den okuyup ModuleStore'a yüklüyoruz.
+    //
+    // Bu sayede kullanıcı uygulamayı kapatıp açtığında WASM
+    // modüllerini tekrar yüklemek zorunda kalmaz ve
+    // "module not found in store" hatası ortadan kalkar.
+    {
+        let stored = persistence
+            .load_all_modules()
+            .map_err(|e| format!("Modül recovery hatası: {e:?}"))?;
+
+        let recovered = stored.len();
+
+        for (hash, binary) in stored {
+            module_store
+                .store_with_hash(hash, binary)
+                .map_err(|e| format!("Modül yükleme hatası: {e:?}"))?;
+        }
+
+        info!(count = recovered, "WASM modülleri diskten yüklendi");
+    }
+
     // ── Metrics collector ────────────────────────────────
     let metrics = Arc::new(RuntimeMetrics::new());
     metrics.clone().start_collecting(events.clone());
+
+    // ── Sprint 7: Log tamponu + collector ────────────────
+    //
+    // LogBuffer: Arc<Mutex<VecDeque>> — max 500 entry.
+    // log_collector() tokio task'ı EventBus'a subscribe olur,
+    // gelen her TaskEvent'i LogEntry'ye çevirip buffer'a yazar.
+    // get_recent_logs() / get_task_logs() bu buffer'ı okur.
+    let log_buffer = LogBuffer::new();
+    {
+        let buf   = log_buffer.clone();
+        let bus   = events.clone();
+        tokio.spawn(async move {
+            log_collector(bus, buf).await;
+        });
+    }
 
     // ── Runtime arka planda ──────────────────────────────
     tokio.spawn(async move {
@@ -125,6 +171,7 @@ pub fn init_mobile_runtime(
         persistence,
         metrics,
         module_store,
+        log_buffer,
         tokio,
     };
 

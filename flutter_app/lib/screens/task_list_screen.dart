@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../api/aetheros_api.dart';
 import '../src/rust/api/aetheros.dart' as rust;
-import 'submit_task_screen.dart';
 
 enum _Filter { all, active, failed, completed }
 
@@ -135,14 +134,42 @@ class _TaskListScreenState extends State<TaskListScreen> {
 
   Future<void> _retry(rust.TaskStatusResponse task) async {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('Task Gönder ekranı açılıyor...'),
-      backgroundColor: Color(0xFF6C63FF),
-      duration: Duration(seconds: 2),
-    ));
-    await Navigator.push(context,
-        MaterialPageRoute(builder: (_) => const SubmitTaskScreen()));
+
+    try {
+      final newId = await AetherApi.resubmitTask(task.taskId);
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('✅ Yeniden gönderildi: ${newId.substring(0, 8).toUpperCase()}'),
+        backgroundColor: const Color(0xFF4CAF50),
+        duration: const Duration(seconds: 2),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+
+      // "module not found in store" → kullanıcıya yönlendirici mesaj
+      final msg = _humanizeRetryError(e.toString());
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(msg),
+        backgroundColor: const Color(0xFFEF5350),
+        duration: const Duration(seconds: 4),
+      ));
+    }
+
     _load();
+  }
+
+  /// Retry hatalarını kullanıcıya anlamlı mesaja çevir.
+  static String _humanizeRetryError(String raw) {
+    if (raw.contains('module not found in store') ||
+        raw.contains('ModuleNotFound')) {
+      return '⚠️ WASM modülü bellekte yok. '
+          '"WASM Modüller" ekranından dosyayı yeniden yükle.';
+    }
+    if (raw.contains('RuntimeNotInitialized')) {
+      return '⚠️ Runtime henüz hazır değil. Birkaç saniye bekleyip tekrar dene.';
+    }
+    return 'Hata: $raw';
   }
 }
 
@@ -260,6 +287,31 @@ class _EmptyState extends StatelessWidget {
   );
 }
 
+// ── Hata mesajı iyileştirici ──────────────────────────────
+
+/// Ham Rust hata string'ini kullanıcıya anlamlı Türkçe metne çevir.
+String _humanizeError(String raw) {
+  if (raw.contains('module not found in store')) {
+    return '⚠ Modül bellekte yok → WASM Modüller ekranından yeniden yükle';
+  }
+  if (raw.contains('missing entrypoint') || raw.contains('MissingEntrypoint')) {
+    return '⚠ Modülde bu entrypoint fonksiyonu bulunamadı';
+  }
+  if (raw.contains('invalid task configuration')) {
+    return '⚠ Geçersiz task yapılandırması (timeout 0?)';
+  }
+  if (raw.contains('execution timeout') || raw.contains('Timeout')) {
+    return '⏱ Zaman aşımı — timeout değerini artır';
+  }
+  if (raw.contains('execution panic') || raw.contains('ExecutionPanic')) {
+    return '💥 WASM yürütme hatası — modül içeriğini kontrol et';
+  }
+  if (raw.contains('RuntimeNotInitialized')) {
+    return '⚠ Runtime henüz başlatılmadı';
+  }
+  return raw;
+}
+
 // ── Task kartı ────────────────────────────────────────────
 
 class _TaskCard extends StatelessWidget {
@@ -311,7 +363,7 @@ class _TaskCard extends StatelessWidget {
             ]),
             if (task.errorMessage != null) ...[
               const SizedBox(height: 3),
-              Text(task.errorMessage!,
+              Text(_humanizeError(task.errorMessage!),
                   style: const TextStyle(color: Color(0xFFEF5350), fontSize: 11),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
             ],
@@ -423,7 +475,9 @@ class _TaskDetailSheet extends StatelessWidget {
           _Row(label: 'Güncellendi', value: _fmt(updated)),
           if (task.errorMessage != null) ...[
             const SizedBox(height: 8),
-            _Row(label: 'Hata', value: task.errorMessage!, error: true),
+            _Row(label: 'Hata',
+                value: _humanizeError(task.errorMessage!),
+                error: true),
           ],
           const SizedBox(height: 24),
           if (task.state == 'Failed')
