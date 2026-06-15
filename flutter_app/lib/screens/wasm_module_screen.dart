@@ -1,14 +1,6 @@
 // ============================================================
 // flutter_app/lib/screens/wasm_module_screen.dart
-// Fix #2 — Health check + modül durum badge'leri
-//
-// YENİ:
-//   - Ekran açılışında her modül için checkModuleExists() çağrılır
-//   - Runtime'da hazır olmayan modüller kırmızı "Hazır Değil"
-//     badge'i ile işaretlenir
-//   - Eksik modüller için "Yeniden Yükle" aksiyonu
-//   - "Task Gönder" butonu hazır olmayan modülde devre dışı +
-//     açıklayıcı tooltip
+// Sprint 3 — WASM modül yükleyici + modül listesi
 // ============================================================
 
 import 'dart:convert';
@@ -40,9 +32,9 @@ class WasmModule {
   };
 
   factory WasmModule.fromJson(Map<String, dynamic> j) => WasmModule(
-    hash:       j['hash']       as String,
-    size:       j['size']       as int,
-    filename:   j['filename']   as String,
+    hash: j['hash'] as String,
+    size: j['size'] as int,
+    filename: j['filename'] as String,
     uploadedAt: j['uploadedAt'] as int,
   );
 }
@@ -58,23 +50,21 @@ class WasmModuleScreen extends StatefulWidget {
 }
 
 class _WasmModuleScreenState extends State<WasmModuleScreen> {
-  List<WasmModule> _modules    = [];
-  Set<String>      _missing    = {}; // runtime'da hazır olmayan hash'ler
-  bool  _uploading             = false;
-  bool  _checking              = false; // health check devam ediyor
+  List<WasmModule> _modules = [];
+  bool _uploading = false;
   String? _uploadError;
 
   @override
   void initState() {
     super.initState();
-    _loadFromPrefs().then((_) => _checkHealth());
+    _loadFromPrefs();
   }
 
-  // ── SharedPreferences ─────────────────────────────────
+  // ── Persistence ──────────────────────────────────────
 
   Future<void> _loadFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw   = prefs.getStringList(_prefsKey) ?? [];
+    final raw = prefs.getStringList(_prefsKey) ?? [];
     setState(() {
       _modules = raw
           .map((s) => WasmModule.fromJson(jsonDecode(s) as Map<String, dynamic>))
@@ -91,32 +81,9 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
     );
   }
 
-  // ── Health check ──────────────────────────────────────
-  //
-  // Her modül için Rust runtime'a "bu hash bellekte var mı?" sorusu.
-  // Fix #1 ile startup'ta sled'den yükleniyor; bu check,
-  // Fix #1 öncesi yüklenmiş eski modülleri ya da edge case'leri yakalar.
-
-  Future<void> _checkHealth() async {
-    if (_modules.isEmpty) return;
-    setState(() => _checking = true);
-
-    final missing = <String>{};
-    for (final m in _modules) {
-      try {
-        final ok = await AetherApi.checkModuleExists(m.hash);
-        if (!ok) missing.add(m.hash);
-      } catch (_) {
-        // Runtime hazır değilse check atla
-      }
-    }
-
-    if (mounted) setState(() { _missing = missing; _checking = false; });
-  }
-
   // ── Yükleme ───────────────────────────────────────────
 
-  Future<void> _pickAndUpload({String? replaceHash}) async {
+  Future<void> _pickAndUpload() async {
     setState(() { _uploading = true; _uploadError = null; });
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -143,12 +110,9 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
       );
 
       setState(() {
-        // Eski kaydı (hash veya replaceHash) temizle
-        _modules.removeWhere(
-            (m) => m.hash == module.hash || m.hash == replaceHash);
+        // Aynı hash varsa üzerine yaz
+        _modules.removeWhere((m) => m.hash == module.hash);
         _modules.insert(0, module);
-        _missing.remove(module.hash);
-        _missing.remove(replaceHash);
       });
       await _saveToPrefs();
 
@@ -161,10 +125,7 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
   }
 
   Future<void> _deleteModule(WasmModule m) async {
-    setState(() {
-      _modules.remove(m);
-      _missing.remove(m.hash);
-    });
+    setState(() => _modules.remove(m));
     await _saveToPrefs();
   }
 
@@ -185,52 +146,26 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
     ));
   }
 
-  // ── Build ──────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final missingCount = _missing.length;
-
     return Scaffold(
       backgroundColor: const Color(0xFF0F0F1A),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0F0F1A),
-        title: Row(children: [
-          const Text('WASM Modüller',
-              style: TextStyle(color: Colors.white)),
-          if (_checking) ...[ // health check döner animasyonu
-            const SizedBox(width: 8),
-            const SizedBox(width: 12, height: 12,
-              child: CircularProgressIndicator(
-                  strokeWidth: 1.5, color: Colors.white38)),
-          ],
-        ]),
+        title: const Text('WASM Modüller',
+            style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white70),
         actions: [
-          // Health check yenile
           IconButton(
-            icon: const Icon(Icons.health_and_safety_outlined,
-                color: Colors.white38, size: 20),
-            tooltip: 'Modül durumlarını kontrol et',
-            onPressed: _checking ? null : _checkHealth,
-          ),
-          IconButton(
-            icon: const Icon(Icons.help_outline,
-                color: Colors.white38, size: 20),
+            icon: const Icon(Icons.help_outline, color: Colors.white38, size: 20),
             onPressed: _showHelp,
           ),
         ],
       ),
       body: Column(children: [
-
-        // ── Hazır-değil uyarı banner'ı ──────────────────
-        if (missingCount > 0)
-          _MissingBanner(
-            count: missingCount,
-            onDismiss: () => setState(() => _missing.clear()),
-          ),
-
-        // ── Yükle butonu ────────────────────────────────
+        // ── Yükle butonu ────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: SizedBox(
@@ -242,7 +177,7 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
               ),
-              onPressed: _uploading ? null : () => _pickAndUpload(),
+              onPressed: _uploading ? null : _pickAndUpload,
               icon: _uploading
                   ? const SizedBox(width: 18, height: 18,
                       child: CircularProgressIndicator(
@@ -257,7 +192,7 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
           ),
         ),
 
-        // ── Upload hatası ────────────────────────────────
+        // ── Hata ────────────────────────────────────
         if (_uploadError != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
@@ -278,7 +213,7 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
 
         const SizedBox(height: 12),
 
-        // ── Modül listesi ────────────────────────────────
+        // ── Modül listesi ────────────────────────────
         Expanded(
           child: _modules.isEmpty
               ? _EmptyState(onUpload: _pickAndUpload)
@@ -286,22 +221,12 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                   itemCount: _modules.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (_, i) {
-                    final m = _modules[i];
-                    final ready = !_missing.contains(m.hash);
-                    return _ModuleCard(
-                      module:      m,
-                      isReady:     ready,
-                      onCopyHash:  () => _copyHash(m.hash),
-                      onDelete:    () => _confirmDelete(m),
-                      onSubmitTask: ready
-                          ? () => _goSubmit(m)
-                          : null, // devre dışı
-                      onReupload:  ready
-                          ? null
-                          : () => _pickAndUpload(replaceHash: m.hash),
-                    );
-                  },
+                  itemBuilder: (_, i) => _ModuleCard(
+                    module: _modules[i],
+                    onCopyHash: () => _copyHash(_modules[i].hash),
+                    onDelete: () => _confirmDelete(_modules[i]),
+                    onSubmitTask: () => _goSubmit(_modules[i]),
+                  ),
                 ),
         ),
       ]),
@@ -366,7 +291,6 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
             ('2', 'Modül hash\'ini kopyala veya "Task Gönder" butonuna bas'),
             ('3', 'Task Gönder ekranında hash otomatik dolar'),
             ('4', 'Entrypoint olarak WASM modülündeki export adını yaz'),
-            ('⚠', '"Hazır Değil" badge\'i görürsen dosyayı tekrar yükle'),
           ].map((item) => Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -399,98 +323,48 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
   }
 }
 
-// ── Eksik modül banner'ı ──────────────────────────────────
-
-class _MissingBanner extends StatelessWidget {
-  final int count;
-  final VoidCallback onDismiss;
-  const _MissingBanner({required this.count, required this.onDismiss});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-    decoration: BoxDecoration(
-      color: const Color(0xFFFF6F00).withOpacity(0.1),
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: const Color(0xFFFF6F00).withOpacity(0.35)),
-    ),
-    child: Row(children: [
-      const Icon(Icons.warning_amber_rounded,
-          color: Color(0xFFFF6F00), size: 18),
-      const SizedBox(width: 10),
-      Expanded(child: Text(
-        '$count modül runtime\'da hazır değil. '
-        'Dosyayı tekrar yüklemek için "Yeniden Yükle" butonuna bas.',
-        style: const TextStyle(color: Color(0xFFFF6F00), fontSize: 12),
-      )),
-      GestureDetector(
-        onTap: onDismiss,
-        child: const Padding(
-          padding: EdgeInsets.only(left: 8),
-          child: Icon(Icons.close, color: Color(0xFFFF6F00), size: 16),
-        ),
-      ),
-    ]),
-  );
-}
-
 // ── Modül kartı ───────────────────────────────────────────
 
 class _ModuleCard extends StatelessWidget {
-  final WasmModule   module;
-  final bool         isReady;
+  final WasmModule module;
   final VoidCallback onCopyHash;
   final VoidCallback onDelete;
-  final VoidCallback? onSubmitTask; // null → hazır değil
-  final VoidCallback? onReupload;   // null → hazır
+  final VoidCallback onSubmitTask;
 
   const _ModuleCard({
     required this.module,
-    required this.isReady,
     required this.onCopyHash,
     required this.onDelete,
-    this.onSubmitTask,
-    this.onReupload,
+    required this.onSubmitTask,
   });
 
   @override
   Widget build(BuildContext context) {
-    final dt = DateTime.fromMillisecondsSinceEpoch(module.uploadedAt).toLocal();
+    final dt =
+        DateTime.fromMillisecondsSinceEpoch(module.uploadedAt).toLocal();
     final dateStr =
         '${dt.day.toString().padLeft(2,'0')}.${dt.month.toString().padLeft(2,'0')}.${dt.year}  '
         '${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}';
-
-    final borderColor = isReady
-        ? const Color(0xFF6C63FF).withOpacity(0.2)
-        : const Color(0xFFEF5350).withOpacity(0.35);
 
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A2E),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderColor),
+        border: Border.all(
+            color: const Color(0xFF6C63FF).withOpacity(0.2)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-
-        // ── Başlık ────────────────────────────────────────
+        // Başlık satırı
         Row(children: [
           Container(
             width: 36, height: 36,
             decoration: BoxDecoration(
-              color: (isReady
-                  ? const Color(0xFF6C63FF)
-                  : const Color(0xFFEF5350)).withOpacity(0.12),
+              color: const Color(0xFF6C63FF).withOpacity(0.12),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(
-              isReady ? Icons.memory : Icons.memory_outlined,
-              color: isReady
-                  ? const Color(0xFF6C63FF)
-                  : const Color(0xFFEF5350),
-              size: 18,
-            ),
+            child: const Icon(Icons.memory,
+                color: Color(0xFF6C63FF), size: 18),
           ),
           const SizedBox(width: 10),
           Expanded(child: Column(
@@ -503,38 +377,7 @@ class _ModuleCard extends StatelessWidget {
             Text(dateStr,
                 style: const TextStyle(color: Colors.white38, fontSize: 11)),
           ])),
-
-          // Durum badge'i
-          if (!isReady)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEF5350).withOpacity(0.12),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                    color: const Color(0xFFEF5350).withOpacity(0.3)),
-              ),
-              child: const Text('Hazır Değil',
-                  style: TextStyle(
-                      color: Color(0xFFEF5350),
-                      fontSize: 10, fontWeight: FontWeight.bold)),
-            ),
-          if (isReady)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-              decoration: BoxDecoration(
-                color: const Color(0xFF4CAF50).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                    color: const Color(0xFF4CAF50).withOpacity(0.25)),
-              ),
-              child: const Text('Hazır',
-                  style: TextStyle(
-                      color: Color(0xFF4CAF50),
-                      fontSize: 10, fontWeight: FontWeight.bold)),
-            ),
-
-          const SizedBox(width: 6),
+          // Sil
           GestureDetector(
             onTap: onDelete,
             child: const Padding(
@@ -546,7 +389,7 @@ class _ModuleCard extends StatelessWidget {
         ]),
         const SizedBox(height: 10),
 
-        // ── Hash kutusu ────────────────────────────────────
+        // Hash kutusu
         GestureDetector(
           onTap: onCopyHash,
           child: Container(
@@ -563,37 +406,46 @@ class _ModuleCard extends StatelessWidget {
                   style: const TextStyle(
                       color: Color(0xFF80CBC4),
                       fontFamily: 'monospace',
-                      fontSize: 11, letterSpacing: 0.3),
-                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                      fontSize: 11,
+                      letterSpacing: 0.3),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 6),
-              const Icon(Icons.copy, color: Color(0xFF6C63FF), size: 14),
+              const Icon(Icons.copy,
+                  color: Color(0xFF6C63FF), size: 14),
             ]),
           ),
         ),
         const SizedBox(height: 10),
 
-        // ── Alt bilgi + aksiyonlar ─────────────────────────
+        // Alt bilgi + task butonu
         Row(children: [
           _Chip(label: _sizeStr(module.size), icon: Icons.data_usage),
           const Spacer(),
-
-          // Hazır değilse "Yeniden Yükle", hazırsa "Task Gönder"
-          if (!isReady && onReupload != null)
-            _ActionButton(
-              label: 'Yeniden Yükle',
-              icon: Icons.upload_file,
-              color: const Color(0xFFFF6F00),
-              onTap: onReupload!,
-            )
-          else if (isReady && onSubmitTask != null)
-            _ActionButton(
-              label: 'Task Gönder',
-              icon: Icons.send,
-              color: const Color(0xFF6C63FF),
-              onTap: onSubmitTask!,
+          GestureDetector(
+            onTap: onSubmitTask,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF6C63FF).withOpacity(0.15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: const Color(0xFF6C63FF).withOpacity(0.4)),
+              ),
+              child: const Row(children: [
+                Icon(Icons.send, color: Color(0xFF6C63FF), size: 13),
+                SizedBox(width: 5),
+                Text('Task Gönder',
+                    style: TextStyle(
+                        color: Color(0xFF6C63FF),
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold)),
+              ]),
             ),
+          ),
         ]),
       ]),
     );
@@ -604,39 +456,6 @@ class _ModuleCard extends StatelessWidget {
     if (b < 1024 * 1024) return '${(b / 1024).toStringAsFixed(1)}KB';
     return '${(b / 1024 / 1024).toStringAsFixed(2)}MB';
   }
-}
-
-class _ActionButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-  const _ActionButton({
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.4)),
-      ),
-      child: Row(children: [
-        Icon(icon, color: color, size: 13),
-        const SizedBox(width: 5),
-        Text(label,
-            style: TextStyle(
-                color: color, fontSize: 11, fontWeight: FontWeight.bold)),
-      ]),
-    ),
-  );
 }
 
 class _Chip extends StatelessWidget {
@@ -655,12 +474,13 @@ class _Chip extends StatelessWidget {
 // ── Boş durum ─────────────────────────────────────────────
 
 class _EmptyState extends StatelessWidget {
-  final Function() onUpload;
+  final VoidCallback onUpload;
   const _EmptyState({required this.onUpload});
   @override
   Widget build(BuildContext context) => Center(
     child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Icon(Icons.cloud_upload, color: Colors.white12, size: 56),
+      const Icon(Icons.cloud_upload,
+          color: Colors.white12, size: 56),
       const SizedBox(height: 14),
       const Text('WASM modül yüklenmedi',
           style: TextStyle(color: Colors.white38, fontSize: 14)),

@@ -16,20 +16,13 @@ env:
   NDK_VERSION: '27.0.12077973'
   RUST_ANDROID_FEATURES: '--no-default-features --features backend-wasmi'
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  # Sprint 7: yeni fonksiyonlar — codegen versiyon sabitleme
-  FRB_VERSION: '2.12.0'
 
-# ──────────────────────────────────────────────────────────────────────────────
-# JOB 0: FRB Codegen
-#
-# Rust bridge/api.rs'deki pub fn'leri tarar → frb_generated.rs + Dart stub'ları
-# üretir. Sonraki job'lar bu artifact'ı kullanır.
-#
-# Sprint sonrası eklenen bridge fonksiyonları:
-#   Sprint 6: check_module_exists, resubmit_task
-#   Sprint 7: get_recent_logs, get_task_logs
-# ──────────────────────────────────────────────────────────────────────────────
 jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # JOB 0: FRB Codegen
+  # flutter_rust_bridge_codegen generate → frb_generated.rs + Dart dosyalarını
+  # yeniden üretir. Rust kaynak kodu değişince bu job otomatik senkronize eder.
+  # ─────────────────────────────────────────────────────────────────────────
   codegen:
     name: ⚙️ FRB Codegen
     runs-on: ubuntu-latest
@@ -41,10 +34,10 @@ jobs:
       - name: 🦀 Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      - name: 🗃️ Rust cache (codegen host)
+      - name: 🗃️ Rust cache (codegen)
         uses: Swatinem/rust-cache@v2
         with:
-          key: codegen-host-${{ hashFiles('Cargo.lock') }}
+          key: codegen-host
 
       - name: 🐦 Flutter
         uses: subosito/flutter-action@v2
@@ -53,62 +46,35 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # Binary cache: ilk run'da derler (~6dk), sonraki run'larda cache'den gelir (~5sn)
-      - name: 🔧 flutter_rust_bridge_codegen (binary cache)
-        id: frb-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/flutter_rust_bridge_codegen
-          key: frb-bin-${{ env.FRB_VERSION }}-${{ runner.os }}
-
-      - name: 🔧 flutter_rust_bridge_codegen kur (cache miss)
-        if: steps.frb-cache.outputs.cache-hit != 'true'
+      - name: 🔧 flutter_rust_bridge_codegen kur
         run: |
-          cargo install flutter_rust_bridge_codegen \
-            --version ${{ env.FRB_VERSION }} \
-            --locked
-          echo "✅ FRB binary derlendi ve cache'lendi"
-
-      - name: 🔧 flutter_rust_bridge_codegen (cache hit)
-        if: steps.frb-cache.outputs.cache-hit == 'true'
-        run: echo "✅ FRB binary cache'den yüklendi (derleme atlandı)"
+          # Sabit sürüm — pubspec.yaml ile uyumlu
+          cargo install flutter_rust_bridge_codegen --version 2.12.0 --locked
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: ⚙️ FRB codegen çalıştır
         working-directory: flutter_app
         run: |
           flutter pub get
           flutter_rust_bridge_codegen generate
-          echo "✅ FRB codegen tamamlandı"
-
-      - name: 🔍 Üretilen Dart bridge'i doğrula
-        run: |
-          BRIDGE="flutter_app/lib/src/rust/api/aetheros.dart"
-          for fn in \
-            "getRecentLogs" \
-            "getTaskLogs" \
-            "checkModuleExists" \
-            "resubmitTask" \
-            "uploadWasmModule"; do
-            if grep -q "$fn" "$BRIDGE"; then
-              echo "✅ $fn → OK"
-            else
-              echo "❌ $fn → YOK!"
-              exit 1
-            fi
-          done
+          # ── Freezed & json_serializable implementation üret ──
+          # bridge/types.dart @freezed sınıfları için gerekli
+          dart run build_runner build --delete-conflicting-outputs
+          echo "✅ Codegen + build_runner tamamlandı"
 
       - name: 📤 Üretilen dosyaları artifact olarak yükle
         uses: actions/upload-artifact@v5
         with:
-          name: frb-generated-${{ github.sha }}
+          name: frb-generated
+          # Rust tarafı + Dart tarafı generated dosyalar
           path: |
             src/frb_generated.rs
             flutter_app/lib/src/rust/
           retention-days: 1
 
-  # ────────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────
   # JOB 1: Rust → .so  (arm64-v8a & armeabi-v7a paralel)
-  # ────────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────
   build-rust:
     name: 🦀 Rust → ${{ matrix.abi }}
     runs-on: ubuntu-latest
@@ -127,10 +93,11 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v5
 
-      - name: 📥 FRB artifact indir
+      - name: 📥 Üretilen FRB dosyaları indir
         uses: actions/download-artifact@v5
         with:
-          name: frb-generated-${{ github.sha }}
+          name: frb-generated
+          # Dosyalar orijinal yollarına yerleşir
           path: .
 
       - name: ☕ Java 17
@@ -139,7 +106,7 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: 📦 Android NDK ${{ env.NDK_VERSION }}
+      - name: 📦 Android NDK
         run: |
           SDKMANAGER=$(find "${ANDROID_SDK_ROOT}/cmdline-tools" \
             -name "sdkmanager" -type f 2>/dev/null | sort -V | tail -1)
@@ -151,62 +118,49 @@ jobs:
           echo "NDK_HOME=$NDK_PATH"         >> $GITHUB_ENV
           echo "${NDK_PATH}/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-      - name: 🦀 Rust stable + hedef
+      - name: 🦀 Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
 
-      - name: 🗃️ Rust cache (cross)
+      - name: 🗃️ Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          key: android-${{ matrix.rust_target }}-${{ hashFiles('Cargo.lock') }}
+          key: android-${{ matrix.rust_target }}
           cache-on-failure: true
 
-      - name: 🔧 cargo-ndk (cache)
+      - name: 🔧 cargo-ndk cache
         id: cargo-ndk-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cargo/bin/cargo-ndk
-          key: cargo-ndk-3.5.4-${{ runner.os }}
+          key: cargo-ndk-3.5.4-${{ runner.os }}-${{ runner.arch }}
 
       - name: 🔧 cargo-ndk kur
         if: steps.cargo-ndk-cache.outputs.cache-hit != 'true'
-        run: cargo install cargo-ndk --version 3.5.4 --locked
+        run: cargo install cargo-ndk --version 3.5.4
 
-      # ── Kaynak patch'leri ─────────────────────────────────────────────────
-      # 1. memory.rs: wasmtime-only guard (wasmi build'inde derlenmemeli)
-      # 2. frb_generated.rs: lib.rs'e bağlı mı kontrol et
-      # 3. setup_default_user_code_handler: eski FRB kalıntısı, kaldır
-      - name: 🩹 Kaynak patch'leri
+      - name: 🩹 Android kaynak patch'leri
         run: |
-          set -e
-
-          # 1. memory.rs wasmtime guard
-          if ! head -1 src/wasm/memory.rs | grep -q 'cfg(feature'; then
-            printf '#![cfg(feature = "backend-wasmtime")]\n' | \
-              cat - src/wasm/memory.rs > /tmp/mem.rs && \
-              mv /tmp/mem.rs src/wasm/memory.rs
-            echo "✓ memory.rs patch uygulandı"
-          else
-            echo "✓ memory.rs guard zaten var"
+          # memory.rs → wasmtime-only guard
+          if ! head -1 src/wasm/memory.rs | grep -q "cfg(feature"; then
+            { printf '#![cfg(feature = "backend-wasmtime")]\n'; \
+              cat src/wasm/memory.rs; } > /tmp/mem.rs && mv /tmp/mem.rs src/wasm/memory.rs
           fi
-
-          # 2. frb_generated.rs bağlantısı
+          # FRB eski fonksiyon kaldır
+          sed -i '/setup_default_user_code_handler/d' src/bridge/api.rs || true
+          # frb_generated.rs lib.rs'e bağlı mı?
           if [ -f src/frb_generated.rs ]; then
-            if ! grep -q 'mod frb_generated' src/lib.rs; then
+            if ! grep -q "mod frb_generated" src/lib.rs; then
               printf '\npub mod frb_generated;\n' >> src/lib.rs
               echo "✓ mod frb_generated eklendi"
             else
               echo "✓ mod frb_generated zaten var"
             fi
           else
-            echo "❌ src/frb_generated.rs YOK — codegen artifact bozuk!"
+            echo "❌ src/frb_generated.rs YOK — codegen artifact kontrol et!"
             exit 1
           fi
-
-          # 3. Eski FRB fonksiyonu kalıntısı (zararsız ama temiz kalsın)
-          sed -i '/setup_default_user_code_handler/d' src/bridge/api.rs || true
-          echo "✓ Eski FRB kalıntısı temizlendi"
 
       - name: 🏗️ Rust .so → ${{ matrix.abi }}
         run: |
@@ -217,27 +171,16 @@ jobs:
             --lib \
             ${{ env.RUST_ANDROID_FEATURES }}
 
-      - name: 🔍 .so varlığını doğrula
-        run: |
-          SO="flutter_app/android/app/src/main/jniLibs/${{ matrix.abi }}/libaetheros.so"
-          if [ -f "$SO" ]; then
-            SIZE=$(du -sh "$SO" | cut -f1)
-            echo "✅ libaetheros.so ($SIZE) → ${{ matrix.abi }}"
-          else
-            echo "❌ libaetheros.so bulunamadı!"
-            exit 1
-          fi
-
       - name: 📤 .so artifact
         uses: actions/upload-artifact@v5
         with:
-          name: rust-so-${{ matrix.abi }}-${{ github.sha }}
+          name: rust-so-${{ matrix.abi }}
           path: flutter_app/android/app/src/main/jniLibs/${{ matrix.abi }}/libaetheros.so
           retention-days: 1
 
-  # ────────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────
   # JOB 2: Flutter APK
-  # ────────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────
   build-apk:
     name: 📱 Flutter APK
     runs-on: ubuntu-latest
@@ -247,10 +190,10 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v5
 
-      - name: 📥 FRB artifact indir
+      - name: 📥 Üretilen FRB dosyaları indir
         uses: actions/download-artifact@v5
         with:
-          name: frb-generated-${{ github.sha }}
+          name: frb-generated
           path: .
 
       - name: ☕ Java 17
@@ -267,13 +210,13 @@ jobs:
       - name: 📥 arm64-v8a .so
         uses: actions/download-artifact@v5
         with:
-          name: rust-so-arm64-v8a-${{ github.sha }}
+          name: rust-so-arm64-v8a
           path: flutter_app/android/app/src/main/jniLibs/arm64-v8a
 
       - name: 📥 armeabi-v7a .so
         uses: actions/download-artifact@v5
         with:
-          name: rust-so-armeabi-v7a-${{ github.sha }}
+          name: rust-so-armeabi-v7a
           path: flutter_app/android/app/src/main/jniLibs/armeabi-v7a
 
       - name: 🐦 Flutter
@@ -285,18 +228,12 @@ jobs:
 
       - name: 📝 local.properties
         run: |
-          echo "flutter.sdk=${FLUTTER_ROOT}"  > flutter_app/android/local.properties
-          echo "sdk.dir=${ANDROID_SDK_ROOT}" >> flutter_app/android/local.properties
+          echo "flutter.sdk=${FLUTTER_ROOT}" > flutter_app/android/local.properties
+          echo "sdk.dir=${ANDROID_SDK_ROOT}"  >> flutter_app/android/local.properties
 
       - name: 📦 Flutter pub get
         working-directory: flutter_app
         run: flutter pub get
-
-      - name: 🔍 Dart analiz
-        working-directory: flutter_app
-        run: |
-          flutter analyze --no-fatal-infos 2>&1 | tail -20 || true
-          echo "✅ Dart analiz tamamlandı"
 
       - name: 🏗️ APK derle
         working-directory: flutter_app
@@ -316,23 +253,16 @@ jobs:
       - name: 📊 Build özeti
         if: always()
         run: |
-          {
-            echo "## 🚀 AetherOS Android Build"
-            echo ""
-            echo "| | |"
-            echo "|---|---|"
-            echo "| Build | #${{ github.run_number }} |"
-            echo "| Commit | \`$(git rev-parse --short HEAD)\` |"
-            echo "| Branch | \`${{ github.ref_name }}\` |"
-            echo "| Flutter | ${{ env.FLUTTER_VERSION }} |"
-            echo "| NDK | ${{ env.NDK_VERSION }} |"
-            echo "| Backend | wasmi |"
-            echo "| Sprints | S1–S7 (Log izleme) |"
-            echo ""
-            echo "### 📦 APK'lar"
-            find flutter_app/build/app/outputs/flutter-apk \
-              -name "*.apk" 2>/dev/null | \
-              while read -r f; do
-                echo "- \`$(basename "$f")\` ($(du -sh "$f" | cut -f1))"
-              done || echo "APK üretilemedi"
-          } >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 AetherOS Android Build" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | #${{ github.run_number }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Flutter | ${{ env.FLUTTER_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| NDK | ${{ env.NDK_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | wasmi |" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 APK'lar" >> $GITHUB_STEP_SUMMARY
+          find flutter_app/build/app/outputs/flutter-apk -name "*.apk" 2>/dev/null | \
+            while read f; do
+              echo "- \`$(basename $f)\` ($(du -sh $f | cut -f1))" >> $GITHUB_STEP_SUMMARY
+            done || echo "APK üretilemedi" >> $GITHUB_STEP_SUMMARY

@@ -1,23 +1,5 @@
 // ============================================================
-// src/persistence/engine.rs  (v4)
-//
-// Fix #1: ModuleStore disk persistence eklendi.
-//
-// NEDEN GEREKLİ?
-//   ModuleStore yalnızca RAM'deydi (DashMap). Runtime yeniden
-//   başladığında tüm WASM binary'leri uçuyordu. Sled DB'deki
-//   task'lar hash referansı taşısa da binary kayboluyordu →
-//   "invalid module: module not found in store".
-//
-// ÇÖZÜM:
-//   Yeni "modules_v1" sled tree:
-//     key   = [u8; 32] SHA-256 hash
-//     value = raw WASM binary bytes (msgpack değil, ham bytes —
-//             binary zaten opaque, serializasyona gerek yok)
-//
-//   upload_wasm_module() artık hem ModuleStore'a hem buraya yazar.
-//   Runtime başlarken load_all_modules() tüm binary'leri ModuleStore'a
-//   yükler — kullanıcı tekrar upload yapmak zorunda kalmaz.
+// src/persistence/engine.rs  (v3)
 //
 // Optimizasyon #2: serde_json → rmp_serde (MessagePack)
 //
@@ -56,15 +38,11 @@ use crate::errors::persistence::PersistenceError;
 use crate::persistence::models::PersistedTask;
 use crate::task::task::TaskState;
 use crate::types::ids::TaskId;
-use crate::wasm::module_store::ModuleHash;
 
 pub struct PersistenceEngine {
     database: Db,
     tasks: Tree,
     snapshots: Tree,
-    /// WASM binary deposu: hash (32 byte) → raw bytes.
-    /// Sled key = ModuleHash, value = binary (ham, serializasyon yok).
-    modules: Tree,
 }
 
 impl PersistenceEngine {
@@ -82,15 +60,10 @@ impl PersistenceEngine {
             .open_tree("snapshots_v2")
             .map_err(|_| PersistenceError::StorageFailure)?;
 
-        let modules = database
-            .open_tree("modules_v1") // ham WASM binary'leri
-            .map_err(|_| PersistenceError::StorageFailure)?;
-
         Ok(Self {
             database,
             tasks,
             snapshots,
-            modules,
         })
     }
 
@@ -253,94 +226,6 @@ impl PersistenceEngine {
                 }
             }
         });
-    }
-
-    // ── WASM Modül Persistence ────────────────────────────────
-    //
-    // Binary'ler sled'e ham bytes olarak saklanır (serializasyon yok).
-    // ModuleHash (32 byte) sled key'i, WASM binary sled value'su.
-
-    /// WASM binary'yi kalıcı depoya kaydet.
-    ///
-    /// Aynı hash zaten varsa sled üzerine yazmaz (idempotent).
-    /// upload_wasm_module() bridge fonksiyonu bu metodu çağırır.
-    pub fn persist_module(
-        &self,
-        hash: &ModuleHash,
-        binary: &[u8],
-    ) -> Result<(), PersistenceError> {
-        // compare_and_swap: var olanı değiştirme (idempotent)
-        // Basit yol: zaten varsa skip, yoksa insert.
-        if self.modules.contains_key(hash)
-            .map_err(|_| PersistenceError::StorageFailure)?
-        {
-            return Ok(()); // zaten var, tekrar yazma
-        }
-
-        self.modules
-            .insert(hash, binary)
-            .map_err(|_| PersistenceError::StorageFailure)?;
-
-        debug!(
-            hash = %hex::encode(hash),
-            bytes = binary.len(),
-            "WASM modülü diske kaydedildi"
-        );
-
-        Ok(())
-    }
-
-    /// Tek bir modülü hash'e göre yükle.
-    pub fn load_module(
-        &self,
-        hash: &ModuleHash,
-    ) -> Result<Option<Vec<u8>>, PersistenceError> {
-        self.modules
-            .get(hash)
-            .map(|opt| opt.map(|iv| iv.to_vec()))
-            .map_err(|_| PersistenceError::StorageFailure)
-    }
-
-    /// Tüm modülleri yükle (startup recovery için).
-    ///
-    /// RuntimeBootstrap bu metodu çağırarak ModuleStore'u yeniden
-    /// doldurur. Uygulama yeniden açıldığında binary'ler kullanıcıdan
-    /// tekrar upload beklenmeden hazır olur.
-    pub fn load_all_modules(
-        &self,
-    ) -> Result<Vec<(ModuleHash, Vec<u8>)>, PersistenceError> {
-        let mut result = Vec::new();
-
-        for entry in self.modules.iter() {
-            let (key, value) =
-                entry.map_err(|_| PersistenceError::StorageFailure)?;
-
-            if key.len() != 32 {
-                // Bozuk key: atla, panic yapma
-                tracing::warn!(
-                    key_len = key.len(),
-                    "Geçersiz modül hash uzunluğu — atlandı"
-                );
-                continue;
-            }
-
-            let mut hash = [0u8; 32];
-            hash.copy_from_slice(&key);
-            result.push((hash, value.to_vec()));
-        }
-
-        debug!(count = result.len(), "Modüller diskten yüklendi");
-        Ok(result)
-    }
-
-    /// Bir modülün diskte kayıtlı olup olmadığını kontrol et.
-    pub fn module_exists(
-        &self,
-        hash: &ModuleHash,
-    ) -> Result<bool, PersistenceError> {
-        self.modules
-            .contains_key(hash)
-            .map_err(|_| PersistenceError::StorageFailure)
     }
 
     pub fn database(&self) -> &Db {

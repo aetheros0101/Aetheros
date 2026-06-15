@@ -1,7 +1,6 @@
 pub mod aggregation;
 pub mod ai;
 pub mod audit;
-pub mod buffer;      // Sprint 7: in-memory log tamponu
 pub mod correlation;
 pub mod lineage;
 pub mod metrics;

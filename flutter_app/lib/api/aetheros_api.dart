@@ -76,23 +76,6 @@ class AetherApi {
     return rust.uploadWasmModule(bytes: bytes);
   }
 
-  /// Modülün runtime'da hazır olup olmadığını kontrol et.
-  ///
-  /// Fix #1 sonrası startup'ta sled'den yüklenir.
-  /// Yine de eski oturumdan kalan meta-data'yı doğrulamak için
-  /// WasmModuleScreen açılışında her modül için çağrılır.
-  static Future<bool> checkModuleExists(String hashHex) async {
-    return rust.checkModuleExists(hashHex: hashHex);
-  }
-
-  /// Mevcut bir task'ı yeni UUID ile yeniden kuyruğa ekle.
-  ///
-  /// "Yeniden Dene" butonu için — orijinal ayarlar (hash,
-  /// entrypoint, priority) korunur, sadece id yenilenir.
-  static Future<String> resubmitTask(String taskId) async {
-    return rust.resubmitTask(taskId: taskId);
-  }
-
   // ── Metrikler ──────────────────────────────────────────
 
   static Future<rust.MetricsSnapshot> getMetrics() async {
