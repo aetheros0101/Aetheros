@@ -1,0 +1,114 @@
+{
+  "agents": [
+    "ai",
+    "errors"
+  ],
+  "ai": [
+    "agents"
+  ],
+  "api": [
+    "agents",
+    "events",
+    "metrics",
+    "orchestration",
+    "persistence",
+    "runtime",
+    "security",
+    "task",
+    "types"
+  ],
+  "bridge": [
+    "events",
+    "metrics",
+    "persistence",
+    "runtime",
+    "task",
+    "types",
+    "wasm"
+  ],
+  "events": [
+    "types"
+  ],
+  "logging": [
+    "events",
+    "orchestration",
+    "workflows"
+  ],
+  "metrics": [
+    "events"
+  ],
+  "orchestration": [
+    "errors",
+    "remote",
+    "runtime",
+    "workflows"
+  ],
+  "persistence": [
+    "errors",
+    "task",
+    "types"
+  ],
+  "registry": [
+    "task",
+    "types",
+    "worker"
+  ],
+  "runtime": [
+    "errors",
+    "events",
+    "persistence",
+    "task",
+    "wasm",
+    "worker"
+  ],
+  "scripting": [
+    "agents",
+    "errors",
+    "task",
+    "types",
+    "wasm"
+  ],
+  "task": [
+    "errors",
+    "tests",
+    "types",
+    "wasm"
+  ],
+  "tests": [
+    "api",
+    "errors",
+    "events",
+    "metrics",
+    "orchestration",
+    "persistence",
+    "remote",
+    "runtime",
+    "scripting",
+    "security",
+    "task",
+    "types",
+    "wasm",
+    "workflows"
+  ],
+  "wasm": [
+    "errors",
+    "task"
+  ],
+  "worker": [
+    "errors",
+    "events",
+    "persistence",
+    "task",
+    "types",
+    "wasm"
+  ],
+  "workflows": [
+    "agents",
+    "ai",
+    "errors",
+    "orchestration",
+    "runtime",
+    "task",
+    "types"
+  ]
+}

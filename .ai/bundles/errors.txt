@@ -1,0 +1,176 @@
+# BUNDLE: errors
+# Includes: errors
+
+// ── src/errors/mod.rs ──
+pub mod persistence; 
+pub mod runtime;     
+pub mod task;        
+pub mod wasm;
+
+// ── src/errors/persistence.rs ──
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum PersistenceError {
+    #[error("storage failure")]
+    StorageFailure,
+
+    #[error("snapshot failure")]
+    SnapshotFailure,
+
+    #[error("recovery failure")]
+    RecoveryFailure,
+
+    #[error("serialization failure")]
+    SerializationFailure,
+}
+
+// ── src/errors/wasm.rs ──
+// ============================================================
+// src/errors/wasm.rs
+//
+// Faz 3 Eklemesi:
+//
+// [BUG #8] InvalidConfiguration variant eklendi.
+//   timeout_ms == 0 → ResourceLimitExceeded dönüyordu.
+//   "Kaynak aşıldı" anlamsız — kaynak hiç kullanılmadı.
+//   Doğru hata: "geçersiz yapılandırma".
+//
+//   Aynı zamanda RetryClassification'a etkisi:
+//   InvalidConfiguration → Permanent (retry.rs'de eklendi)
+//   Yanlış konfigürasyon retry'la düzelmez.
+// ============================================================
+
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum WasmError {
+    #[error("execution timeout")]
+    Timeout,
+
+    #[error("execution panic")]
+    ExecutionPanic,
+
+    #[error("resource limit exceeded")]
+    ResourceLimitExceeded,
+
+    #[error("invalid module: {reason}")]
+    InvalidModule {
+        reason: String,
+    },
+
+    /// [BUG #8] Yeni variant: timeout_ms == 0 gibi
+    /// görev konfigürasyonu geçersizse bu döner.
+    #[error("invalid task configuration: {reason}")]
+    InvalidConfiguration {
+        reason: String,
+    },
+
+    #[error("capability denied")]
+    CapabilityDenied,
+
+    #[error("missing entrypoint")]
+    MissingEntrypoint,
+
+    #[error("sandbox violation")]
+    SandboxViolation,
+
+    #[error("memory violation")]
+    MemoryViolation,
+
+    #[error("engine failure: {message}")]
+    EngineFailure {
+        message: String,
+    },
+
+    #[error("execution failure: {message}")]
+    ExecutionFailure {
+        message: String,
+    },
+
+    #[error("linker failure: {message}")]
+    LinkerFailure {
+        message: String,
+    },
+}
+
+// ── src/errors/runtime.rs ──
+use thiserror::Error;
+
+use crate::errors::persistence::PersistenceError;
+use crate::errors::task::TaskError;
+use crate::errors::wasm::WasmError;
+
+#[derive(Debug, Error)]
+pub enum RuntimeError {
+    #[error("worker subsystem failure")]
+    WorkerSubsystemFailure,
+
+    #[error("scheduler failure")]
+    SchedulerFailure,
+
+    #[error("task failure: {0}")]
+    Task(
+        #[from]
+        TaskError,
+    ),
+
+    #[error("wasm failure: {0}")]
+    Wasm(
+        #[from]
+        WasmError,
+    ),
+
+    #[error("persistence failure: {0}")]
+    Persistence(
+        #[from]
+        PersistenceError,
+    ),
+
+    #[error(
+        "task execution failed: {message}"
+    )]
+    TaskExecutionFailed {
+        message: String,
+    },
+
+    #[error("runtime shutdown")]
+    Shutdown,
+
+    #[error("dispatcher failure")]
+    DispatcherFailure,
+
+    #[error("task queue closed")]
+    QueueClosed,
+
+    // Mevcut son variant'tan sonra ekle:
+    #[error("orchestration failure")]
+    OrchestrationFailure,
+
+    #[error(
+        "validation error: {0}"
+    )]
+    ValidationError(String),
+}
+
+// ── src/errors/task.rs ──
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum TaskError {
+    #[error("task cancelled")]
+    Cancelled,
+
+    #[error("task deadline exceeded")]
+    DeadlineExceeded,
+
+    #[error("task retry exhausted")]
+    RetryExhausted,
+
+    #[error("invalid task state")]
+    InvalidState,
+
+    #[error("task persistence failure")]
+    PersistenceFailure,
+}
+

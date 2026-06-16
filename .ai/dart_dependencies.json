@@ -1,0 +1,14 @@
+{
+  "api": [
+    "src"
+  ],
+  "root": [
+    "screens",
+    "src"
+  ],
+  "screens": [
+    "api",
+    "services",
+    "src"
+  ]
+}

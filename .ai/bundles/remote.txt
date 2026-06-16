@@ -1,0 +1,1008 @@
+# BUNDLE: remote
+# Includes: remote
+
+// ── src/remote/protocol.rs ──
+use serde::{
+    Deserialize,
+    Serialize,
+};
+
+use uuid::Uuid;
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+)]
+pub enum RemoteCommand {
+    ExecuteTask {
+        task_id: Uuid,
+    },
+
+    ExecuteWorkflow {
+        workflow_id: Uuid,
+    },
+
+    CancelExecution {
+        execution_id: Uuid,
+    },
+
+    ReplayExecution {
+        execution_id: Uuid,
+    },
+
+    SynchronizeState {
+        execution_id: Uuid,
+    },
+
+    TransferOwnership {
+        execution_id: Uuid,
+
+        target_node: Uuid,
+    },
+
+    Heartbeat,
+}
+
+// ── src/remote/discovery.rs ──
+// ============================================================
+// src/remote/discovery.rs
+//
+// Sprint 10: Tam Node Discovery
+//
+// ÖNCE: Sadece DiscoveryRecord struct
+//
+// SONRA:
+//   - StaticDiscovery: seed list'ten node'ları yükle
+//   - DiscoveryService: periyodik node keşfi + cluster sync
+//   - join() → kendi adresini cluster'a bildir
+//   - leave() → cluster'dan temiz çıkış
+//   - probe() → node'un canlı olup olmadığını kontrol et
+// ============================================================
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use serde::{
+    Deserialize,
+    Serialize,
+};
+use tracing::{
+    debug,
+    info,
+    warn,
+};
+use uuid::Uuid;
+
+use crate::remote::cluster::ClusterState;
+use crate::remote::node::{
+    NodeCapability,
+    RemoteNode,
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoveryRecord {
+    pub address: String,
+    pub transport: String,
+}
+
+/// Basit HTTP-tabanlı join payload.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JoinRequest {
+    pub node_id: Uuid,
+    pub address: String,
+    pub capabilities: Vec<String>,
+}
+
+pub struct DiscoveryService {
+    /// Kendi node kimliği
+    self_id: Uuid,
+    /// Kendi adres
+    self_address: String,
+    /// Seed node'lar (bootstrap)
+    seeds: Vec<String>,
+    /// Cluster state referansı
+    cluster: Arc<ClusterState>,
+    /// HTTP client
+    client: reqwest::Client,
+}
+
+impl DiscoveryService {
+    pub fn new(
+        self_id: Uuid,
+        self_address: impl Into<String>,
+        seeds: Vec<String>,
+        cluster: Arc<ClusterState>,
+    ) -> Self {
+        Self {
+            self_id,
+            self_address: self_address.into(),
+            seeds,
+            cluster,
+            client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(5))
+                .build()
+                .unwrap_or_default(),
+        }
+    }
+
+    /// Cluster'a katıl: her seed node'a join isteği gönder.
+    pub async fn join(&self) {
+        info!(
+            node_id = %self.self_id,
+            addr = %self.self_address,
+            seeds = self.seeds.len(),
+            "Joining cluster"
+        );
+
+        // Kendi node'umuzu cluster'a ekle
+        let self_node = RemoteNode::new(
+            self.self_address.clone(),
+            vec![
+                NodeCapability::WasmExecution,
+                NodeCapability::WorkflowExecution,
+                NodeCapability::AgentExecution,
+            ],
+        );
+        self.cluster.register(self_node);
+
+        // Seed node'lara bildir
+        for seed in &self.seeds {
+            match self.probe(seed).await {
+                Ok(true) => {
+                    info!(seed = %seed, "Seed node reachable");
+                    // Seed'i cluster'a ekle
+                    let seed_node = RemoteNode::new(
+                        seed.clone(),
+                        vec![NodeCapability::WasmExecution],
+                    );
+                    self.cluster.register(seed_node);
+                }
+                Ok(false) => {
+                    warn!(seed = %seed, "Seed node unreachable");
+                }
+                Err(e) => {
+                    warn!(seed = %seed, error = %e, "Seed probe failed");
+                }
+            }
+        }
+
+        info!(
+            cluster_size = self.cluster.size(),
+            "Cluster join complete"
+        );
+    }
+
+    /// Cluster'dan temiz ayrıl.
+    pub async fn leave(&self) {
+        info!(
+            node_id = %self.self_id,
+            "Leaving cluster"
+        );
+        self.cluster.remove(&self.self_id);
+    }
+
+    /// Node canlı mı? GET /health endpoint'ini kontrol et.
+    pub async fn probe(
+        &self,
+        address: &str,
+    ) -> Result<bool, String> {
+        let url = format!("http://{}/health", address);
+
+        match self.client.get(&url).send().await {
+            Ok(resp) => Ok(resp.status().is_success()),
+            Err(e) => {
+                debug!(
+                    addr = %address,
+                    error = %e,
+                    "Probe failed"
+                );
+                Ok(false)
+            }
+        }
+    }
+
+    /// Periyodik discovery döngüsü.
+    /// Her `interval` saniyede bir seed'leri kontrol et.
+    pub fn start(
+        self: Arc<Self>,
+        interval_secs: u64,
+        mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) {
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(
+                Duration::from_secs(interval_secs),
+            );
+
+            loop {
+                tokio::select! {
+                    _ = ticker.tick() => {
+                        self.cluster.evict_stale_nodes();
+
+                        // Sağlıksız seed'leri yeniden dene
+                        for seed in &self.seeds {
+                            if let Ok(true) = self.probe(seed).await {
+                                if !self.cluster
+                                    .nodes()
+                                    .iter()
+                                    .any(|n| n.address == *seed)
+                                {
+                                    info!(seed = %seed, "Seed node recovered");
+                                    let node = RemoteNode::new(
+                                        seed.clone(),
+                                        vec![NodeCapability::WasmExecution],
+                                    );
+                                    self.cluster.register(node);
+                                }
+                            }
+                        }
+
+                        debug!(
+                            healthy = self.cluster.healthy_count(),
+                            total = self.cluster.size(),
+                            quorum = self.cluster.has_quorum(),
+                            "Discovery tick"
+                        );
+                    }
+
+                    _ = shutdown_rx.changed() => {
+                        self.leave().await;
+                        break;
+                    }
+                }
+            }
+        });
+    }
+}
+
+/// Basit static discovery — env/config dosyasından seed'ler.
+pub struct StaticDiscovery;
+
+impl StaticDiscovery {
+    /// AETHEROS_SEEDS="addr1:9000,addr2:9000,addr3:9000"
+    pub fn from_env() -> Vec<String> {
+        std::env::var("AETHEROS_SEEDS")
+            .unwrap_or_default()
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    }
+}
+
+// ── src/remote/node.rs ──
+// ============================================================
+// src/remote/node.rs
+//
+// Sprint 5: RemoteNode'a capabilities eklendi.
+// RemoteScheduler capability-aware seçim yapabilsin.
+// ============================================================
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum NodeHealth {
+    Healthy,
+    Degraded,
+    Unreachable,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum NodeCapability {
+    WasmExecution,
+    WorkflowExecution,
+    AgentExecution,
+    AiInference,
+    PluginExecution,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteNode {
+    pub node_id: Uuid,
+    pub address: String,
+    pub healthy: bool,
+    pub last_seen: DateTime<Utc>,
+    /// Node'un desteklediği execution türleri.
+    /// Scheduler bu listeye göre filtreleme yapar.
+    #[serde(default)]
+    pub capabilities: Vec<NodeCapability>,
+}
+
+impl RemoteNode {
+    pub fn new(
+        address: impl Into<String>,
+        capabilities: Vec<NodeCapability>,
+    ) -> Self {
+        Self {
+            node_id: Uuid::new_v4(),
+            address: address.into(),
+            healthy: true,
+            last_seen: Utc::now(),
+            capabilities,
+        }
+    }
+
+    pub fn touch(&mut self) {
+        self.last_seen = Utc::now();
+    }
+
+    pub fn mark_unhealthy(&mut self) {
+        self.healthy = false;
+    }
+}
+
+// ── src/remote/cluster.rs ──
+// ============================================================
+// src/remote/cluster.rs
+//
+// Sprint 10: Tam ClusterState
+//
+// ÖNCE: Sadece DashMap<Uuid, RemoteNode> — CRUD
+//
+// SONRA:
+//   - Node ekleme/çıkarma + heartbeat güncelleme
+//   - Stale node tespiti (30s timeout)
+//   - Cluster health hesaplama
+//   - Quorum kontrolü (n/2 + 1)
+//   - Leader bilgisi
+//   - Capability bazlı node filtreleme
+// ============================================================
+
+use std::collections::HashSet;
+use std::time::Duration;
+
+use chrono::Utc;
+use dashmap::DashMap;
+use tracing::{
+    info,
+    warn,
+};
+use uuid::Uuid;
+
+use crate::remote::cluster_health::ClusterHealth;
+use crate::remote::heartbeat::Heartbeat;
+use crate::remote::node::{
+    NodeCapability,
+    RemoteNode,
+};
+
+/// Node'un stale sayılacağı süre.
+const STALE_THRESHOLD: Duration = Duration::from_secs(30);
+
+pub struct ClusterState {
+    nodes: DashMap<Uuid, RemoteNode>,
+    heartbeats: DashMap<Uuid, Heartbeat>,
+    /// Mevcut leader (None = seçim bekleniyor)
+    leader: DashMap<&'static str, Uuid>,
+}
+
+impl ClusterState {
+    pub fn new() -> Self {
+        Self {
+            nodes: DashMap::new(),
+            heartbeats: DashMap::new(),
+            leader: DashMap::new(),
+        }
+    }
+
+    // ── Node Yönetimi ─────────────────────────────────────
+
+    pub fn register(&self, node: RemoteNode) {
+        info!(
+            node_id = %node.node_id,
+            addr = %node.address,
+            "Node registered"
+        );
+        self.nodes.insert(node.node_id, node);
+    }
+
+    pub fn remove(&self, node_id: &Uuid) {
+        if self.nodes.remove(node_id).is_some() {
+            self.heartbeats.remove(node_id);
+            warn!(node_id = %node_id, "Node removed from cluster");
+        }
+    
+        // Önce değeri al, sonra sil — deadlock önlenir
+        let is_leader = self.leader
+            .get("current")
+            .map(|l| *l == *node_id)
+            .unwrap_or(false);
+    
+        drop(self.leader.get("current")); // referansı serbest bırak
+    
+        if is_leader {
+            self.leader.remove("current");
+            warn!("Leader node removed — election needed");
+        }
+    }
+
+    pub fn update_heartbeat(&self, hb: Heartbeat) {
+        let node_id = hb.node_id;
+
+        // Node'un last_seen'ini güncelle
+        if let Some(mut node) = self.nodes.get_mut(&node_id) {
+            node.touch();
+            node.healthy = true;
+        }
+
+        self.heartbeats.insert(node_id, hb);
+    }
+
+    // ── Node Sorguları ────────────────────────────────────
+
+    pub fn nodes(&self) -> Vec<RemoteNode> {
+        self.nodes
+            .iter()
+            .map(|n| n.value().clone())
+            .collect()
+    }
+
+    pub fn healthy_nodes(&self) -> Vec<RemoteNode> {
+        let now = Utc::now();
+
+        self.nodes
+            .iter()
+            .filter(|n| {
+                n.healthy
+                    && (now - n.last_seen)
+                        .to_std()
+                        .unwrap_or(Duration::MAX)
+                        < STALE_THRESHOLD
+            })
+            .map(|n| n.value().clone())
+            .collect()
+    }
+
+    pub fn nodes_with_capability(
+        &self,
+        cap: &NodeCapability,
+    ) -> Vec<RemoteNode> {
+        self.healthy_nodes()
+            .into_iter()
+            .filter(|n| n.capabilities.contains(cap))
+            .collect()
+    }
+
+    pub fn node_ids(&self) -> HashSet<Uuid> {
+        self.nodes.iter().map(|n| *n.key()).collect()
+    }
+
+    pub fn get_node(&self, id: &Uuid) -> Option<RemoteNode> {
+        self.nodes.get(id).map(|n| n.clone())
+    }
+
+    pub fn heartbeat(&self, id: &Uuid) -> Option<Heartbeat> {
+        self.heartbeats.get(id).map(|h| h.clone())
+    }
+
+    pub fn all_heartbeats(&self) -> Vec<Heartbeat> {
+        self.heartbeats
+            .iter()
+            .map(|h| h.value().clone())
+            .collect()
+    }
+
+    // ── Stale Node Temizleme ──────────────────────────────
+
+    /// Stale node'ları unhealthy olarak işaretle.
+    /// Periyodik olarak çağrılmalı (health check loop).
+    pub fn evict_stale_nodes(&self) {
+        let now = Utc::now();
+
+        for mut node in self.nodes.iter_mut() {
+            let stale = (now - node.last_seen)
+                .to_std()
+                .unwrap_or(Duration::MAX)
+                > STALE_THRESHOLD;
+
+            if stale && node.healthy {
+                node.mark_unhealthy();
+                warn!(
+                    node_id = %node.node_id,
+                    addr = %node.address,
+                    "Node marked stale"
+                );
+            }
+        }
+    }
+
+    // ── Cluster Health ────────────────────────────────────
+
+    pub fn health(&self) -> ClusterHealth {
+        let total = self.nodes.len();
+        let healthy = self.healthy_nodes().len();
+
+        if total == 0 {
+            return ClusterHealth::Critical;
+        }
+
+        let ratio = healthy as f32 / total as f32;
+
+        if ratio >= 0.8 {
+            ClusterHealth::Healthy
+        } else if ratio >= 0.5 {
+            ClusterHealth::Degraded
+        } else {
+            ClusterHealth::Critical
+        }
+    }
+
+    // ── Quorum ────────────────────────────────────────────
+
+    /// n/2 + 1 quorum var mı?
+    pub fn has_quorum(&self) -> bool {
+        let total = self.nodes.len();
+        let healthy = self.healthy_nodes().len();
+        let required = total / 2 + 1;
+        healthy >= required
+    }
+
+    pub fn quorum_size(&self) -> usize {
+        self.nodes.len() / 2 + 1
+    }
+
+    // ── Leader ────────────────────────────────────────────
+
+    pub fn set_leader(&self, node_id: Uuid) {
+        info!(leader = %node_id, "Cluster leader set");
+        self.leader.insert("current", node_id);
+    }
+
+    pub fn leader(&self) -> Option<Uuid> {
+        self.leader.get("current").map(|l| *l)
+    }
+
+    pub fn is_leader(&self, node_id: &Uuid) -> bool {
+        self.leader()
+            .map(|l| l == *node_id)
+            .unwrap_or(false)
+    }
+
+    // ── Stats ─────────────────────────────────────────────
+
+    pub fn size(&self) -> usize {
+        self.nodes.len()
+    }
+
+    pub fn healthy_count(&self) -> usize {
+        self.healthy_nodes().len()
+    }
+}
+
+// ── src/remote/replication.rs ──
+use async_trait::async_trait;
+
+use crate::remote::cluster::ClusterState;
+
+#[async_trait]
+pub trait ClusterReplication:
+    Send + Sync
+{
+    async fn replicate(
+        &self,
+        cluster:
+            &ClusterState,
+    );
+
+    async fn synchronize(
+            &self,
+        );
+}
+
+// ── src/remote/security.rs ──
+use serde::{
+    Deserialize,
+    Serialize,
+};
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+)]
+pub struct TransportSecurity {
+    pub tls_enabled:
+        bool,
+
+    pub mutual_tls:
+        bool,
+
+    pub token_auth:
+        bool,
+}
+
+// ── src/remote/heartbeat.rs ──
+use chrono::{
+    DateTime,
+    Utc,
+};
+
+use serde::{
+    Deserialize,
+    Serialize,
+};
+
+use uuid::Uuid;
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+)]
+pub struct Heartbeat {
+    pub node_id: Uuid,
+
+    pub active_executions:
+            usize,
+    
+    pub memory_usage_mb:
+            usize,
+    
+    pub cpu_usage_percent:
+            f32,
+
+    pub load_average:
+                f32,        
+    
+    pub timestamp:
+        DateTime<Utc>,
+}
+
+// ── src/remote/scheduler.rs ──
+// ============================================================
+// src/remote/scheduler.rs
+//
+// Sprint 5: Tam RemoteScheduler
+//
+// ÖNCE: İlk healthy node'u seç (naif, load-unaware)
+//
+// SONRA:
+//   - Capability filtering (WasmExecution, AgentExecution vb.)
+//   - Load-balanced seçim (aktif execution sayısına göre)
+//   - Heartbeat tabanlı freshness kontrolü (30s)
+//   - Fallback: tüm node'lar dolu → None
+// ============================================================
+
+use std::time::Duration;
+
+use chrono::Utc;
+use uuid::Uuid;
+
+use crate::remote::heartbeat::Heartbeat;
+use crate::remote::node::{
+    NodeCapability,
+    RemoteNode,
+};
+
+/// Node seçim sonucu.
+#[derive(Debug)]
+pub struct NodeSelection {
+    pub node_id: Uuid,
+    pub address: String,
+    pub load_score: f32,
+}
+
+pub struct RemoteScheduler;
+
+impl RemoteScheduler {
+    /// Capability'e göre uygun, en az yüklü node'u seç.
+    ///
+    /// Algoritma:
+    ///   1. healthy == true filtrele
+    ///   2. last_seen < 30s (stale node'ları ele)
+    ///   3. İstenen capability'e sahip node'ları filtrele
+    ///   4. Heartbeat'e göre load_score hesapla
+    ///   5. En düşük score'lu node'u seç
+    pub fn select_node(
+        nodes: &[RemoteNode],
+        required_capability: &NodeCapability,
+        heartbeats: &[Heartbeat],
+    ) -> Option<NodeSelection> {
+        let now = Utc::now();
+        let freshness_limit = Duration::from_secs(30);
+
+        // Sağlıklı + güncel + capability'e sahip node'lar
+        let candidates: Vec<&RemoteNode> = nodes
+            .iter()
+            .filter(|n| {
+                n.healthy
+                    && (now - n.last_seen)
+                        .to_std()
+                        .unwrap_or(Duration::MAX)
+                        < freshness_limit
+                    && n.capabilities.contains(
+                        required_capability,
+                    )
+            })
+            .collect();
+
+        if candidates.is_empty() {
+            return None;
+        }
+
+        // Her candidate için load score hesapla
+        let mut best: Option<(f32, &RemoteNode)> = None;
+
+        for node in candidates {
+            let score = Self::load_score(
+                node.node_id,
+                heartbeats,
+            );
+
+            match best {
+                None => best = Some((score, node)),
+                Some((best_score, _))
+                    if score < best_score =>
+                {
+                    best = Some((score, node));
+                }
+                _ => {}
+            }
+        }
+
+        best.map(|(score, node)| NodeSelection {
+            node_id: node.node_id,
+            address: node.address.clone(),
+            load_score: score,
+        })
+    }
+
+    /// Basit seçim (geriye uyumluluk).
+    pub fn select_any(nodes: &[RemoteNode]) -> Option<Uuid> {
+        nodes
+            .iter()
+            .find(|n| n.healthy)
+            .map(|n| n.node_id)
+    }
+
+    /// Load score: düşük = az yük = tercih edilir.
+    /// cpu * 0.5 + memory_norm * 0.3 + active_exec_norm * 0.2
+    fn load_score(
+        node_id: Uuid,
+        heartbeats: &[Heartbeat],
+    ) -> f32 {
+        let hb = heartbeats
+            .iter()
+            .find(|h| h.node_id == node_id);
+
+        match hb {
+            None => f32::MAX, // Heartbeat yok → en düşük öncelik
+            Some(h) => {
+                let cpu_score = h.cpu_usage_percent / 100.0;
+                let mem_score =
+                    (h.memory_usage_mb as f32) / 16_384.0; // 16GB norm
+                let exec_score =
+                    (h.active_executions as f32) / 100.0;
+
+                cpu_score * 0.5
+                    + mem_score * 0.3
+                    + exec_score * 0.2
+            }
+        }
+    }
+}
+
+// ── src/remote/cluster_health.rs ──
+use serde::{
+    Deserialize,
+    Serialize,
+};
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+)]
+pub enum ClusterHealth {
+    Healthy,
+    Degraded,
+    Critical,
+}
+
+// ── src/remote/transport.rs ──
+// ============================================================
+// src/remote/transport.rs
+//
+// Sprint 10: HTTP tabanlı RemoteTransport implementasyonu
+//
+// ÖNCE: trait tanımı, implementasyon yok
+//
+// SONRA: HttpTransport
+//   send()      → tek node'a POST /remote/command
+//   broadcast() → tüm cluster node'larına paralel send()
+//   fire_and_forget: hata loglana, panic yok
+// ============================================================
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use async_trait::async_trait;
+use tracing::{
+    debug,
+    warn,
+};
+
+use crate::remote::cluster::ClusterState;
+use crate::remote::protocol::RemoteCommand;
+
+#[async_trait]
+pub trait RemoteTransport: Send + Sync {
+    async fn send(&self, command: RemoteCommand);
+    async fn broadcast(&self, command: RemoteCommand);
+}
+
+pub struct HttpTransport {
+    cluster: Arc<ClusterState>,
+    client: reqwest::Client,
+}
+
+impl HttpTransport {
+    pub fn new(cluster: Arc<ClusterState>) -> Self {
+        Self {
+            cluster,
+            client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(10))
+                .build()
+                .unwrap_or_default(),
+        }
+    }
+
+    /// Belirli adrese komut gönder.
+    async fn send_to(
+        &self,
+        address: &str,
+        command: &RemoteCommand,
+    ) -> bool {
+        let url =
+            format!("http://{}/remote/command", address);
+
+        match self
+            .client
+            .post(&url)
+            .json(command)
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                debug!(
+                    addr = %address,
+                    cmd = ?command,
+                    "Command delivered"
+                );
+                true
+            }
+            Ok(resp) => {
+                warn!(
+                    addr = %address,
+                    status = %resp.status(),
+                    "Command rejected by node"
+                );
+                false
+            }
+            Err(e) => {
+                warn!(
+                    addr = %address,
+                    error = %e,
+                    "Failed to send command"
+                );
+                false
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl RemoteTransport for HttpTransport {
+    /// En uygun (en düşük yüklü) node'a gönder.
+    async fn send(&self, command: RemoteCommand) {
+        let heartbeats = self.cluster.all_heartbeats();
+
+        // Scheduler'dan en uygun node'u al
+        let nodes = self.cluster.healthy_nodes();
+        if nodes.is_empty() {
+            warn!("No healthy nodes to send command");
+            return;
+        }
+
+        // En düşük yüklü node (heartbeat yoksa ilk healthy)
+        let target = heartbeats
+            .iter()
+            .filter_map(|hb| {
+                nodes
+                    .iter()
+                    .find(|n| n.node_id == hb.node_id)
+                    .map(|n| (hb.cpu_usage_percent, n))
+            })
+            .min_by(|a, b| {
+                a.0.partial_cmp(&b.0)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .map(|(_, n)| n)
+            .unwrap_or(&nodes[0]);
+
+        self.send_to(&target.address, &command).await;
+    }
+
+    /// Tüm healthy node'lara paralel gönder.
+    async fn broadcast(&self, command: RemoteCommand) {
+        let nodes = self.cluster.healthy_nodes();
+
+        if nodes.is_empty() {
+            warn!("No healthy nodes to broadcast");
+            return;
+        }
+
+        let client = self.client.clone();
+        let mut handles = Vec::new();
+
+        for node in nodes {
+            let cmd = command.clone();
+            let addr = node.address.clone();
+            let c = client.clone();
+
+            handles.push(tokio::spawn(async move {
+                let url =
+                    format!("http://{}/remote/command", addr);
+                let _ = c.post(&url).json(&cmd).send().await;
+            }));
+        }
+
+        // Tüm broadcast'lerin tamamlanmasını bekle
+        futures::future::join_all(handles).await;
+    }
+}
+
+// ── src/remote/leasing.rs ──
+use chrono::{
+    DateTime,
+    Utc,
+};
+
+use serde::{
+    Deserialize,
+    Serialize,
+};
+
+use uuid::Uuid;
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+)]
+pub struct TaskLease {
+    pub lease_id: Uuid,
+
+    pub execution_id:
+        Uuid,
+
+    pub node_id: Uuid,
+
+    pub expires_at:
+        DateTime<Utc>,
+
+    pub workflow_id:
+        Option<Uuid>,
+}
+
+// ── src/remote/mod.rs ──
+pub mod cluster;
+pub mod discovery;
+pub mod heartbeat;
+pub mod leasing;
+pub mod node;
+pub mod protocol;
+pub mod replication;
+pub mod scheduler;
+pub mod security;
+pub mod transport;
+pub mod cluster_health;
+

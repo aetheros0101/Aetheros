@@ -1,0 +1,118 @@
+{
+  "layers": {
+    "api": 2,
+    "root": 0,
+    "screens": 1,
+    "services": 2,
+    "src": 3,
+    "widgets": 0
+  },
+  "modules": {
+    "api": {
+      "depends_on": [
+        "src"
+      ],
+      "depended_by": [
+        "screens"
+      ],
+      "transitive": 1,
+      "loc": 84,
+      "files": 1
+    },
+    "root": {
+      "depends_on": [
+        "screens",
+        "src"
+      ],
+      "depended_by": [],
+      "transitive": 4,
+      "loc": 116,
+      "files": 1
+    },
+    "screens": {
+      "depends_on": [
+        "api",
+        "services",
+        "src"
+      ],
+      "depended_by": [
+        "root"
+      ],
+      "transitive": 3,
+      "loc": 3830,
+      "files": 10
+    },
+    "services": {
+      "depends_on": [],
+      "depended_by": [
+        "screens"
+      ],
+      "transitive": 0,
+      "loc": 204,
+      "files": 1
+    },
+    "src": {
+      "depends_on": [],
+      "depended_by": [
+        "api",
+        "root",
+        "screens"
+      ],
+      "transitive": 0,
+      "loc": 2353,
+      "files": 10
+    },
+    "widgets": {
+      "depends_on": [],
+      "depended_by": [],
+      "transitive": 0,
+      "loc": 0,
+      "files": 0
+    }
+  },
+  "cycles": [],
+  "summary": [
+    {
+      "name": "src",
+      "layer": 3,
+      "loc": 2353,
+      "fan_in": 3,
+      "fan_out": 0
+    },
+    {
+      "name": "api",
+      "layer": 2,
+      "loc": 84,
+      "fan_in": 1,
+      "fan_out": 1
+    },
+    {
+      "name": "screens",
+      "layer": 1,
+      "loc": 3830,
+      "fan_in": 1,
+      "fan_out": 3
+    },
+    {
+      "name": "services",
+      "layer": 2,
+      "loc": 204,
+      "fan_in": 1,
+      "fan_out": 0
+    },
+    {
+      "name": "root",
+      "layer": 0,
+      "loc": 116,
+      "fan_in": 0,
+      "fan_out": 2
+    },
+    {
+      "name": "widgets",
+      "layer": 0,
+      "loc": 0,
+      "fan_in": 0,
+      "fan_out": 0
+    }
+  ]
+}

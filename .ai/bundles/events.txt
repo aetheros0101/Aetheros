@@ -1,0 +1,197 @@
+# BUNDLE: events
+# Includes: events, types
+
+// ── src/events/task.rs ──
+use serde::{Deserialize, Serialize};
+
+use crate::types::ids::TaskId;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TaskEvent {
+    TaskQueued {
+        task_id: TaskId,
+    },
+
+    TaskStarted {
+        task_id: TaskId,
+    },
+
+    TaskCompleted {
+        task_id: TaskId,
+    },
+
+    TaskFailed {
+        task_id: TaskId,
+    },
+
+    TaskCancelled {
+        task_id: TaskId,
+    },
+
+    TaskRetrying {
+        task_id: TaskId,
+        attempt: u32,
+     },
+ 
+    TaskRetried {
+        task_id: TaskId,
+        attempt: u32,
+    },
+}
+
+// ── src/events/telemetry.rs ──
+use serde::{
+    Deserialize,
+    Serialize,
+};
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+)]
+pub enum TelemetryEvent {
+    RuntimeMetric {
+        name: String,
+        value: f64,
+    },
+
+    TaskMetric {
+        task_id: String,
+        metric: String,
+        value: f64,
+    },
+
+    WorkerMetric {
+        worker_id: String,
+        metric: String,
+        value: f64,
+    },
+
+    PersistenceMetric {
+        operation: String,
+        latency_ms: u64,
+    },
+}
+
+// ── src/events/mod.rs ──
+pub mod bus;
+pub mod runtime;
+pub mod worker;
+pub mod task;
+pub mod telemetry;
+
+// ── src/events/worker.rs ──
+use serde::{Deserialize, Serialize};
+
+use crate::types::ids::WorkerId;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WorkerEvent {
+    WorkerStarted {
+        worker_id: WorkerId,
+    },
+
+    WorkerStopped {
+        worker_id: WorkerId,
+    },
+}
+
+// ── src/events/bus.rs ──
+use tokio::sync::broadcast;
+
+use crate::events::runtime::RuntimeEvent;
+use crate::events::task::TaskEvent;
+use crate::events::telemetry::TelemetryEvent;
+use crate::events::worker::WorkerEvent;
+
+#[derive(Debug, Clone)]
+pub enum SystemEvent {
+    Runtime(RuntimeEvent),
+    Task(TaskEvent),
+    Worker(WorkerEvent),
+    Telemetry(TelemetryEvent),
+}
+
+#[derive(Clone)]
+pub struct EventBus {
+    sender: broadcast::Sender<SystemEvent>,
+}
+
+impl EventBus {
+    pub fn new(
+        capacity: usize,
+    ) -> Self {
+        let (sender, _) =
+            broadcast::channel(capacity);
+
+        Self { sender }
+    }
+
+    pub fn publish(
+        &self,
+        event: SystemEvent,
+    ) {
+        let _ = self.sender.send(event);
+    }
+
+    pub fn subscribe(
+        &self,
+    ) -> broadcast::Receiver<SystemEvent> {
+        self.sender.subscribe()
+    }
+}
+
+// ── src/events/runtime.rs ──
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RuntimeEvent {
+    RuntimeStarted,
+    RuntimeStopped,
+}
+
+// ── src/types/timestamps.rs ──
+use chrono::{DateTime, Utc};
+
+pub type Timestamp = DateTime<Utc>;
+
+// ── src/types/ids.rs ──
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct RuntimeId(pub Uuid);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct WorkerId(pub Uuid);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TaskId(pub Uuid);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ExecutionId(pub Uuid);
+
+// ── src/types/shared.rs ──
+use serde::{
+    Deserialize,
+    Serialize,
+};
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+)]
+pub struct Versioned<T> {
+    pub version: u64,
+    pub value: T,
+}
+
+// ── src/types/mod.rs ──
+pub mod ids;
+pub mod shared;
+pub mod timestamps;
+

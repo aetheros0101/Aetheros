@@ -76,6 +76,43 @@ class AetherApi {
     return rust.uploadWasmModule(bytes: bytes);
   }
 
+  /// Modülün runtime'da hazır olup olmadığını kontrol et.
+  ///
+  /// Fix #1 sonrası startup'ta sled'den yüklenir.
+  /// Yine de eski oturumdan kalan meta-data'yı doğrulamak için
+  /// WasmModuleScreen açılışında her modül için çağrılır.
+  static Future<bool> checkModuleExists(String hashHex) async {
+    return rust.checkModuleExists(hashHex: hashHex);
+  }
+
+  /// Mevcut bir task'ı yeni UUID ile yeniden kuyruğa ekle.
+  ///
+  /// "Yeniden Dene" butonu için — orijinal ayarlar (hash,
+  /// entrypoint, priority) korunur, sadece id yenilenir.
+  static Future<String> resubmitTask(String taskId) async {
+    return rust.resubmitTask(taskId: taskId);
+  }
+
+  // ── Log izleme ─────────────────────────────────────────
+
+  /// Son `limit` kadar log entry döndür (yeniden eskiye).
+  ///
+  /// LogScreen 2 saniyede bir bu fonksiyonu polling ile çeker.
+  /// limit: 0 → varsayılan 100.
+  static Future<List<rust.LogEntry>> getRecentLogs({int limit = 100}) async {
+    return rust.getRecentLogs(limit: limit);
+  }
+
+  /// Belirli bir task'a ait log entry'leri döndür.
+  ///
+  /// Task detay modalındaki "Loglar" sekmesi için.
+  static Future<List<rust.LogEntry>> getTaskLogs(
+    String taskId, {
+    int limit = 50,
+  }) async {
+    return rust.getTaskLogs(taskId: taskId, limit: limit);
+  }
+
   // ── Metrikler ──────────────────────────────────────────
 
   static Future<rust.MetricsSnapshot> getMetrics() async {

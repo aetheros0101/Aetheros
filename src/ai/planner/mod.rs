@@ -1,10 +1,12 @@
+//src/ai/planner/mod.rs
+
 pub mod plan;
 
 use async_trait::async_trait;
 
 use crate::ai::errors::AiError;
 
-use crate::agents::plans::AgentPlan;
+use crate::types::agent_plan::AgentPlan;
 
 use uuid::Uuid;
 

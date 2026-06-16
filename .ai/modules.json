@@ -1,0 +1,98 @@
+{
+  "agents": {
+    "path": "/home/dev/project/aetheros/src/agents",
+    "files": 22
+  },
+  "ai": {
+    "path": "/home/dev/project/aetheros/src/ai",
+    "files": 42
+  },
+  "api": {
+    "path": "/home/dev/project/aetheros/src/api",
+    "files": 17
+  },
+  "bridge": {
+    "path": "/home/dev/project/aetheros/src/bridge",
+    "files": 4
+  },
+  "config": {
+    "path": "/home/dev/project/aetheros/src/config",
+    "files": 1
+  },
+  "errors": {
+    "path": "/home/dev/project/aetheros/src/errors",
+    "files": 5
+  },
+  "events": {
+    "path": "/home/dev/project/aetheros/src/events",
+    "files": 6
+  },
+  "logging": {
+    "path": "/home/dev/project/aetheros/src/logging",
+    "files": 15
+  },
+  "metrics": {
+    "path": "/home/dev/project/aetheros/src/metrics",
+    "files": 4
+  },
+  "orchestration": {
+    "path": "/home/dev/project/aetheros/src/orchestration",
+    "files": 41
+  },
+  "persistence": {
+    "path": "/home/dev/project/aetheros/src/persistence",
+    "files": 5
+  },
+  "plugins": {
+    "path": "/home/dev/project/aetheros/src/plugins",
+    "files": 9
+  },
+  "registry": {
+    "path": "/home/dev/project/aetheros/src/registry",
+    "files": 4
+  },
+  "remote": {
+    "path": "/home/dev/project/aetheros/src/remote",
+    "files": 12
+  },
+  "runtime": {
+    "path": "/home/dev/project/aetheros/src/runtime",
+    "files": 10
+  },
+  "scripting": {
+    "path": "/home/dev/project/aetheros/src/scripting",
+    "files": 6
+  },
+  "sdk": {
+    "path": "/home/dev/project/aetheros/src/sdk",
+    "files": 5
+  },
+  "security": {
+    "path": "/home/dev/project/aetheros/src/security",
+    "files": 15
+  },
+  "task": {
+    "path": "/home/dev/project/aetheros/src/task",
+    "files": 11
+  },
+  "tests": {
+    "path": "/home/dev/project/aetheros/src/tests",
+    "files": 17
+  },
+  "types": {
+    "path": "/home/dev/project/aetheros/src/types",
+    "files": 4
+  },
+  "wasm": {
+    "path": "/home/dev/project/aetheros/src/wasm",
+    "files": 12
+  },
+  "worker": {
+    "path": "/home/dev/project/aetheros/src/worker",
+    "files": 8
+  },
+  "workflows": {
+    "path": "/home/dev/project/aetheros/src/workflows",
+    "files": 27
+  }
+}

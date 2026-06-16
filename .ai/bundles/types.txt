@@ -1,0 +1,46 @@
+# BUNDLE: types
+# Includes: types
+
+// ── src/types/timestamps.rs ──
+use chrono::{DateTime, Utc};
+
+pub type Timestamp = DateTime<Utc>;
+
+// ── src/types/ids.rs ──
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct RuntimeId(pub Uuid);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct WorkerId(pub Uuid);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TaskId(pub Uuid);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ExecutionId(pub Uuid);
+
+// ── src/types/shared.rs ──
+use serde::{
+    Deserialize,
+    Serialize,
+};
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+)]
+pub struct Versioned<T> {
+    pub version: u64,
+    pub value: T,
+}
+
+// ── src/types/mod.rs ──
+pub mod ids;
+pub mod shared;
+pub mod timestamps;
+

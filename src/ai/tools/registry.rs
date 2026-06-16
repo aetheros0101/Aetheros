@@ -1,8 +1,10 @@
+//src/ai/tools/registry.rs
+
 use std::sync::Arc;
 
 use dashmap::DashMap;
 
-use crate::agents::tools::AgentTool;
+use crate::types::agent_tool::AgentTool;
 
 pub struct ToolRegistry {
     tools:
