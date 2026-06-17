@@ -28,7 +28,7 @@ class LogScreen extends StatefulWidget {
 }
 
 class _LogScreenState extends State<LogScreen> {
-  List<rust.LogEntry> _all     = [];
+  List<rust.LogRecord> _all     = [];
   String _levelFilter          = 'Tümü'; // Tümü | INFO | WARN | ERROR
   String _taskSearch           = '';
   bool   _autoScroll           = true;
@@ -78,7 +78,7 @@ class _LogScreenState extends State<LogScreen> {
     }
   }
 
-  List<rust.LogEntry> get _filtered {
+  List<rust.LogRecord> get _filtered {
     if (_hidden) return [];
     return _all.where((e) {
       if (_levelFilter != 'Tümü' && e.level != _levelFilter) return false;
@@ -300,7 +300,7 @@ class _LevelChip extends StatelessWidget {
 // ── Tek log satırı ────────────────────────────────────────
 
 class _LogRow extends StatelessWidget {
-  final rust.LogEntry entry;
+  final rust.LogRecord entry;
   final void Function(String) onCopyTaskId;
   const _LogRow({required this.entry, required this.onCopyTaskId});
 

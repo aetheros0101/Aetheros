@@ -92,13 +92,15 @@ pub struct ModuleUploadResponse {
 // ── Log entry (Dart'a açık) ───────────────────────────────
 //
 // logging::buffer::LogEntry'nin FRB-uyumlu karşılığı.
-// O tip pub(crate) ve &'static str alanları taşıyor — FRB
-// bunu doğrudan export edemez. Bu yüzden String alanlarla
-// ayrı bir tip burada tanımlanıyor; bridge/api.rs ikisi
-// arasında dönüşüm yapıyor (bkz. to_bridge_log_entry).
+// Adı bilerek "LogEntry" DEĞİL "LogRecord" — FRB tip taraması
+// bare-name (tam path'siz) çalışıyor; iki ayrı modülde aynı
+// isimli tip olunca (bridge::types::LogEntry vs
+// logging::buffer::LogEntry) FRB rastgele/yanlış olanını
+// SseEncode ile bağlıyor ve Dart tarafı kırılıyor. Bu yüzden
+// burada kasıtlı olarak farklı bir isim kullanılıyor.
 
 #[frb(dart_metadata = ("freezed"))]
-pub struct LogEntry {
+pub struct LogRecord {
     /// Unix ms
     pub timestamp_ms: i64,
     /// "INFO" | "WARN" | "ERROR"

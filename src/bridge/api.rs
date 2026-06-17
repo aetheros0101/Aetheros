@@ -22,7 +22,7 @@ use tracing::info;
 
 use crate::bridge::state::{get_runtime, init_mobile_runtime};
 use crate::bridge::types::{
-    LogEntry, MetricsSnapshot, ModuleUploadResponse,
+    LogRecord, MetricsSnapshot, ModuleUploadResponse,
     RuntimeInfo, TaskRequest, TaskStatusResponse,
 };
 use crate::task::priority::TaskPriority;
@@ -377,7 +377,7 @@ pub async fn resubmit_task(task_id: String) -> Result<String, String> {
 ///
 /// LogScreen 2 saniyede bir bu fonksiyonu polling ile çeker.
 /// limit: 0 → varsayılan 100.
-pub fn get_recent_logs(limit: u32) -> Result<Vec<LogEntry>, String> {
+pub fn get_recent_logs(limit: u32) -> Result<Vec<LogRecord>, String> {
     let rt = get_runtime()
         .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
@@ -395,7 +395,7 @@ pub fn get_recent_logs(limit: u32) -> Result<Vec<LogEntry>, String> {
 ///
 /// Task detay modalındaki "Loglar" sekmesi için.
 /// limit: 0 → varsayılan 50.
-pub fn get_task_logs(task_id: String, limit: u32) -> Result<Vec<LogEntry>, String> {
+pub fn get_task_logs(task_id: String, limit: u32) -> Result<Vec<LogRecord>, String> {
     let rt = get_runtime()
         .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
@@ -410,9 +410,9 @@ pub fn get_task_logs(task_id: String, limit: u32) -> Result<Vec<LogEntry>, Strin
 }
 
 /// logging::buffer::LogEntry (pub(crate), &'static str alanlı) →
-/// bridge::types::LogEntry (pub, String alanlı, FRB-export edilebilir).
-fn to_bridge_log_entry(e: crate::logging::buffer::LogEntry) -> LogEntry {
-    LogEntry {
+/// bridge::types::LogRecord (pub, String alanlı, FRB-export edilebilir).
+fn to_bridge_log_entry(e: crate::logging::buffer::LogEntry) -> LogRecord {
+    LogRecord {
         timestamp_ms: e.timestamp_ms,
         level: e.level.to_string(),
         task_id: e.task_id,

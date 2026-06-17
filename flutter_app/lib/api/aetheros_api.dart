@@ -99,14 +99,14 @@ class AetherApi {
   ///
   /// LogScreen 2 saniyede bir bu fonksiyonu polling ile çeker.
   /// limit: 0 → varsayılan 100.
-  static Future<List<rust.LogEntry>> getRecentLogs({int limit = 100}) async {
+  static Future<List<rust.LogRecord>> getRecentLogs({int limit = 100}) async {
     return rust.getRecentLogs(limit: limit);
   }
 
   /// Belirli bir task'a ait log entry'leri döndür.
   ///
   /// Task detay modalındaki "Loglar" sekmesi için.
-  static Future<List<rust.LogEntry>> getTaskLogs(
+  static Future<List<rust.LogRecord>> getTaskLogs(
     String taskId, {
     int limit = 50,
   }) async {
