@@ -1,6 +1,7 @@
 pub mod aggregation;
 pub mod ai;
 pub mod audit;
+pub mod buffer;
 pub mod correlation;
 pub mod lineage;
 pub mod metrics;

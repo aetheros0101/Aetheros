@@ -1,25 +1,25 @@
 {
   "agents": {
-    "files": 69,
-    "bytes": 52643,
+    "files": 75,
+    "bytes": 54830,
     "includes": [
       "agents",
       "ai",
-      "errors"
+      "errors",
+      "types"
     ]
   },
   "ai": {
-    "files": 69,
-    "bytes": 52639,
+    "files": 48,
+    "bytes": 29886,
     "includes": [
-      "agents",
       "ai",
-      "errors"
+      "types"
     ]
   },
   "api": {
-    "files": 264,
-    "bytes": 418426,
+    "files": 243,
+    "bytes": 316268,
     "includes": [
       "agents",
       "ai",
@@ -31,7 +31,6 @@
       "persistence",
       "remote",
       "runtime",
-      "scripting",
       "security",
       "task",
       "tests",
@@ -42,28 +41,20 @@
     ]
   },
   "bridge": {
-    "files": 268,
-    "bytes": 439541,
+    "files": 71,
+    "bytes": 136482,
     "includes": [
-      "agents",
-      "ai",
-      "api",
       "bridge",
       "errors",
       "events",
       "metrics",
-      "orchestration",
       "persistence",
-      "remote",
       "runtime",
-      "scripting",
-      "security",
       "task",
       "tests",
       "types",
       "wasm",
-      "worker",
-      "workflows"
+      "worker"
     ]
   },
   "config": {
@@ -81,30 +72,26 @@
     ]
   },
   "events": {
-    "files": 10,
-    "bytes": 3577,
+    "files": 12,
+    "bytes": 4829,
     "includes": [
       "events",
       "types"
     ]
   },
   "logging": {
-    "files": 279,
-    "bytes": 432313,
+    "files": 222,
+    "bytes": 274295,
     "includes": [
       "agents",
       "ai",
-      "api",
       "errors",
       "events",
       "logging",
-      "metrics",
       "orchestration",
       "persistence",
       "remote",
       "runtime",
-      "scripting",
-      "security",
       "task",
       "tests",
       "types",
@@ -114,8 +101,8 @@
     ]
   },
   "metrics": {
-    "files": 14,
-    "bytes": 10180,
+    "files": 16,
+    "bytes": 11432,
     "includes": [
       "events",
       "metrics",
@@ -123,21 +110,17 @@
     ]
   },
   "orchestration": {
-    "files": 264,
-    "bytes": 418436,
+    "files": 207,
+    "bytes": 260418,
     "includes": [
       "agents",
       "ai",
-      "api",
       "errors",
       "events",
-      "metrics",
       "orchestration",
       "persistence",
       "remote",
       "runtime",
-      "scripting",
-      "security",
       "task",
       "tests",
       "types",
@@ -147,27 +130,15 @@
     ]
   },
   "persistence": {
-    "files": 264,
-    "bytes": 418434,
+    "files": 39,
+    "bytes": 60702,
     "includes": [
-      "agents",
-      "ai",
-      "api",
       "errors",
-      "events",
-      "metrics",
-      "orchestration",
       "persistence",
-      "remote",
-      "runtime",
-      "scripting",
-      "security",
       "task",
       "tests",
       "types",
-      "wasm",
-      "worker",
-      "workflows"
+      "wasm"
     ]
   },
   "plugins": {
@@ -178,28 +149,18 @@
     ]
   },
   "registry": {
-    "files": 268,
-    "bytes": 422537,
+    "files": 57,
+    "bytes": 91290,
     "includes": [
-      "agents",
-      "ai",
-      "api",
       "errors",
       "events",
-      "metrics",
-      "orchestration",
       "persistence",
       "registry",
-      "remote",
-      "runtime",
-      "scripting",
-      "security",
       "task",
       "tests",
       "types",
       "wasm",
-      "worker",
-      "workflows"
+      "worker"
     ]
   },
   "remote": {
@@ -210,51 +171,32 @@
     ]
   },
   "runtime": {
-    "files": 264,
-    "bytes": 418430,
+    "files": 63,
+    "bytes": 108769,
     "includes": [
-      "agents",
-      "ai",
-      "api",
       "errors",
       "events",
-      "metrics",
-      "orchestration",
       "persistence",
-      "remote",
       "runtime",
-      "scripting",
-      "security",
       "task",
       "tests",
       "types",
       "wasm",
-      "worker",
-      "workflows"
+      "worker"
     ]
   },
   "scripting": {
-    "files": 264,
-    "bytes": 418432,
+    "files": 104,
+    "bytes": 112028,
     "includes": [
       "agents",
       "ai",
-      "api",
       "errors",
-      "events",
-      "metrics",
-      "orchestration",
-      "persistence",
-      "remote",
-      "runtime",
       "scripting",
-      "security",
       "task",
       "tests",
       "types",
-      "wasm",
-      "worker",
-      "workflows"
+      "wasm"
     ]
   },
   "sdk": {
@@ -272,124 +214,60 @@
     ]
   },
   "task": {
-    "files": 264,
-    "bytes": 418427,
+    "files": 34,
+    "bytes": 51852,
     "includes": [
-      "agents",
-      "ai",
-      "api",
       "errors",
-      "events",
-      "metrics",
-      "orchestration",
-      "persistence",
-      "remote",
-      "runtime",
-      "scripting",
-      "security",
       "task",
       "tests",
       "types",
-      "wasm",
-      "worker",
-      "workflows"
-    ]
-  },
-  "tests": {
-    "files": 264,
-    "bytes": 418428,
-    "includes": [
-      "agents",
-      "ai",
-      "api",
-      "errors",
-      "events",
-      "metrics",
-      "orchestration",
-      "persistence",
-      "remote",
-      "runtime",
-      "scripting",
-      "security",
-      "task",
-      "tests",
-      "types",
-      "wasm",
-      "worker",
-      "workflows"
+      "wasm"
     ]
   },
   "types": {
-    "files": 4,
-    "bytes": 967,
+    "files": 6,
+    "bytes": 2219,
     "includes": [
       "types"
     ]
   },
   "wasm": {
-    "files": 264,
-    "bytes": 418427,
+    "files": 34,
+    "bytes": 51852,
     "includes": [
-      "agents",
-      "ai",
-      "api",
       "errors",
-      "events",
-      "metrics",
-      "orchestration",
-      "persistence",
-      "remote",
-      "runtime",
-      "scripting",
-      "security",
       "task",
       "tests",
       "types",
-      "wasm",
-      "worker",
-      "workflows"
+      "wasm"
     ]
   },
   "worker": {
-    "files": 264,
-    "bytes": 418429,
+    "files": 53,
+    "bytes": 87182,
     "includes": [
-      "agents",
-      "ai",
-      "api",
       "errors",
       "events",
-      "metrics",
-      "orchestration",
       "persistence",
-      "remote",
-      "runtime",
-      "scripting",
-      "security",
       "task",
       "tests",
       "types",
       "wasm",
-      "worker",
-      "workflows"
+      "worker"
     ]
   },
   "workflows": {
-    "files": 264,
-    "bytes": 418432,
+    "files": 207,
+    "bytes": 260414,
     "includes": [
       "agents",
       "ai",
-      "api",
       "errors",
       "events",
-      "metrics",
       "orchestration",
       "persistence",
       "remote",
       "runtime",
-      "scripting",
-      "security",
       "task",
       "tests",
       "types",

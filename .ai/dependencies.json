@@ -1,10 +1,11 @@
 {
   "agents": [
     "ai",
-    "errors"
+    "errors",
+    "types"
   ],
   "ai": [
-    "agents"
+    "types"
   ],
   "api": [
     "agents",
@@ -73,22 +74,6 @@
     "tests",
     "types",
     "wasm"
-  ],
-  "tests": [
-    "api",
-    "errors",
-    "events",
-    "metrics",
-    "orchestration",
-    "persistence",
-    "remote",
-    "runtime",
-    "scripting",
-    "security",
-    "task",
-    "types",
-    "wasm",
-    "workflows"
   ],
   "wasm": [
     "errors",

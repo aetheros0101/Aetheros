@@ -31,18 +31,6 @@
         }
       ]
     },
-    "flutter_app/lib/screens/aetheros_api.dart": {
-      "module_doc": null,
-      "types": [
-        {
-          "kind": "class",
-          "name": "AetherApi",
-          "signature": "class AetherApi",
-          "doc": null,
-          "is_public": true
-        }
-      ]
-    },
     "flutter_app/lib/screens/ai_chat_screen.dart": {
       "module_doc": null,
       "types": [
@@ -794,5 +782,5 @@
       ]
     }
   },
-  "total_types": 97
+  "total_types": 96
 }

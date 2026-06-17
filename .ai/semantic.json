@@ -2,14 +2,14 @@
   "modules": {
     "agents": {
       "purpose": null,
-      "layer": 0,
-      "loc": 963,
+      "layer": 1,
+      "loc": 917,
       "depends_on": [
         "ai",
-        "errors"
+        "errors",
+        "types"
       ],
       "depended_by": [
-        "ai",
         "api",
         "scripting",
         "workflows"
@@ -53,16 +53,6 @@
         {
           "kind": "method",
           "signature": "impl AgentRegistry :: fn agents(& self) -> & [RegisteredAgent]",
-          "doc": null
-        },
-        {
-          "kind": "struct",
-          "signature": "pub struct AgentPlan",
-          "doc": null
-        },
-        {
-          "kind": "struct",
-          "signature": "pub struct AgentPlanStep",
           "doc": null
         },
         {
@@ -133,11 +123,6 @@
         {
           "kind": "method",
           "signature": "impl AgentMemory :: fn is_empty(& self) -> bool",
-          "doc": null
-        },
-        {
-          "kind": "trait",
-          "signature": "pub trait AgentTool",
           "doc": null
         },
         {
@@ -250,9 +235,9 @@
     "ai": {
       "purpose": null,
       "layer": 0,
-      "loc": 1298,
+      "loc": 1302,
       "depends_on": [
-        "agents"
+        "types"
       ],
       "depended_by": [
         "agents",
@@ -551,9 +536,7 @@
         "task",
         "types"
       ],
-      "depended_by": [
-        "tests"
-      ],
+      "depended_by": [],
       "api": [
         {
           "kind": "struct",
@@ -784,7 +767,7 @@
     },
     "errors": {
       "purpose": null,
-      "layer": 0,
+      "layer": 1,
       "loc": 163,
       "depends_on": [],
       "depended_by": [
@@ -794,7 +777,6 @@
         "runtime",
         "scripting",
         "task",
-        "tests",
         "wasm",
         "worker",
         "workflows"
@@ -824,7 +806,7 @@
     },
     "events": {
       "purpose": null,
-      "layer": 1,
+      "layer": 2,
       "loc": 139,
       "depends_on": [
         "types"
@@ -835,7 +817,6 @@
         "logging",
         "metrics",
         "runtime",
-        "tests",
         "worker"
       ],
       "api": [
@@ -1043,8 +1024,7 @@
       ],
       "depended_by": [
         "api",
-        "bridge",
-        "tests"
+        "bridge"
       ],
       "api": [
         {
@@ -1152,7 +1132,6 @@
       "depended_by": [
         "api",
         "logging",
-        "tests",
         "workflows"
       ],
       "api": [
@@ -1676,7 +1655,6 @@
         "api",
         "bridge",
         "runtime",
-        "tests",
         "worker"
       ],
       "api": [
@@ -1955,8 +1933,7 @@
       "loc": 981,
       "depends_on": [],
       "depended_by": [
-        "orchestration",
-        "tests"
+        "orchestration"
       ],
       "api": [
         {
@@ -2227,7 +2204,6 @@
         "api",
         "bridge",
         "orchestration",
-        "tests",
         "workflows"
       ],
       "api": [
@@ -2444,9 +2420,7 @@
         "types",
         "wasm"
       ],
-      "depended_by": [
-        "tests"
-      ],
+      "depended_by": [],
       "api": [
         {
           "kind": "struct",
@@ -2661,12 +2635,11 @@
     },
     "security": {
       "purpose": null,
-      "layer": 0,
+      "layer": 1,
       "loc": 670,
       "depends_on": [],
       "depended_by": [
-        "api",
-        "tests"
+        "api"
       ],
       "api": [
         {
@@ -2878,7 +2851,6 @@
         "registry",
         "runtime",
         "scripting",
-        "tests",
         "wasm",
         "worker",
         "workflows"
@@ -3031,48 +3003,14 @@
         }
       ]
     },
-    "tests": {
-      "purpose": null,
-      "layer": 0,
-      "loc": 3231,
-      "depends_on": [
-        "api",
-        "errors",
-        "events",
-        "metrics",
-        "orchestration",
-        "persistence",
-        "remote",
-        "runtime",
-        "scripting",
-        "security",
-        "task",
-        "types",
-        "wasm",
-        "workflows"
-      ],
-      "depended_by": [
-        "task"
-      ],
-      "api": [
-        {
-          "kind": "fn",
-          "signature": "pub fn make_task(priority : TaskPriority, entrypoint : & str) -> TaskDefinition",
-          "doc": null
-        },
-        {
-          "kind": "fn",
-          "signature": "pub fn make_task_with_hash(priority : TaskPriority, hash : [u8 ; 32]) -> TaskDefinition",
-          "doc": null
-        }
-      ]
-    },
     "types": {
       "purpose": null,
       "layer": 1,
-      "loc": 35,
+      "loc": 99,
       "depends_on": [],
       "depended_by": [
+        "agents",
+        "ai",
         "api",
         "bridge",
         "events",
@@ -3080,7 +3018,6 @@
         "registry",
         "scripting",
         "task",
-        "tests",
         "worker",
         "workflows"
       ],
@@ -3109,6 +3046,21 @@
           "kind": "struct",
           "signature": "pub struct Versioned<T>",
           "doc": null
+        },
+        {
+          "kind": "struct",
+          "signature": "pub struct AgentPlan",
+          "doc": "`agents` ve `ai` modüllerinin her ikisi de bu tipe ihtiyaç duyduğu için döngüsel bağımlılığı önlemek amacıyla buraya (types) taşındı. Önceki konum: src/agents/plans.rs"
+        },
+        {
+          "kind": "struct",
+          "signature": "pub struct AgentPlanStep",
+          "doc": null
+        },
+        {
+          "kind": "trait",
+          "signature": "pub trait AgentTool",
+          "doc": "`agents` ve `ai` modüllerinin her ikisi de bu trait'e ihtiyaç duyduğu için döngüsel bağımlılığı önlemek amacıyla buraya (types) taşındı. Önceki konum: src/agents/tools.rs"
         }
       ]
     },
@@ -3125,7 +3077,6 @@
         "runtime",
         "scripting",
         "task",
-        "tests",
         "worker"
       ],
       "api": [
@@ -3465,8 +3416,7 @@
       ],
       "depended_by": [
         "logging",
-        "orchestration",
-        "tests"
+        "orchestration"
       ],
       "api": [
         {

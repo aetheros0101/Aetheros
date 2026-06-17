@@ -1,5 +1,5 @@
 {
-  "AetherApi": "flutter_app/lib/screens/aetheros_api.dart",
+  "AetherApi": "flutter_app/lib/api/aetheros_api.dart",
   "AetherOSApp": "flutter_app/lib/main.dart",
   "AiChatScreen": "flutter_app/lib/screens/ai_chat_screen.dart",
   "AiSettingsScreen": "flutter_app/lib/screens/ai_settings_screen.dart",

@@ -25,6 +25,7 @@ use tokio::runtime::Runtime as TokioRuntime;
 use tracing::info;
 
 use crate::events::bus::EventBus;
+use crate::logging::buffer::{LogBuffer, log_collector};
 use crate::metrics::runtime::RuntimeMetrics;
 use crate::persistence::engine::PersistenceEngine;
 use crate::runtime::api::RuntimeHandle;
@@ -52,6 +53,11 @@ pub struct MobileRuntime {
     /// WASM modül deposu — upload_wasm_module() buraya yazar,
     /// WasmiEngine (worker'lar) aynı Arc'tan okur.
     pub module_store: Arc<ModuleStore>,
+
+    /// Log tamponu — EventBus'tan gelen olayları LogEntry'ye
+    /// çevirip dairesel tamponda tutar. getRecentLogs/getTaskLogs
+    /// buradan okur (bkz. bridge/api.rs).
+    pub log_buffer: LogBuffer,
 
     /// Tokio runtime — FRB bu üzerinden spawn eder.
     /// Option<> olması shutdown() sonrası temiz drop için.
@@ -107,6 +113,13 @@ pub fn init_mobile_runtime(
     let metrics = Arc::new(RuntimeMetrics::new());
     metrics.clone().start_collecting(events.clone());
 
+    // ── Log collector ─────────────────────────────────────
+    // EventBus'taki tüm task event'lerini LogEntry'ye çevirip
+    // dairesel tampona yazar. getRecentLogs/getTaskLogs bu
+    // tampondan okur (bkz. bridge/api.rs).
+    let log_buffer = LogBuffer::new();
+    tokio.spawn(log_collector(events.clone(), log_buffer.clone()));
+
     // ── Runtime arka planda ──────────────────────────────
     tokio.spawn(async move {
         if let Err(e) = runtime.start().await {
@@ -125,6 +138,7 @@ pub fn init_mobile_runtime(
         persistence,
         metrics,
         module_store,
+        log_buffer,
         tokio,
     };
 

@@ -1,12 +1,12 @@
 {
   "layers": {
-    "agents": 0,
+    "agents": 1,
     "ai": 0,
     "api": 0,
     "bridge": 0,
     "config": 0,
-    "errors": 0,
-    "events": 1,
+    "errors": 1,
+    "events": 2,
     "logging": 0,
     "metrics": 1,
     "orchestration": 1,
@@ -17,7 +17,7 @@
     "runtime": 1,
     "scripting": 0,
     "sdk": 0,
-    "security": 0,
+    "security": 1,
     "task": 1,
     "tests": 0,
     "types": 1,
@@ -29,28 +29,28 @@
     "agents": {
       "depends_on": [
         "ai",
-        "errors"
+        "errors",
+        "types"
       ],
       "depended_by": [
-        "ai",
         "api",
         "scripting",
         "workflows"
       ],
-      "transitive": 2,
-      "loc": 963,
+      "transitive": 3,
+      "loc": 917,
       "files": 22
     },
     "ai": {
       "depends_on": [
-        "agents"
+        "types"
       ],
       "depended_by": [
         "agents",
         "workflows"
       ],
-      "transitive": 2,
-      "loc": 1298,
+      "transitive": 1,
+      "loc": 1302,
       "files": 42
     },
     "api": {
@@ -65,10 +65,8 @@
         "task",
         "types"
       ],
-      "depended_by": [
-        "tests"
-      ],
-      "transitive": 17,
+      "depended_by": [],
+      "transitive": 16,
       "loc": 1225,
       "files": 17
     },
@@ -83,7 +81,7 @@
         "wasm"
       ],
       "depended_by": [],
-      "transitive": 18,
+      "transitive": 10,
       "loc": 624,
       "files": 4
     },
@@ -103,7 +101,6 @@
         "runtime",
         "scripting",
         "task",
-        "tests",
         "wasm",
         "worker",
         "workflows"
@@ -122,7 +119,6 @@
         "logging",
         "metrics",
         "runtime",
-        "tests",
         "worker"
       ],
       "transitive": 1,
@@ -136,7 +132,7 @@
         "workflows"
       ],
       "depended_by": [],
-      "transitive": 18,
+      "transitive": 14,
       "loc": 621,
       "files": 15
     },
@@ -146,8 +142,7 @@
       ],
       "depended_by": [
         "api",
-        "bridge",
-        "tests"
+        "bridge"
       ],
       "transitive": 2,
       "loc": 236,
@@ -163,10 +158,9 @@
       "depended_by": [
         "api",
         "logging",
-        "tests",
         "workflows"
       ],
-      "transitive": 17,
+      "transitive": 13,
       "loc": 1864,
       "files": 41
     },
@@ -180,10 +174,9 @@
         "api",
         "bridge",
         "runtime",
-        "tests",
         "worker"
       ],
-      "transitive": 17,
+      "transitive": 5,
       "loc": 334,
       "files": 5
     },
@@ -201,15 +194,14 @@
         "worker"
       ],
       "depended_by": [],
-      "transitive": 18,
+      "transitive": 8,
       "loc": 178,
       "files": 4
     },
     "remote": {
       "depends_on": [],
       "depended_by": [
-        "orchestration",
-        "tests"
+        "orchestration"
       ],
       "transitive": 0,
       "loc": 981,
@@ -228,10 +220,9 @@
         "api",
         "bridge",
         "orchestration",
-        "tests",
         "workflows"
       ],
-      "transitive": 17,
+      "transitive": 8,
       "loc": 759,
       "files": 10
     },
@@ -243,10 +234,8 @@
         "types",
         "wasm"
       ],
-      "depended_by": [
-        "tests"
-      ],
-      "transitive": 17,
+      "depended_by": [],
+      "transitive": 7,
       "loc": 403,
       "files": 6
     },
@@ -260,8 +249,7 @@
     "security": {
       "depends_on": [],
       "depended_by": [
-        "api",
-        "tests"
+        "api"
       ],
       "transitive": 0,
       "loc": 670,
@@ -281,42 +269,28 @@
         "registry",
         "runtime",
         "scripting",
-        "tests",
         "wasm",
         "worker",
         "workflows"
       ],
-      "transitive": 17,
+      "transitive": 4,
       "loc": 805,
       "files": 11
     },
     "tests": {
-      "depends_on": [
-        "api",
-        "errors",
-        "events",
-        "metrics",
-        "orchestration",
-        "persistence",
-        "remote",
-        "runtime",
-        "scripting",
-        "security",
-        "task",
-        "types",
-        "wasm",
-        "workflows"
-      ],
+      "depends_on": [],
       "depended_by": [
         "task"
       ],
-      "transitive": 17,
-      "loc": 3231,
-      "files": 17
+      "transitive": 0,
+      "loc": 0,
+      "files": 0
     },
     "types": {
       "depends_on": [],
       "depended_by": [
+        "agents",
+        "ai",
         "api",
         "bridge",
         "events",
@@ -324,13 +298,12 @@
         "registry",
         "scripting",
         "task",
-        "tests",
         "worker",
         "workflows"
       ],
       "transitive": 0,
-      "loc": 35,
-      "files": 4
+      "loc": 99,
+      "files": 6
     },
     "wasm": {
       "depends_on": [
@@ -342,10 +315,9 @@
         "runtime",
         "scripting",
         "task",
-        "tests",
         "worker"
       ],
-      "transitive": 17,
+      "transitive": 4,
       "loc": 887,
       "files": 12
     },
@@ -362,7 +334,7 @@
         "registry",
         "runtime"
       ],
-      "transitive": 17,
+      "transitive": 7,
       "loc": 773,
       "files": 8
     },
@@ -378,190 +350,102 @@
       ],
       "depended_by": [
         "logging",
-        "orchestration",
-        "tests"
+        "orchestration"
       ],
-      "transitive": 17,
+      "transitive": 13,
       "loc": 1650,
       "files": 27
     }
   },
   "cycles": [
     [
-      "agents",
-      "ai",
-      "agents"
-    ],
-    [
-      "api",
       "orchestration",
-      "runtime",
-      "persistence",
-      "task",
-      "tests",
-      "api"
-    ],
-    [
-      "orchestration",
-      "runtime",
-      "persistence",
-      "task",
-      "tests",
-      "orchestration"
-    ],
-    [
-      "orchestration",
-      "runtime",
-      "persistence",
-      "task",
-      "tests",
       "workflows",
       "orchestration"
     ],
     [
-      "persistence",
       "task",
-      "tests",
-      "persistence"
-    ],
-    [
-      "persistence",
-      "task",
-      "tests",
-      "runtime",
-      "runtime"
-    ],
-    [
-      "persistence",
-      "task",
-      "tests",
-      "workflows",
-      "runtime",
-      "runtime"
-    ],
-    [
-      "scripting",
-      "task",
-      "task",
-      "tests"
-    ],
-    [
-      "scripting",
       "wasm",
-      "task",
-      "task",
-      "tests"
-    ],
-    [
-      "task",
-      "tests",
-      "task"
-    ],
-    [
-      "task",
-      "tests",
-      "workflows",
       "task"
     ]
   ],
   "summary": [
     {
+      "name": "types",
+      "layer": 1,
+      "loc": 99,
+      "fan_in": 11,
+      "fan_out": 0
+    },
+    {
       "name": "errors",
-      "layer": 0,
+      "layer": 1,
       "loc": 163,
-      "fan_in": 10,
+      "fan_in": 9,
       "fan_out": 0
     },
     {
       "name": "task",
       "layer": 1,
       "loc": 805,
-      "fan_in": 10,
+      "fan_in": 9,
       "fan_out": 4
     },
     {
-      "name": "types",
-      "layer": 1,
-      "loc": 35,
-      "fan_in": 10,
-      "fan_out": 0
-    },
-    {
       "name": "events",
-      "layer": 1,
+      "layer": 2,
       "loc": 139,
-      "fan_in": 7,
+      "fan_in": 6,
       "fan_out": 1
     },
     {
       "name": "wasm",
       "layer": 1,
       "loc": 887,
-      "fan_in": 6,
+      "fan_in": 5,
       "fan_out": 2
     },
     {
       "name": "persistence",
       "layer": 1,
       "loc": 334,
-      "fan_in": 5,
+      "fan_in": 4,
       "fan_out": 3
     },
     {
       "name": "runtime",
       "layer": 1,
       "loc": 759,
-      "fan_in": 5,
+      "fan_in": 4,
       "fan_out": 6
     },
     {
       "name": "agents",
-      "layer": 0,
-      "loc": 963,
-      "fan_in": 4,
-      "fan_out": 2
+      "layer": 1,
+      "loc": 917,
+      "fan_in": 3,
+      "fan_out": 3
     },
     {
       "name": "orchestration",
       "layer": 1,
       "loc": 1864,
-      "fan_in": 4,
+      "fan_in": 3,
       "fan_out": 4
+    },
+    {
+      "name": "ai",
+      "layer": 0,
+      "loc": 1302,
+      "fan_in": 2,
+      "fan_out": 1
     },
     {
       "name": "metrics",
       "layer": 1,
       "loc": 236,
-      "fan_in": 3,
-      "fan_out": 1
-    },
-    {
-      "name": "workflows",
-      "layer": 1,
-      "loc": 1650,
-      "fan_in": 3,
-      "fan_out": 7
-    },
-    {
-      "name": "ai",
-      "layer": 0,
-      "loc": 1298,
       "fan_in": 2,
       "fan_out": 1
-    },
-    {
-      "name": "remote",
-      "layer": 0,
-      "loc": 981,
-      "fan_in": 2,
-      "fan_out": 0
-    },
-    {
-      "name": "security",
-      "layer": 0,
-      "loc": 670,
-      "fan_in": 2,
-      "fan_out": 0
     },
     {
       "name": "worker",
@@ -571,25 +455,39 @@
       "fan_out": 6
     },
     {
-      "name": "api",
-      "layer": 0,
-      "loc": 1225,
-      "fan_in": 1,
-      "fan_out": 9
+      "name": "workflows",
+      "layer": 1,
+      "loc": 1650,
+      "fan_in": 2,
+      "fan_out": 7
     },
     {
-      "name": "scripting",
+      "name": "remote",
       "layer": 0,
-      "loc": 403,
+      "loc": 981,
       "fan_in": 1,
-      "fan_out": 5
+      "fan_out": 0
+    },
+    {
+      "name": "security",
+      "layer": 1,
+      "loc": 670,
+      "fan_in": 1,
+      "fan_out": 0
     },
     {
       "name": "tests",
       "layer": 0,
-      "loc": 3231,
+      "loc": 0,
       "fan_in": 1,
-      "fan_out": 14
+      "fan_out": 0
+    },
+    {
+      "name": "api",
+      "layer": 0,
+      "loc": 1225,
+      "fan_in": 0,
+      "fan_out": 9
     },
     {
       "name": "bridge",
@@ -625,6 +523,13 @@
       "loc": 178,
       "fan_in": 0,
       "fan_out": 3
+    },
+    {
+      "name": "scripting",
+      "layer": 0,
+      "loc": 403,
+      "fan_in": 0,
+      "fan_out": 5
     },
     {
       "name": "sdk",

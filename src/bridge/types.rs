@@ -88,3 +88,25 @@ pub struct ModuleUploadResponse {
     /// Bayt cinsinden modül boyutu
     pub size: u64,
 }
+
+// ── Log entry (Dart'a açık) ───────────────────────────────
+//
+// logging::buffer::LogEntry'nin FRB-uyumlu karşılığı.
+// O tip pub(crate) ve &'static str alanları taşıyor — FRB
+// bunu doğrudan export edemez. Bu yüzden String alanlarla
+// ayrı bir tip burada tanımlanıyor; bridge/api.rs ikisi
+// arasında dönüşüm yapıyor (bkz. to_bridge_log_entry).
+
+#[frb(dart_metadata = ("freezed"))]
+pub struct LogEntry {
+    /// Unix ms
+    pub timestamp_ms: i64,
+    /// "INFO" | "WARN" | "ERROR"
+    pub level: String,
+    /// Varsa task UUID
+    pub task_id: Option<String>,
+    /// Türkçe kısa açıklama
+    pub message: String,
+    /// "TaskStarted" | "TaskFailed" | ...
+    pub event_type: String,
+}

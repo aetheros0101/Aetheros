@@ -1,1012 +1,5 @@
 # BUNDLE: ai
-# Includes: agents, ai, errors
-
-// ── src/agents/execution.rs ──
-use chrono::{
-    DateTime,
-    Utc,
-};
-
-use serde::{
-    Deserialize,
-    Serialize,
-};
-
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
-pub struct AgentExecutionState {
-    pub active_tasks:
-        usize,
-
-    pub last_execution:
-        Option<DateTime<Utc>>,
-}
-
-// ── src/agents/reasoning.rs ──
-use chrono::{
-    DateTime,
-    Utc,
-};
-
-use serde::{
-    Deserialize,
-    Serialize,
-};
-
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
-pub struct ReasoningTrace {
-    pub agent_id:
-        String,
-
-    pub decision:
-        String,
-
-    pub timestamp:
-        DateTime<Utc>,
-}
-
-// ── src/agents/tool_invocation.rs ──
-use serde::{
-    Deserialize,
-    Serialize,
-};
-
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
-pub struct ToolInvocation {
-    pub tool_name:
-        String,
-
-    pub correlation_id:
-        String,
-
-    pub arguments:
-        Vec<String>,
-}
-
-// ── src/agents/registry.rs ──
-use std::collections::HashSet;
-
-use uuid::Uuid;
-
-use crate::agents::capabilities::AgentCapability;
-
-pub struct RegisteredAgent {
-    pub id: Uuid,
-
-    pub name: String,
-
-    pub capabilities:
-        HashSet<
-            AgentCapability,
-        >,
-}
-
-pub struct AgentRegistry {
-    agents:
-        Vec<RegisteredAgent>,
-}
-
-impl AgentRegistry {
-    pub fn new() -> Self {
-        Self {
-            agents:
-                Vec::new(),
-        }
-    }
-
-    pub fn register(
-        &mut self,
-        agent:
-            RegisteredAgent,
-    ) {
-        self.agents.push(
-            agent,
-        );
-    }
-
-    pub fn agents(
-        &self,
-    ) -> &[RegisteredAgent] {
-        &self.agents
-    }
-}
-
-// ── src/agents/plans.rs ──
-use serde::{
-    Deserialize,
-    Serialize,
-};
-
-use uuid::Uuid;
-
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
-pub struct AgentPlan {
-    pub id: Uuid,
-
-    pub objective:
-        String,
-
-    pub planned_steps:
-        Vec<AgentPlanStep>,
-}
-
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
-pub struct AgentPlanStep {
-    pub id: Uuid,
-
-    pub name: String,
-
-    pub retryable: bool,
-}
-
-// ── src/agents/manager.rs ──
-use uuid::Uuid;
-
-use crate::agents::registry::{
-    AgentRegistry,
-    RegisteredAgent,
-};
-
-pub struct AgentManager {
-    registry:
-        AgentRegistry,
-}
-
-impl AgentManager {
-    pub fn new() -> Self {
-        Self {
-            registry:
-                AgentRegistry::new(),
-        }
-    }
-
-    pub fn register(
-        &mut self,
-        agent:
-            RegisteredAgent,
-    ) {
-        self.registry
-            .register(agent);
-    }
-
-    pub fn total_agents(
-        &self,
-    ) -> usize {
-        self.registry
-            .agents()
-            .len()
-    }
-
-    pub fn agent_ids(
-        &self,
-    ) -> Vec<Uuid> {
-        self.registry
-            .agents()
-            .iter()
-            .map(|agent| {
-                agent.id
-            })
-            .collect()
-    }
-}
-
-// ── src/agents/state.rs ──
-use serde::{
-    Deserialize,
-    Serialize,
-};
-
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Serialize,
-    Deserialize,
-)]
-pub enum AgentState {
-    Registered,
-    Initializing,
-    Ready,
-    Planning,
-    Executing,
-    Waiting,
-    Retrying,
-    Suspended,
-    Failed,
-    Cancelled,
-    Completed,
-}
-
-// ── src/agents/memory.rs ──
-// ============================================================
-// src/agents/memory.rs
-//
-// Faz 5 Eklemesi:
-//
-// store() ve get() metodları eklendi.
-// AgentRuntime, her adım sonucunu memory'e yazar,
-// sonraki adımlar önceki sonuçlara erişebilir.
-//
-// DashMap: lock-free concurrent okuma/yazma ✓
-// ============================================================
-
-use chrono::{
-    DateTime,
-    Utc,
-};
-use dashmap::DashMap;
-use serde::{
-    Deserialize,
-    Serialize,
-};
-use serde_json::Value;
-
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
-pub struct AgentMemoryRecord {
-    pub key: String,
-    pub value: String,
-    pub created_at: DateTime<Utc>,
-}
-
-pub struct AgentMemory {
-    entries: DashMap<String, Value>,
-}
-
-impl AgentMemory {
-    pub fn new() -> Self {
-        Self {
-            entries: DashMap::new(),
-        }
-    }
-
-    /// Adım sonucunu key-value olarak kaydet.
-    pub fn store(
-        &self,
-        key: impl Into<String>,
-        value: Value,
-    ) {
-        self.entries.insert(key.into(), value);
-    }
-
-    /// Daha önce kaydedilmiş değeri getir.
-    pub fn get(
-        &self,
-        key: &str,
-    ) -> Option<Value> {
-        self.entries.get(key).map(|v| v.clone())
-    }
-
-    /// Tüm kayıtları döndür (reasoning context için).
-    pub fn snapshot(&self) -> Vec<(String, Value)> {
-        self.entries
-            .iter()
-            .map(|entry| {
-                (entry.key().clone(), entry.value().clone())
-            })
-            .collect()
-    }
-
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-}
-
-// ── src/agents/mod.rs ──
-pub mod capabilities;
-pub mod context;
-pub mod errors;
-pub mod executor;
-pub mod lifecycle;
-pub mod manager;
-pub mod memory;
-pub mod planner;
-pub mod registry;
-pub mod state;
-pub mod tools;
-pub mod budget;
-pub mod subscriptions;
-pub mod cancellation;
-pub mod plans;
-pub mod reasoning;
-pub mod capacity;
-pub mod tool_invocation;
-pub mod execution;
-pub mod persistence;
-pub mod runtime;
-
-// ── src/agents/tools.rs ──
-use async_trait::async_trait;
-
-#[async_trait]
-pub trait AgentTool:
-    Send + Sync
-{
-    fn name(
-        &self,
-    ) -> &'static str;
-
-    async fn invoke(
-        &self,
-        arguments:
-            Vec<String>,
-    ) -> Result<
-        String,
-        String,
-    >;
-}
-
-// ── src/agents/runtime.rs ──
-// ============================================================
-// src/agents/runtime.rs
-//
-// Faz 5 Düzeltmesi: Gerçek Agent Execution Döngüsü
-//
-// ÖNCE: execute() → context.execution_id döndür (stub)
-//
-// SONRA: Plan → Step döngüsü → Tool invocation
-//
-//   1. AgentPlanner'dan plan al (objective → adımlar)
-//   2. Her adım için:
-//      a. Budget kontrolü (token + step limiti)
-//      b. Reasoning trace yaz
-//      c. Tool invocation (araç çağrısı)
-//      d. Sonucu memory'e kaydet
-//   3. Tüm adımlar bitti → execution_id döndür
-//
-// AI entegrasyonu (Faz 6'da tamamlanacak):
-//   Şu an: planner sabit plan üretiyor
-//   Faz 6: AnthropicProvider.infer() ile dynamic planning
-// ============================================================
-
-use std::sync::Arc;
-
-use tracing::{
-    debug,
-    info,
-    warn,
-};
-use uuid::Uuid;
-
-use crate::agents::budget::AgentExecutionBudget;
-use crate::agents::context::AgentContext;
-use crate::agents::memory::AgentMemory;
-use crate::agents::planner::AgentPlanner;
-use crate::agents::reasoning::ReasoningTrace;
-use crate::agents::tools::AgentTool;
-use crate::errors::runtime::RuntimeError;
-
-pub struct AgentRuntime {
-    memory: AgentMemory,
-    tools: Vec<Arc<dyn AgentTool>>,
-    budget: AgentExecutionBudget,
-}
-
-impl AgentRuntime {
-    pub fn new(
-        budget: AgentExecutionBudget,
-        tools: Vec<Arc<dyn AgentTool>>,
-    ) -> Self {
-        Self {
-            memory: AgentMemory::new(),
-            tools,
-            budget,
-        }
-    }
-
-    /// Agent execution döngüsü.
-    ///
-    /// objective → plan → adım adım çalıştır → execution_id
-    pub async fn execute(
-        context: AgentContext,
-        objective: String,
-        budget: AgentExecutionBudget,
-        tools: Vec<Arc<dyn AgentTool>>,
-    ) -> Result<Uuid, RuntimeError> {
-        info!(
-            agent_id = %context.agent_id,
-            execution_id = %context.execution_id,
-            objective = %objective,
-            "Agent execution started"
-        );
-
-        let mut runtime = Self::new(budget, tools);
-        runtime.run(context, objective).await
-    }
-
-    async fn run(
-        &mut self,
-        context: AgentContext,
-        objective: String,
-    ) -> Result<Uuid, RuntimeError> {
-        // ── 1. Plan ───────────────────────────────────────────
-        // AI destekli plan; API yoksa otomatik fallback.
-        let plan =
-            AgentPlanner::plan(objective.clone()).await;
-
-        info!(
-            plan_id = %plan.id,
-            steps = plan.planned_steps.len(),
-            "Agent plan created"
-        );
-
-        let mut steps_taken = 0;
-        let mut tokens_used = 0;
-
-        // ── 2. Adım döngüsü ──────────────────────────────────
-        for step in &plan.planned_steps {
-            // Budget: adım limiti kontrolü
-            if steps_taken >= self.budget.max_steps {
-                warn!(
-                    agent_id = %context.agent_id,
-                    max_steps = self.budget.max_steps,
-                    "Agent step budget exceeded"
-                );
-                break;
-            }
-
-            // Budget: token limiti kontrolü
-            if tokens_used >= self.budget.max_tokens {
-                warn!(
-                    agent_id = %context.agent_id,
-                    max_tokens = self.budget.max_tokens,
-                    "Agent token budget exceeded"
-                );
-                break;
-            }
-
-            debug!(
-                step_id = %step.id,
-                step_name = %step.name,
-                "Executing agent step"
-            );
-
-            // ── Reasoning trace ──────────────────────────────
-            // Faz 6: Bu noktada AnthropicProvider'dan
-            // "bu adımda ne yapmalıyım?" sorusu sorulacak.
-            let _trace = ReasoningTrace {
-                agent_id: context.agent_id.to_string(),
-                decision: format!(
-                    "Executing step: {}",
-                    step.name
-                ),
-                timestamp: chrono::Utc::now(),
-            };
-
-            // ── Tool invocation ───────────────────────────────
-            let result = self
-                .invoke_best_tool(&step.name)
-                .await;
-
-            match result {
-                Ok(output) => {
-                    // Sonucu memory'e kaydet
-                    self.memory.store(
-                        step.id.to_string(),
-                        serde_json::Value::String(
-                            output.clone(),
-                        ),
-                    );
-
-                    // Yaklaşık token sayımı (Faz 6'da API'den gelecek)
-                    tokens_used +=
-                        output.split_whitespace().count();
-
-                    debug!(
-                        step_name = %step.name,
-                        output_len = output.len(),
-                        "Step completed"
-                    );
-                }
-
-                Err(e) => {
-                    if step.retryable {
-                        warn!(
-                            step_name = %step.name,
-                            error = %e,
-                            "Step failed, marked retryable"
-                        );
-                        // Faz 6: retry mantığı buraya
-                    } else {
-                        return Err(
-                            RuntimeError::TaskExecutionFailed {
-                                message: format!(
-                                    "Agent step '{}' failed: {}",
-                                    step.name, e
-                                ),
-                            },
-                        );
-                    }
-                }
-            }
-
-            steps_taken += 1;
-        }
-
-        info!(
-            agent_id = %context.agent_id,
-            execution_id = %context.execution_id,
-            steps_taken,
-            tokens_used,
-            "Agent execution complete"
-        );
-
-        Ok(context.execution_id)
-    }
-
-    /// Adım ismiyle eşleşen tool'u bul ve çağır.
-    /// Eşleşme yoksa varsayılan "noop" sonucu döner.
-    async fn invoke_best_tool(
-        &self,
-        step_name: &str,
-    ) -> Result<String, String> {
-        // Tool ismi ile step adını eşleştir (fuzzy değil, exact)
-        for tool in &self.tools {
-            if tool.name() == step_name {
-                return tool
-                    .invoke(vec![step_name.to_string()])
-                    .await;
-            }
-        }
-
-        // Eşleşen tool yok — adımı geç, boş sonuç
-        debug!(
-            step_name = %step_name,
-            "No tool matched for step, skipping"
-        );
-        Ok(String::new())
-    }
-}
-
-// ── src/agents/errors.rs ──
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-pub enum AgentError {
-    #[error(
-        "planning failed"
-    )]
-    PlanningFailed,
-
-    #[error(
-        "tool invocation failed"
-    )]
-    ToolInvocationFailed,
-
-    #[error(
-        "capability denied"
-    )]
-    CapabilityDenied,
-
-    #[error(
-        "execution budget exceeded"
-    )]
-    BudgetExceeded,
-
-    #[error(
-        "agent cancelled"
-    )]
-    Cancelled,
-}
-
-// ── src/agents/budget.rs ──
-use serde::{
-    Deserialize,
-    Serialize,
-};
-
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
-pub struct AgentExecutionBudget {
-    pub max_tokens:
-        usize,
-
-    pub max_steps:
-        usize,
-
-    pub max_runtime_seconds:
-        usize,
-}
-
-// ── src/agents/context.rs ──
-use serde::{
-    Deserialize,
-    Serialize,
-};
-
-use uuid::Uuid;
-
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
-pub struct AgentContext {
-    pub agent_id:
-        Uuid,
-
-    pub execution_id:
-        Uuid,
-
-    pub workflow_id:
-        Option<Uuid>,
-}
-
-// ── src/agents/executor.rs ──
-// ============================================================
-// src/agents/executor.rs
-//
-// Faz 5 Güncelleme:
-//   AgentRuntime::execute() imzası değişti (4 argüman).
-//   AgentExecutor bu argümanları alıp iletir.
-//   Dönüş tipi Uuid → Result<Uuid, RuntimeError>.
-// ============================================================
-
-use std::sync::Arc;
-
-use uuid::Uuid;
-
-use crate::agents::budget::AgentExecutionBudget;
-use crate::agents::context::AgentContext;
-use crate::agents::runtime::AgentRuntime;
-use crate::agents::tools::AgentTool;
-use crate::errors::runtime::RuntimeError;
-
-pub struct AgentExecutor;
-
-impl AgentExecutor {
-    pub async fn execute(
-        context: AgentContext,
-        objective: String,
-        budget: AgentExecutionBudget,
-        tools: Vec<Arc<dyn AgentTool>>,
-    ) -> Result<Uuid, RuntimeError> {
-        AgentRuntime::execute(
-            context,
-            objective,
-            budget,
-            tools,
-        )
-        .await
-    }
-}
-
-// ── src/agents/capacity.rs ──
-use serde::{
-    Deserialize,
-    Serialize,
-};
-
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
-pub struct AgentCapacity {
-    pub max_concurrent_tasks:
-        usize,
-
-    pub active_tasks:
-        usize,
-}
-
-// ── src/agents/planner.rs ──
-// ============================================================
-// src/agents/planner.rs  (v3)
-//
-// plan() artık async. ai_plan() önce denenir;
-// API key yoksa, rate-limit varsa veya parse başarısızsa
-// fallback_plan() devreye girer → runtime hiç donmaz.
-// ============================================================
-
-use serde::{Deserialize, Serialize};
-use tracing::debug;
-use uuid::Uuid;
-
-use crate::agents::plans::{AgentPlan, AgentPlanStep};
-use crate::ai::inference::request::InferenceRequest;
-use crate::ai::providers::anthropic::AnthropicProvider;
-use crate::ai::providers::provider::ModelProvider;
-
-/// Anthropic'ten beklenen JSON çıktı yapısı.
-#[derive(Debug, Deserialize, Serialize)]
-struct PlanResponse {
-    steps: Vec<PlanStepResponse>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct PlanStepResponse {
-    name: String,
-    retryable: bool,
-}
-
-pub struct AgentPlanner;
-
-impl AgentPlanner {
-    /// Objective'den plan üret.
-    ///
-    /// AnthropicProvider mevcutsa AI destekli plan (ai_plan).
-    /// Değilse (API key yok, rate-limit, parse hatası) fallback_plan.
-    pub async fn plan(objective: String) -> AgentPlan {
-        match Self::ai_plan(objective.clone()).await {
-            Some(plan) => plan,
-            None => Self::fallback_plan(objective),
-        }
-    }
-
-    /// AnthropicProvider ile objective → structured plan.
-    async fn ai_plan(objective: String) -> Option<AgentPlan> {
-        let provider = AnthropicProvider::new().ok()?;
-
-        let system = r#"You are an AetherOS agent planner.
-Given an objective, output a JSON plan with this exact structure:
-{"steps": [{"name": "step_name", "retryable": true}]}
-Output ONLY valid JSON, no explanation."#;
-
-        let prompt = format!(
-            "Objective: {objective}\nCreate a concise execution plan with 2-5 steps."
-        );
-
-        let request = InferenceRequest::new(prompt, 512)
-            .with_system(system)
-            .with_temperature(0.3); // Düşük temperature → tutarlı JSON
-
-        let response = provider.infer(request).await.ok()?;
-
-        debug!(tokens = response.tokens_used, "AI plan response received");
-
-        // JSON fence'leri temizle (```json ... ``` varsa)
-        let cleaned = response
-            .output
-            .trim()
-            .trim_start_matches("```json")
-            .trim_start_matches("```")
-            .trim_end_matches("```")
-            .trim();
-
-        let plan_resp: PlanResponse = serde_json::from_str(cleaned).ok()?;
-
-        let steps = plan_resp
-            .steps
-            .into_iter()
-            .map(|s| AgentPlanStep {
-                id: Uuid::new_v4(),
-                name: s.name,
-                retryable: s.retryable,
-            })
-            .collect::<Vec<_>>();
-
-        if steps.is_empty() {
-            return None;
-        }
-
-        Some(AgentPlan {
-            id: Uuid::new_v4(),
-            objective,
-            planned_steps: steps,
-        })
-    }
-
-    /// API'siz çalışabilen minimal fallback plan.
-    fn fallback_plan(objective: String) -> AgentPlan {
-        AgentPlan {
-            id: Uuid::new_v4(),
-            objective: objective.clone(),
-            planned_steps: vec![
-                AgentPlanStep {
-                    id: Uuid::new_v4(),
-                    name: "initialize".to_string(),
-                    retryable: true,
-                },
-                AgentPlanStep {
-                    id: Uuid::new_v4(),
-                    name: format!(
-                        "execute: {}",
-                        objective.chars().take(40).collect::<String>()
-                    ),
-                    retryable: true,
-                },
-                AgentPlanStep {
-                    id: Uuid::new_v4(),
-                    name: "finalize".to_string(),
-                    retryable: false,
-                },
-            ],
-        }
-    }
-}
-
-// ── src/agents/lifecycle.rs ──
-use crate::agents::state::AgentState;
-
-use serde::{
-    Deserialize,
-    Serialize,
-};
-
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Serialize,
-    Deserialize,
-)]
-pub enum AgentLifecycleState {
-    Initializing,
-    Planning,
-    Executing,
-    Waiting,
-    Retrying,
-    Suspended,
-    Failed,
-    Completed,
-}
-
-pub struct AgentLifecycle {
-    state: AgentState,
-}
-
-impl AgentLifecycle {
-    pub fn new() -> Self {
-        Self {
-            state:
-                AgentState::Registered,
-        }
-    }
-
-    pub fn transition(
-        &mut self,
-        state: AgentState,
-    ) {
-        self.state = state;
-    }
-
-    pub fn state(
-        &self,
-    ) -> AgentState {
-        self.state
-    }
-}
-
-// ── src/agents/capabilities.rs ──
-use serde::{
-    Deserialize,
-    Serialize,
-};
-
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
-pub struct AgentCapabilities {
-    pub workflow_execution:
-        bool,
-
-    pub wasm_execution:
-        bool,
-
-    pub ai_reasoning:
-        bool,
-
-    pub remote_execution:
-        bool,
-}
-
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-)]
-pub enum AgentCapability {
-    WorkflowExecution,
-
-    WasmExecution,
-
-    AiReasoning,
-
-    RemoteExecution,
-}
-
-// ── src/agents/persistence.rs ──
-use async_trait::async_trait;
-
-use crate::agents::memory::AgentMemoryRecord;
-
-#[async_trait]
-pub trait AgentPersistence:
-    Send + Sync
-{
-    async fn store(
-        &self,
-        record:
-            AgentMemoryRecord,
-    );
-
-    async fn load_all(
-        &self,
-    ) -> Vec<AgentMemoryRecord>;
-}
-
-// ── src/agents/cancellation.rs ──
-use serde::{
-    Deserialize,
-    Serialize,
-};
-
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Serialize,
-    Deserialize,
-)]
-pub enum AgentCancellation {
-    Graceful,
-    Immediate,
-}
-
-// ── src/agents/subscriptions.rs ──
-use serde::{
-    Deserialize,
-    Serialize,
-};
-
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
-pub struct AgentSubscription {
-    pub event_type:
-        String,
-
-    pub durable:
-        bool,
-}
+# Includes: ai, types
 
 // ── src/ai/embeddings/vector.rs ──
 use serde::{
@@ -1186,11 +179,13 @@ pub struct ToolCall {
 }
 
 // ── src/ai/tools/registry.rs ──
+//src/ai/tools/registry.rs
+
 use std::sync::Arc;
 
 use dashmap::DashMap;
 
-use crate::agents::tools::AgentTool;
+use crate::types::agent_tool::AgentTool;
 
 pub struct ToolRegistry {
     tools:
@@ -1533,13 +528,15 @@ pub struct AiExecutionPlan {
 }
 
 // ── src/ai/planner/mod.rs ──
+//src/ai/planner/mod.rs
+
 pub mod plan;
 
 use async_trait::async_trait;
 
 use crate::ai::errors::AiError;
 
-use crate::agents::plans::AgentPlan;
+use crate::types::agent_plan::AgentPlan;
 
 use uuid::Uuid;
 
@@ -2390,176 +1387,114 @@ where
 {
 }
 
-// ── src/errors/mod.rs ──
-pub mod persistence; 
-pub mod runtime;     
-pub mod task;        
-pub mod wasm;
+// ── src/types/timestamps.rs ──
+use chrono::{DateTime, Utc};
 
-// ── src/errors/persistence.rs ──
-use thiserror::Error;
+pub type Timestamp = DateTime<Utc>;
 
-#[derive(Debug, Error)]
-pub enum PersistenceError {
-    #[error("storage failure")]
-    StorageFailure,
+// ── src/types/ids.rs ──
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-    #[error("snapshot failure")]
-    SnapshotFailure,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct RuntimeId(pub Uuid);
 
-    #[error("recovery failure")]
-    RecoveryFailure,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct WorkerId(pub Uuid);
 
-    #[error("serialization failure")]
-    SerializationFailure,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TaskId(pub Uuid);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ExecutionId(pub Uuid);
+
+// ── src/types/shared.rs ──
+use serde::{
+    Deserialize,
+    Serialize,
+};
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+)]
+pub struct Versioned<T> {
+    pub version: u64,
+    pub value: T,
 }
 
-// ── src/errors/wasm.rs ──
-// ============================================================
-// src/errors/wasm.rs
-//
-// Faz 3 Eklemesi:
-//
-// [BUG #8] InvalidConfiguration variant eklendi.
-//   timeout_ms == 0 → ResourceLimitExceeded dönüyordu.
-//   "Kaynak aşıldı" anlamsız — kaynak hiç kullanılmadı.
-//   Doğru hata: "geçersiz yapılandırma".
-//
-//   Aynı zamanda RetryClassification'a etkisi:
-//   InvalidConfiguration → Permanent (retry.rs'de eklendi)
-//   Yanlış konfigürasyon retry'la düzelmez.
-// ============================================================
+// ── src/types/mod.rs ──
+pub mod agent_plan;
+pub mod agent_tool;
+pub mod ids;
+pub mod shared;
+pub mod timestamps;
 
-use thiserror::Error;
+// ── src/types/agent_plan.rs ──
+//src/types/agent_plan.rs
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
-#[derive(Debug, Error)]
-pub enum WasmError {
-    #[error("execution timeout")]
-    Timeout,
+use uuid::Uuid;
 
-    #[error("execution panic")]
-    ExecutionPanic,
+/// `agents` ve `ai` modüllerinin her ikisi de bu tipe ihtiyaç duyduğu için
+/// döngüsel bağımlılığı önlemek amacıyla buraya (types) taşındı.
+/// Önceki konum: src/agents/plans.rs
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+)]
+pub struct AgentPlan {
+    pub id: Uuid,
 
-    #[error("resource limit exceeded")]
-    ResourceLimitExceeded,
+    pub objective:
+        String,
 
-    #[error("invalid module: {reason}")]
-    InvalidModule {
-        reason: String,
-    },
-
-    /// [BUG #8] Yeni variant: timeout_ms == 0 gibi
-    /// görev konfigürasyonu geçersizse bu döner.
-    #[error("invalid task configuration: {reason}")]
-    InvalidConfiguration {
-        reason: String,
-    },
-
-    #[error("capability denied")]
-    CapabilityDenied,
-
-    #[error("missing entrypoint")]
-    MissingEntrypoint,
-
-    #[error("sandbox violation")]
-    SandboxViolation,
-
-    #[error("memory violation")]
-    MemoryViolation,
-
-    #[error("engine failure: {message}")]
-    EngineFailure {
-        message: String,
-    },
-
-    #[error("execution failure: {message}")]
-    ExecutionFailure {
-        message: String,
-    },
-
-    #[error("linker failure: {message}")]
-    LinkerFailure {
-        message: String,
-    },
+    pub planned_steps:
+        Vec<AgentPlanStep>,
 }
 
-// ── src/errors/runtime.rs ──
-use thiserror::Error;
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+)]
+pub struct AgentPlanStep {
+    pub id: Uuid,
 
-use crate::errors::persistence::PersistenceError;
-use crate::errors::task::TaskError;
-use crate::errors::wasm::WasmError;
+    pub name: String,
 
-#[derive(Debug, Error)]
-pub enum RuntimeError {
-    #[error("worker subsystem failure")]
-    WorkerSubsystemFailure,
-
-    #[error("scheduler failure")]
-    SchedulerFailure,
-
-    #[error("task failure: {0}")]
-    Task(
-        #[from]
-        TaskError,
-    ),
-
-    #[error("wasm failure: {0}")]
-    Wasm(
-        #[from]
-        WasmError,
-    ),
-
-    #[error("persistence failure: {0}")]
-    Persistence(
-        #[from]
-        PersistenceError,
-    ),
-
-    #[error(
-        "task execution failed: {message}"
-    )]
-    TaskExecutionFailed {
-        message: String,
-    },
-
-    #[error("runtime shutdown")]
-    Shutdown,
-
-    #[error("dispatcher failure")]
-    DispatcherFailure,
-
-    #[error("task queue closed")]
-    QueueClosed,
-
-    // Mevcut son variant'tan sonra ekle:
-    #[error("orchestration failure")]
-    OrchestrationFailure,
-
-    #[error(
-        "validation error: {0}"
-    )]
-    ValidationError(String),
+    pub retryable: bool,
 }
 
-// ── src/errors/task.rs ──
-use thiserror::Error;
+// ── src/types/agent_tool.rs ──
+use async_trait::async_trait;
 
-#[derive(Debug, Error)]
-pub enum TaskError {
-    #[error("task cancelled")]
-    Cancelled,
+/// `agents` ve `ai` modüllerinin her ikisi de bu trait'e ihtiyaç duyduğu için
+/// döngüsel bağımlılığı önlemek amacıyla buraya (types) taşındı.
+/// Önceki konum: src/agents/tools.rs
+#[async_trait]
+pub trait AgentTool:
+    Send + Sync
+{
+    fn name(
+        &self,
+    ) -> &'static str;
 
-    #[error("task deadline exceeded")]
-    DeadlineExceeded,
-
-    #[error("task retry exhausted")]
-    RetryExhausted,
-
-    #[error("invalid task state")]
-    InvalidState,
-
-    #[error("task persistence failure")]
-    PersistenceFailure,
+    async fn invoke(
+        &self,
+        arguments:
+            Vec<String>,
+    ) -> Result<
+        String,
+        String,
+    >;
 }
 

@@ -126,42 +126,10 @@ impl AgentRegistry {
 }
 
 // ── src/agents/plans.rs ──
-use serde::{
-    Deserialize,
-    Serialize,
-};
-
-use uuid::Uuid;
-
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
-pub struct AgentPlan {
-    pub id: Uuid,
-
-    pub objective:
-        String,
-
-    pub planned_steps:
-        Vec<AgentPlanStep>,
-}
-
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
-pub struct AgentPlanStep {
-    pub id: Uuid,
-
-    pub name: String,
-
-    pub retryable: bool,
-}
+// AgentPlan / AgentPlanStep buradan src/types/agent_plan.rs'e taşındı
+// (agents <-> ai döngüsel bağımlılığını kırmak için — bkz. .ai/architecture.json cycles).
+// Mevcut `crate::agents::plans::AgentPlan` importları kırılmasın diye re-export ediliyor.
+pub use crate::types::agent_plan::{AgentPlan, AgentPlanStep};
 
 // ── src/agents/manager.rs ──
 use uuid::Uuid;
@@ -348,25 +316,11 @@ pub mod persistence;
 pub mod runtime;
 
 // ── src/agents/tools.rs ──
-use async_trait::async_trait;
+// AgentTool buradan src/types/agent_tool.rs'e taşındı
+// (agents <-> ai döngüsel bağımlılığını kırmak için — bkz. .ai/architecture.json cycles).
+// Mevcut `crate::agents::tools::AgentTool` importları kırılmasın diye re-export ediliyor.
 
-#[async_trait]
-pub trait AgentTool:
-    Send + Sync
-{
-    fn name(
-        &self,
-    ) -> &'static str;
-
-    async fn invoke(
-        &self,
-        arguments:
-            Vec<String>,
-    ) -> Result<
-        String,
-        String,
-    >;
-}
+pub use crate::types::agent_tool::AgentTool;
 
 // ── src/agents/runtime.rs ──
 // ============================================================
@@ -1186,11 +1140,13 @@ pub struct ToolCall {
 }
 
 // ── src/ai/tools/registry.rs ──
+//src/ai/tools/registry.rs
+
 use std::sync::Arc;
 
 use dashmap::DashMap;
 
-use crate::agents::tools::AgentTool;
+use crate::types::agent_tool::AgentTool;
 
 pub struct ToolRegistry {
     tools:
@@ -1533,13 +1489,15 @@ pub struct AiExecutionPlan {
 }
 
 // ── src/ai/planner/mod.rs ──
+//src/ai/planner/mod.rs
+
 pub mod plan;
 
 use async_trait::async_trait;
 
 use crate::ai::errors::AiError;
 
-use crate::agents::plans::AgentPlan;
+use crate::types::agent_plan::AgentPlan;
 
 use uuid::Uuid;
 
@@ -13537,9 +13495,77 @@ pub struct Versioned<T> {
 }
 
 // ── src/types/mod.rs ──
+pub mod agent_plan;
+pub mod agent_tool;
 pub mod ids;
 pub mod shared;
 pub mod timestamps;
+
+// ── src/types/agent_plan.rs ──
+//src/types/agent_plan.rs
+use serde::{
+    Deserialize,
+    Serialize,
+};
+
+use uuid::Uuid;
+
+/// `agents` ve `ai` modüllerinin her ikisi de bu tipe ihtiyaç duyduğu için
+/// döngüsel bağımlılığı önlemek amacıyla buraya (types) taşındı.
+/// Önceki konum: src/agents/plans.rs
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+)]
+pub struct AgentPlan {
+    pub id: Uuid,
+
+    pub objective:
+        String,
+
+    pub planned_steps:
+        Vec<AgentPlanStep>,
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+)]
+pub struct AgentPlanStep {
+    pub id: Uuid,
+
+    pub name: String,
+
+    pub retryable: bool,
+}
+
+// ── src/types/agent_tool.rs ──
+use async_trait::async_trait;
+
+/// `agents` ve `ai` modüllerinin her ikisi de bu trait'e ihtiyaç duyduğu için
+/// döngüsel bağımlılığı önlemek amacıyla buraya (types) taşındı.
+/// Önceki konum: src/agents/tools.rs
+#[async_trait]
+pub trait AgentTool:
+    Send + Sync
+{
+    fn name(
+        &self,
+    ) -> &'static str;
+
+    async fn invoke(
+        &self,
+        arguments:
+            Vec<String>,
+    ) -> Result<
+        String,
+        String,
+    >;
+}
 
 // ── src/wasm/module_store.rs ──
 // ============================================================

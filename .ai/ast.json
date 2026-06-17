@@ -414,22 +414,11 @@
     "src/agents/plans.rs": {
       "module_doc": null,
       "pub_fns": [],
-      "pub_types": [
-        {
-          "kind": "struct",
-          "name": "AgentPlan",
-          "generics": [],
-          "doc": null
-        },
-        {
-          "kind": "struct",
-          "name": "AgentPlanStep",
-          "generics": [],
-          "doc": null
-        }
-      ],
+      "pub_types": [],
       "impls": [],
-      "crate_uses": []
+      "crate_uses": [
+        "pub use crate:: types::agent_plan::{ AgentPlan , AgentPlanStep } "
+      ]
     },
     "src/agents/reasoning.rs": {
       "module_doc": null,
@@ -601,16 +590,11 @@
     "src/agents/tools.rs": {
       "module_doc": null,
       "pub_fns": [],
-      "pub_types": [
-        {
-          "kind": "trait",
-          "name": "AgentTool",
-          "generics": [],
-          "doc": null
-        }
-      ],
+      "pub_types": [],
       "impls": [],
-      "crate_uses": []
+      "crate_uses": [
+        "pub use crate:: types::agent_tool::AgentTool "
+      ]
     },
     "src/ai/budgets.rs": {
       "module_doc": null,
@@ -952,7 +936,7 @@
       "impls": [],
       "crate_uses": [
         "use crate:: ai::errors::AiError ",
-        "use crate:: agents::plans::AgentPlan "
+        "use crate:: types::agent_plan::AgentPlan "
       ]
     },
     "src/ai/planner/plan.rs": {
@@ -1477,7 +1461,7 @@
         }
       ],
       "crate_uses": [
-        "use crate:: agents::tools::AgentTool "
+        "use crate:: types::agent_tool::AgentTool "
       ]
     },
     "src/api/dashboard.rs": {
@@ -7601,247 +7585,39 @@
         "use crate:: wasm::module_store::ModuleHash "
       ]
     },
-    "src/tests/cluster_tests.rs": {
+    "src/types/agent_plan.rs": {
       "module_doc": null,
       "pub_fns": [],
-      "pub_types": [],
-      "impls": [],
-      "crate_uses": [
-        "use crate:: orchestration::election::LeaderElection ",
-        "use crate:: orchestration::quorum::{ QuorumPolicy , QuorumState , } ",
-        "use crate:: remote::cluster::ClusterState ",
-        "use crate:: remote::cluster_health::ClusterHealth ",
-        "use crate:: remote::discovery::StaticDiscovery ",
-        "use crate:: remote::heartbeat::Heartbeat ",
-        "use crate:: remote::node::{ NodeCapability , RemoteNode , } "
-      ]
-    },
-    "src/tests/dashboard_tests.rs": {
-      "module_doc": null,
-      "pub_fns": [],
-      "pub_types": [],
-      "impls": [],
-      "crate_uses": [
-        "use crate:: events::bus::{ EventBus , SystemEvent } ",
-        "use crate:: events::task::TaskEvent ",
-        "use crate:: metrics::runtime::RuntimeMetrics ",
-        "use crate:: types::ids::TaskId ",
-        "use crate:: api::dashboard::DASHBOARD_HTML ",
-        "use crate:: api::dashboard::DASHBOARD_HTML ",
-        "use crate:: api::dashboard::DASHBOARD_HTML "
-      ]
-    },
-    "src/tests/helpers.rs": {
-      "module_doc": null,
-      "pub_fns": [
+      "pub_types": [
         {
-          "name": "make_task",
-          "is_async": false,
-          "params": [
-            "priority : TaskPriority",
-            "entrypoint : & str"
-          ],
-          "ret": "TaskDefinition",
-          "is_method": false,
-          "doc": null
+          "kind": "struct",
+          "name": "AgentPlan",
+          "generics": [],
+          "doc": "`agents` ve `ai` modüllerinin her ikisi de bu tipe ihtiyaç duyduğu için döngüsel bağımlılığı önlemek amacıyla buraya (types) taşındı. Önceki konum: src/agents/plans.rs"
         },
         {
-          "name": "make_task_with_hash",
-          "is_async": false,
-          "params": [
-            "priority : TaskPriority",
-            "hash : [u8 ; 32]"
-          ],
-          "ret": "TaskDefinition",
-          "is_method": false,
+          "kind": "struct",
+          "name": "AgentPlanStep",
+          "generics": [],
           "doc": null
         }
       ],
-      "pub_types": [],
-      "impls": [],
-      "crate_uses": [
-        "use crate:: task::priority::TaskPriority ",
-        "use crate:: task::retry::RetryPolicy ",
-        "use crate:: task::task::{ TaskDefinition , TaskMetadata , TaskState , } ",
-        "use crate:: types::ids::TaskId "
-      ]
-    },
-    "src/tests/integration/api_tests.rs": {
-      "module_doc": null,
-      "pub_fns": [],
-      "pub_types": [],
-      "impls": [],
-      "crate_uses": [
-        "use crate:: events::bus::EventBus ",
-        "use crate:: persistence::engine::PersistenceEngine ",
-        "use crate:: persistence::models::PersistedTask ",
-        "use crate:: runtime::api::RuntimeHandle ",
-        "use crate:: runtime::lifecycle::RuntimeState ",
-        "use crate:: task::priority::TaskPriority ",
-        "use crate:: task::retry::RetryPolicy ",
-        "use crate:: task::task::{ TaskDefinition , TaskMetadata , TaskState , } ",
-        "use crate:: types::ids::TaskId "
-      ]
-    },
-    "src/tests/integration/eventbus_tests.rs": {
-      "module_doc": null,
-      "pub_fns": [],
-      "pub_types": [],
-      "impls": [],
-      "crate_uses": [
-        "use crate:: events::bus::{ EventBus , SystemEvent , } ",
-        "use crate:: events::task::TaskEvent ",
-        "use crate:: events::runtime::RuntimeEvent ",
-        "use crate:: types::ids::TaskId "
-      ]
-    },
-    "src/tests/integration/mod.rs": {
-      "module_doc": null,
-      "pub_fns": [],
-      "pub_types": [],
       "impls": [],
       "crate_uses": []
     },
-    "src/tests/integration/pipeline_tests.rs": {
+    "src/types/agent_tool.rs": {
       "module_doc": null,
       "pub_fns": [],
-      "pub_types": [],
-      "impls": [],
-      "crate_uses": [
-        "use crate:: persistence::engine::PersistenceEngine ",
-        "use crate:: persistence::models::PersistedTask ",
-        "use crate:: runtime::api::RuntimeHandle ",
-        "use crate:: task::priority::TaskPriority ",
-        "use crate:: task::queue::PriorityTaskQueue ",
-        "use crate:: task::retry::RetryPolicy ",
-        "use crate:: task::task::{ TaskDefinition , TaskMetadata , TaskState , } ",
-        "use crate:: types::ids::TaskId ",
-        "use crate:: task::deadline::deadline_expired ",
-        "use crate:: task::deadline::deadline_expired "
-      ]
-    },
-    "src/tests/mod.rs": {
-      "module_doc": null,
-      "pub_fns": [],
-      "pub_types": [],
+      "pub_types": [
+        {
+          "kind": "trait",
+          "name": "AgentTool",
+          "generics": [],
+          "doc": "`agents` ve `ai` modüllerinin her ikisi de bu trait'e ihtiyaç duyduğu için döngüsel bağımlılığı önlemek amacıyla buraya (types) taşındı. Önceki konum: src/agents/tools.rs"
+        }
+      ],
       "impls": [],
       "crate_uses": []
-    },
-    "src/tests/module_store_tests.rs": {
-      "module_doc": null,
-      "pub_fns": [],
-      "pub_types": [],
-      "impls": [],
-      "crate_uses": [
-        "use crate:: wasm::module_store::ModuleStore ",
-        "use crate:: tests::helpers::make_task ",
-        "use crate:: task::priority::TaskPriority ",
-        "use crate:: tests::helpers::make_task_with_hash ",
-        "use crate:: task::priority::TaskPriority ",
-        "use crate:: tests::helpers::make_task_with_hash ",
-        "use crate:: task::priority::TaskPriority ",
-        "use crate:: tests::helpers::make_task_with_hash ",
-        "use crate:: task::priority::TaskPriority ",
-        "use crate:: task::task::TaskDefinition "
-      ]
-    },
-    "src/tests/persistence_tests.rs": {
-      "module_doc": null,
-      "pub_fns": [],
-      "pub_types": [],
-      "impls": [],
-      "crate_uses": [
-        "use crate:: persistence::engine::PersistenceEngine ",
-        "use crate:: persistence::models::PersistedTask ",
-        "use crate:: persistence::recovery::RecoveryEngine ",
-        "use crate:: task::priority::TaskPriority ",
-        "use crate:: task::retry::RetryPolicy ",
-        "use crate:: task::task::{ TaskDefinition , TaskMetadata , TaskState , } ",
-        "use crate:: types::ids::TaskId "
-      ]
-    },
-    "src/tests/queue_tests.rs": {
-      "module_doc": null,
-      "pub_fns": [],
-      "pub_types": [],
-      "impls": [],
-      "crate_uses": [
-        "use crate:: task::priority::TaskPriority ",
-        "use crate:: task::queue::PriorityTaskQueue ",
-        "use crate:: task::task::{ TaskDefinition , TaskMetadata , TaskState , } ",
-        "use crate:: task::retry::RetryPolicy ",
-        "use crate:: types::ids::TaskId "
-      ]
-    },
-    "src/tests/remote_tests.rs": {
-      "module_doc": null,
-      "pub_fns": [],
-      "pub_types": [],
-      "impls": [],
-      "crate_uses": [
-        "use crate:: remote::heartbeat::Heartbeat ",
-        "use crate:: remote::node::{ NodeCapability , RemoteNode , } ",
-        "use crate:: remote::scheduler::RemoteScheduler "
-      ]
-    },
-    "src/tests/retry_tests.rs": {
-      "module_doc": null,
-      "pub_fns": [],
-      "pub_types": [],
-      "impls": [],
-      "crate_uses": [
-        "use crate:: errors::wasm::WasmError ",
-        "use crate:: task::retry::{ RetryClassification , RetryPolicy , } "
-      ]
-    },
-    "src/tests/runtime_tests.rs": {
-      "module_doc": null,
-      "pub_fns": [],
-      "pub_types": [],
-      "impls": [],
-      "crate_uses": [
-        "use crate:: runtime::api::RuntimeHandle ",
-        "use crate:: runtime::backpressure::BackpressureController ",
-        "use crate:: runtime::config::RuntimeConfig ",
-        "use crate:: runtime::lifecycle::RuntimeState ",
-        "use crate:: runtime::runtime::Runtime ",
-        "use crate:: task::priority::TaskPriority ",
-        "use crate:: task::retry::RetryPolicy ",
-        "use crate:: task::task::{ TaskDefinition , TaskMetadata , TaskState , } ",
-        "use crate:: types::ids::TaskId "
-      ]
-    },
-    "src/tests/scripting_tests.rs": {
-      "module_doc": null,
-      "pub_fns": [],
-      "pub_types": [],
-      "impls": [],
-      "crate_uses": [
-        "use crate:: scripting::definition::ScriptDefinition ",
-        "use crate:: scripting::registry::ScriptRegistry ",
-        "use crate:: scripting::result::ScriptResult "
-      ]
-    },
-    "src/tests/security_tests.rs": {
-      "module_doc": null,
-      "pub_fns": [],
-      "pub_types": [],
-      "impls": [],
-      "crate_uses": [
-        "use crate:: security::rbac::{ Action , AuthzError , RbacGuard , Role , } ",
-        "use crate:: security::auth::token::{ ApiKey , Claims , TokenError , TokenManager , } "
-      ]
-    },
-    "src/tests/workflow_tests.rs": {
-      "module_doc": null,
-      "pub_fns": [],
-      "pub_types": [],
-      "impls": [],
-      "crate_uses": [
-        "use crate:: workflows::compiler::{ CompilerError , StepDsl , WorkflowCompiler , WorkflowDsl , } ",
-        "use crate:: workflows::validation::WorkflowValidator ",
-        "use crate:: workflows::topology::WorkflowTopology "
-      ]
     },
     "src/types/ids.rs": {
       "module_doc": null,
@@ -9525,5 +9301,5 @@
       ]
     }
   },
-  "total_pub_items": 351
+  "total_pub_items": 349
 }

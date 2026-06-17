@@ -6,52 +6,43 @@
 
 | Katman | Modül | LOC | Fan-in | Fan-out |
 |---|---|---|---|---|
-| 0 | errors | 163 | 10 | 0 |
-| 1 | task | 805 | 10 | 4 |
-| 1 | types | 35 | 10 | 0 |
-| 1 | events | 139 | 7 | 1 |
-| 1 | wasm | 887 | 6 | 2 |
-| 1 | persistence | 334 | 5 | 3 |
-| 1 | runtime | 759 | 5 | 6 |
-| 0 | agents | 963 | 4 | 2 |
-| 1 | orchestration | 1864 | 4 | 4 |
-| 1 | metrics | 236 | 3 | 1 |
-| 1 | workflows | 1650 | 3 | 7 |
-| 0 | ai | 1298 | 2 | 1 |
-| 0 | remote | 981 | 2 | 0 |
-| 0 | security | 670 | 2 | 0 |
+| 1 | types | 99 | 11 | 0 |
+| 1 | errors | 163 | 9 | 0 |
+| 1 | task | 805 | 9 | 4 |
+| 2 | events | 139 | 6 | 1 |
+| 1 | wasm | 887 | 5 | 2 |
+| 1 | persistence | 334 | 4 | 3 |
+| 1 | runtime | 759 | 4 | 6 |
+| 1 | agents | 917 | 3 | 3 |
+| 1 | orchestration | 1864 | 3 | 4 |
+| 0 | ai | 1302 | 2 | 1 |
+| 1 | metrics | 236 | 2 | 1 |
 | 1 | worker | 773 | 2 | 6 |
-| 0 | api | 1225 | 1 | 9 |
-| 0 | scripting | 403 | 1 | 5 |
-| 0 | tests | 3231 | 1 | 14 |
+| 1 | workflows | 1650 | 2 | 7 |
+| 0 | remote | 981 | 1 | 0 |
+| 1 | security | 670 | 1 | 0 |
+| 0 | tests | 0 | 1 | 0 |
+| 0 | api | 1225 | 0 | 9 |
 | 0 | bridge | 624 | 0 | 7 |
 | 0 | config | 8 | 0 | 0 |
 | 0 | logging | 621 | 0 | 3 |
 | 0 | plugins | 206 | 0 | 0 |
 | 0 | registry | 178 | 0 | 3 |
+| 0 | scripting | 403 | 0 | 5 |
 | 0 | sdk | 240 | 0 | 0 |
 
 **⚠ Döngüsel bağımlılıklar tespit edildi:**
 
-- agents → ai → agents
-- api → orchestration → runtime → persistence → task → tests → api
-- orchestration → runtime → persistence → task → tests → orchestration
-- orchestration → runtime → persistence → task → tests → workflows → orchestration
-- persistence → task → tests → persistence
-- persistence → task → tests → runtime → runtime
-- persistence → task → tests → workflows → runtime → runtime
-- scripting → task → task → tests
-- scripting → wasm → task → task → tests
-- task → tests → task
-- task → tests → workflows → task
+- orchestration → workflows → orchestration
+- task → wasm → task
 
 ## Modüller
 
-### `agents` (katman 0, 963 LOC)
+### `agents` (katman 1, 917 LOC)
 
-**Bağımlı olduğu:** ai, errors
+**Bağımlı olduğu:** ai, errors, types
 
-**Kendisine bağımlı olanlar:** ai, api, scripting, workflows
+**Kendisine bağımlı olanlar:** api, scripting, workflows
 
 **Public API:**
 
@@ -63,8 +54,6 @@
 - `impl AgentRegistry :: fn new() -> Self`
 - `impl AgentRegistry :: fn register(& mut self, agent : RegisteredAgent)`
 - `impl AgentRegistry :: fn agents(& self) -> & [RegisteredAgent]`
-- `pub struct AgentPlan`
-- `pub struct AgentPlanStep`
 - `pub struct AgentManager`
 - `impl AgentManager :: fn new() -> Self`
 - `impl AgentManager :: fn register(& mut self, agent : RegisteredAgent)`
@@ -79,7 +68,6 @@
 - `impl AgentMemory :: fn snapshot(& self) -> Vec <(String , Value)>` — Tüm kayıtları döndür (reasoning context için).
 - `impl AgentMemory :: fn len(& self) -> usize`
 - `impl AgentMemory :: fn is_empty(& self) -> bool`
-- `pub trait AgentTool`
 - `pub struct AgentRuntime`
 - `impl AgentRuntime :: fn new(budget : AgentExecutionBudget, tools : Vec < Arc < dyn AgentTool > >) -> Self`
 - `impl AgentRuntime :: async fn execute(context : AgentContext, objective : String, budget : AgentExecutionBudget, tools : Vec < Arc < dyn AgentTool > >) -> Result <Uuid , RuntimeError>` — Agent execution döngüsü. objective → plan → adım adım çalıştır → execution_id
@@ -102,9 +90,9 @@
 - `pub enum AgentCancellation`
 - `pub struct AgentSubscription`
 
-### `ai` (katman 0, 1298 LOC)
+### `ai` (katman 0, 1302 LOC)
 
-**Bağımlı olduğu:** agents
+**Bağımlı olduğu:** types
 
 **Kendisine bağımlı olanlar:** agents, workflows
 
@@ -170,8 +158,6 @@
 
 **Bağımlı olduğu:** agents, events, metrics, orchestration, persistence, runtime, security, task, types
 
-**Kendisine bağımlı olanlar:** tests
-
 **Public API:**
 
 - `pub struct HealthResponse`
@@ -226,9 +212,9 @@
 
 _Public API yok._
 
-### `errors` (katman 0, 163 LOC)
+### `errors` (katman 1, 163 LOC)
 
-**Kendisine bağımlı olanlar:** agents, orchestration, persistence, runtime, scripting, task, tests, wasm, worker, workflows
+**Kendisine bağımlı olanlar:** agents, orchestration, persistence, runtime, scripting, task, wasm, worker, workflows
 
 **Public API:**
 
@@ -237,11 +223,11 @@ _Public API yok._
 - `pub enum RuntimeError`
 - `pub enum TaskError`
 
-### `events` (katman 1, 139 LOC)
+### `events` (katman 2, 139 LOC)
 
 **Bağımlı olduğu:** types
 
-**Kendisine bağımlı olanlar:** api, bridge, logging, metrics, runtime, tests, worker
+**Kendisine bağımlı olanlar:** api, bridge, logging, metrics, runtime, worker
 
 **Public API:**
 
@@ -293,7 +279,7 @@ _Public API yok._
 
 **Bağımlı olduğu:** events
 
-**Kendisine bağımlı olanlar:** api, bridge, tests
+**Kendisine bağımlı olanlar:** api, bridge
 
 **Public API:**
 
@@ -320,7 +306,7 @@ _Public API yok._
 
 **Bağımlı olduğu:** errors, remote, runtime, workflows
 
-**Kendisine bağımlı olanlar:** api, logging, tests, workflows
+**Kendisine bağımlı olanlar:** api, logging, workflows
 
 **Public API:**
 
@@ -430,7 +416,7 @@ _Public API yok._
 
 **Bağımlı olduğu:** errors, task, types
 
-**Kendisine bağımlı olanlar:** api, bridge, runtime, tests, worker
+**Kendisine bağımlı olanlar:** api, bridge, runtime, worker
 
 **Public API:**
 
@@ -498,7 +484,7 @@ _Public API yok._
 
 ### `remote` (katman 0, 981 LOC)
 
-**Kendisine bağımlı olanlar:** orchestration, tests
+**Kendisine bağımlı olanlar:** orchestration
 
 **Public API:**
 
@@ -557,7 +543,7 @@ _Public API yok._
 
 **Bağımlı olduğu:** errors, events, persistence, task, wasm, worker
 
-**Kendisine bağımlı olanlar:** api, bridge, orchestration, tests, workflows
+**Kendisine bağımlı olanlar:** api, bridge, orchestration, workflows
 
 **Public API:**
 
@@ -605,8 +591,6 @@ _Public API yok._
 ### `scripting` (katman 0, 403 LOC)
 
 **Bağımlı olduğu:** agents, errors, task, types, wasm
-
-**Kendisine bağımlı olanlar:** tests
 
 **Public API:**
 
@@ -656,9 +640,9 @@ _Public API yok._
 - `impl AetherClient :: async fn health(& self) -> Result <HealthResponse , ClientError>` — GET /health
 - `pub struct TypeScriptSdk`
 
-### `security` (katman 0, 670 LOC)
+### `security` (katman 1, 670 LOC)
 
-**Kendisine bağımlı olanlar:** api, tests
+**Kendisine bağımlı olanlar:** api
 
 **Public API:**
 
@@ -705,7 +689,7 @@ _Public API yok._
 
 **Bağımlı olduğu:** errors, tests, types, wasm
 
-**Kendisine bağımlı olanlar:** api, bridge, persistence, registry, runtime, scripting, tests, wasm, worker, workflows
+**Kendisine bağımlı olanlar:** api, bridge, persistence, registry, runtime, scripting, wasm, worker, workflows
 
 **Public API:**
 
@@ -739,20 +723,9 @@ _Public API yok._
 - `pub struct TaskDependency`
 - `pub struct TaskOrchestration`
 
-### `tests` (katman 0, 3231 LOC)
+### `types` (katman 1, 99 LOC)
 
-**Bağımlı olduğu:** api, errors, events, metrics, orchestration, persistence, remote, runtime, scripting, security, task, types, wasm, workflows
-
-**Kendisine bağımlı olanlar:** task
-
-**Public API:**
-
-- `pub fn make_task(priority : TaskPriority, entrypoint : & str) -> TaskDefinition`
-- `pub fn make_task_with_hash(priority : TaskPriority, hash : [u8 ; 32]) -> TaskDefinition`
-
-### `types` (katman 1, 35 LOC)
-
-**Kendisine bağımlı olanlar:** api, bridge, events, persistence, registry, scripting, task, tests, worker, workflows
+**Kendisine bağımlı olanlar:** agents, ai, api, bridge, events, persistence, registry, scripting, task, worker, workflows
 
 **Public API:**
 
@@ -761,12 +734,15 @@ _Public API yok._
 - `pub struct TaskId`
 - `pub struct ExecutionId`
 - `pub struct Versioned<T>`
+- `pub struct AgentPlan` — `agents` ve `ai` modüllerinin her ikisi de bu tipe ihtiyaç duyduğu için döngüsel bağımlılığı önlemek amacıyla buraya (types) taşındı. Önceki konum: src/agents/plans.rs
+- `pub struct AgentPlanStep`
+- `pub trait AgentTool` — `agents` ve `ai` modüllerinin her ikisi de bu trait'e ihtiyaç duyduğu için döngüsel bağımlılığı önlemek amacıyla buraya (types) taşındı. Önceki konum: src/agents/tools.rs
 
 ### `wasm` (katman 1, 887 LOC)
 
 **Bağımlı olduğu:** errors, task
 
-**Kendisine bağımlı olanlar:** bridge, runtime, scripting, task, tests, worker
+**Kendisine bağımlı olanlar:** bridge, runtime, scripting, task, worker
 
 **Public API:**
 
@@ -844,7 +820,7 @@ _Public API yok._
 
 **Bağımlı olduğu:** agents, ai, errors, orchestration, runtime, task, types
 
-**Kendisine bağımlı olanlar:** logging, orchestration, tests
+**Kendisine bağımlı olanlar:** logging, orchestration
 
 **Public API:**
 
@@ -915,15 +891,15 @@ _Public API yok._
 | Katman | Modül | LOC | Fan-in | Fan-out |
 |---|---|---|---|---|
 | 3 | src | 2353 | 3 | 0 |
-| 2 | api | 84 | 1 | 1 |
-| 1 | screens | 3830 | 1 | 3 |
+| 2 | api | 121 | 1 | 1 |
+| 1 | screens | 3709 | 1 | 3 |
 | 2 | services | 204 | 1 | 0 |
 | 0 | root | 116 | 0 | 2 |
 | 0 | widgets | 0 | 0 | 0 |
 
 ## Modüller
 
-### `api` (katman 2, 84 LOC)
+### `api` (katman 2, 121 LOC)
 
 **Bağımlı olduğu:** src
 
@@ -941,7 +917,7 @@ _Public API yok._
 
 - `class AetherOSApp extends StatelessWidget` — Normal uygulama
 
-### `screens` (katman 1, 3830 LOC)
+### `screens` (katman 1, 3709 LOC)
 
 **Bağımlı olduğu:** api, services, src
 
@@ -959,7 +935,6 @@ _Public API yok._
 - `class AiChatScreen extends StatefulWidget`
 - `class BackupScreen extends StatefulWidget`
 - `class SubmitTaskScreen extends StatefulWidget`
-- `class AetherApi`
 
 ### `services` (katman 2, 204 LOC)
 

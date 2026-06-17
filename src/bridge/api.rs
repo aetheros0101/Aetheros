@@ -22,7 +22,7 @@ use tracing::info;
 
 use crate::bridge::state::{get_runtime, init_mobile_runtime};
 use crate::bridge::types::{
-    MetricsSnapshot, ModuleUploadResponse,
+    LogEntry, MetricsSnapshot, ModuleUploadResponse,
     RuntimeInfo, TaskRequest, TaskStatusResponse,
 };
 use crate::task::priority::TaskPriority;
@@ -305,6 +305,120 @@ pub async fn upload_wasm_module(
     info!(hash = %hash, size = size, "WASM modülü yüklendi ve kaydedildi");
 
     Ok(ModuleUploadResponse { hash, size })
+}
+
+/// Belirtilen hash'e sahip modül runtime'da kayıtlı mı?
+///
+/// WasmModuleScreen açılışında, eski oturumdan kalan
+/// meta-data'yı doğrulamak için her modül için çağrılır.
+pub fn check_module_exists(hash_hex: String) -> Result<bool, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    let hash = crate::wasm::module_store::ModuleStore::hex_to_hash(&hash_hex)
+        .map_err(|e| format!("Geçersiz hash: {e}"))?;
+
+    Ok(rt.module_store.contains(&hash))
+}
+
+// ── Task yeniden gönderme ──────────────────────────────────
+
+/// Mevcut bir task'ı orijinal ayarlarıyla (hash, entrypoint,
+/// priority, retry policy) yeni bir UUID altında yeniden kuyruğa ekler.
+///
+/// "Yeniden Dene" butonu için — sadece id ve zaman damgaları
+/// yenilenir, deadline sıfırlanır.
+pub async fn resubmit_task(task_id: String) -> Result<String, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    let uuid = uuid::Uuid::parse_str(&task_id)
+        .map_err(|_| format!("Geçersiz task_id: {task_id}"))?;
+
+    let original = rt
+        .persistence
+        .load_task(&TaskId(uuid))
+        .map_err(|e| format!("Persistence hatası: {e:?}"))?
+        .ok_or_else(|| format!("Task bulunamadı: {task_id}"))?
+        .task;
+
+    let new_id = TaskId(uuid::Uuid::new_v4());
+    let now = chrono::Utc::now();
+
+    let resubmitted = TaskDefinition {
+        id: new_id.clone(),
+        parent: original.parent,
+        orchestration: original.orchestration,
+        priority: original.priority,
+        deadline: None,
+        timeout_ms: original.timeout_ms,
+        retry_policy: original.retry_policy,
+        metadata: original.metadata,
+        wasm_module_hash: original.wasm_module_hash,
+        entrypoint: original.entrypoint,
+        state: TaskState::Created,
+        created_at: now,
+        updated_at: now,
+    };
+
+    rt.handle
+        .submit(resubmitted)
+        .await
+        .map_err(|e| format!("Submit hatası: {e:?}"))?;
+
+    info!(old_task_id = %task_id, new_task_id = %new_id.0, "Task yeniden gönderildi");
+
+    Ok(new_id.0.to_string())
+}
+
+// ── Log izleme ───────────────────────────────────────────
+
+/// Son `limit` kadar log entry döndür (yeniden eskiye sıralı).
+///
+/// LogScreen 2 saniyede bir bu fonksiyonu polling ile çeker.
+/// limit: 0 → varsayılan 100.
+pub fn get_recent_logs(limit: u32) -> Result<Vec<LogEntry>, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    let limit = if limit == 0 { 100 } else { limit as usize };
+
+    Ok(rt
+        .log_buffer
+        .recent(limit)
+        .into_iter()
+        .map(to_bridge_log_entry)
+        .collect())
+}
+
+/// Belirli bir task'a ait log entry'leri döndür.
+///
+/// Task detay modalındaki "Loglar" sekmesi için.
+/// limit: 0 → varsayılan 50.
+pub fn get_task_logs(task_id: String, limit: u32) -> Result<Vec<LogEntry>, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    let limit = if limit == 0 { 50 } else { limit as usize };
+
+    Ok(rt
+        .log_buffer
+        .by_task(&task_id, limit)
+        .into_iter()
+        .map(to_bridge_log_entry)
+        .collect())
+}
+
+/// logging::buffer::LogEntry (pub(crate), &'static str alanlı) →
+/// bridge::types::LogEntry (pub, String alanlı, FRB-export edilebilir).
+fn to_bridge_log_entry(e: crate::logging::buffer::LogEntry) -> LogEntry {
+    LogEntry {
+        timestamp_ms: e.timestamp_ms,
+        level: e.level.to_string(),
+        task_id: e.task_id,
+        message: e.message,
+        event_type: e.event_type.to_string(),
+    }
 }
 
 // ── Metrikler ─────────────────────────────────────────────

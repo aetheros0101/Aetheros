@@ -3,7 +3,7 @@
     "api": {
       "purpose": null,
       "layer": 2,
-      "loc": 84,
+      "loc": 121,
       "depends_on": [
         "src"
       ],
@@ -38,7 +38,7 @@
     "screens": {
       "purpose": null,
       "layer": 1,
-      "loc": 3830,
+      "loc": 3709,
       "depends_on": [
         "api",
         "services",
@@ -96,11 +96,6 @@
         {
           "kind": "class",
           "signature": "class SubmitTaskScreen extends StatefulWidget",
-          "doc": null
-        },
-        {
-          "kind": "class",
-          "signature": "class AetherApi",
           "doc": null
         }
       ]
