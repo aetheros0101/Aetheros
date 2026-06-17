@@ -90,6 +90,22 @@ class ModuleUploadResponse {
   const ModuleUploadResponse({required this.hash, required this.size});
 }
 
+class LogRecord {
+  final int timestampMs;
+  final String level;
+  final String? taskId;
+  final String message;
+  final String eventType;
+
+  const LogRecord({
+    required this.timestampMs,
+    required this.level,
+    this.taskId,
+    required this.message,
+    required this.eventType,
+  });
+}
+
 // ── Gerçek bridge fonksiyonları ───────────────────────────────
 
 Future<void> initializeRuntime({
@@ -166,4 +182,45 @@ Future<MetricsSnapshot> getMetrics() async {
     failedTasks:    s.failedTasks.toInt(),
     retriedTasks:   s.retriedTasks.toInt(),
   );
+}
+
+// ── WASM modül kontrolü ───────────────────────────────────
+
+Future<bool> checkModuleExists({required String hashHex}) =>
+    _bridge.checkModuleExists(hashHex: hashHex);
+
+// ── Task yeniden gönderme ─────────────────────────────────
+
+Future<String> resubmitTask({required String taskId}) =>
+    _bridge.resubmitTask(taskId: taskId);
+
+// ── Log izleme ───────────────────────────────────────────
+
+Future<List<LogRecord>> getRecentLogs({required int limit}) async {
+  final list = await _bridge.getRecentLogs(limit: limit);
+  return list
+      .map((e) => LogRecord(
+            timestampMs: e.timestampMs.toInt(), // PlatformInt64 → int
+            level: e.level,
+            taskId: e.taskId,
+            message: e.message,
+            eventType: e.eventType,
+          ))
+      .toList();
+}
+
+Future<List<LogRecord>> getTaskLogs({
+  required String taskId,
+  required int limit,
+}) async {
+  final list = await _bridge.getTaskLogs(taskId: taskId, limit: limit);
+  return list
+      .map((e) => LogRecord(
+            timestampMs: e.timestampMs.toInt(),
+            level: e.level,
+            taskId: e.taskId,
+            message: e.message,
+            eventType: e.eventType,
+          ))
+      .toList();
 }
