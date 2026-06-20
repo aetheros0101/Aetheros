@@ -75,6 +75,10 @@
     "path": "/home/dev/project/aetheros/src/task",
     "files": 11
   },
+  "tests": {
+    "path": "/home/dev/project/aetheros/src/tests",
+    "files": 17
+  },
   "types": {
     "path": "/home/dev/project/aetheros/src/types",
     "files": 6

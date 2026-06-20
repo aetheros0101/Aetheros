@@ -124,6 +124,15 @@ impl ModuleStore {
         self.modules.len()
     }
 
+    /// Tüm hash'leri hex string listesi olarak döndür.
+    /// GET /modules endpoint'i için.
+    pub fn list_hashes(&self) -> Vec<String> {
+        self.modules
+            .iter()
+            .map(|entry| Self::hash_to_hex(entry.key()))
+            .collect()
+    }
+
     /// Hash'i hex string'e çevir (API response için).
     pub fn hash_to_hex(hash: &ModuleHash) -> String {
         hex::encode(hash)

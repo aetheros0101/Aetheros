@@ -134,7 +134,7 @@
     "src": {
       "purpose": "Flutter'ın task göndermek için kullandığı tip.  wasm_module_hash: 64 karakter hex string (SHA-256) Boş string → modülsüz task (test için)",
       "layer": 3,
-      "loc": 2353,
+      "loc": 2410,
       "depends_on": [],
       "depended_by": [
         "api",
@@ -180,6 +180,11 @@
         {
           "kind": "class",
           "signature": "class ModuleUploadResponse",
+          "doc": null
+        },
+        {
+          "kind": "class",
+          "signature": "class LogRecord",
           "doc": null
         },
         {

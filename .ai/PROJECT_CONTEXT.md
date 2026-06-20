@@ -6,39 +6,47 @@
 
 | Katman | Modül | LOC | Fan-in | Fan-out |
 |---|---|---|---|---|
-| 1 | types | 99 | 11 | 0 |
-| 1 | errors | 163 | 9 | 0 |
-| 1 | task | 805 | 9 | 4 |
-| 2 | events | 139 | 6 | 1 |
-| 1 | wasm | 887 | 5 | 2 |
-| 1 | persistence | 334 | 4 | 3 |
-| 1 | runtime | 759 | 4 | 6 |
-| 1 | agents | 917 | 3 | 3 |
-| 1 | orchestration | 1864 | 3 | 4 |
+| 1 | types | 99 | 13 | 0 |
+| 1 | task | 771 | 11 | 4 |
+| 0 | errors | 163 | 10 | 0 |
+| 2 | events | 139 | 7 | 1 |
+| 1 | wasm | 896 | 7 | 2 |
+| 1 | persistence | 334 | 5 | 3 |
+| 1 | runtime | 759 | 5 | 6 |
+| 2 | orchestration | 1933 | 4 | 6 |
+| 2 | workflows | 1650 | 4 | 7 |
+| 0 | agents | 917 | 3 | 3 |
+| 1 | metrics | 236 | 3 | 1 |
+| 0 | remote | 981 | 3 | 0 |
 | 0 | ai | 1302 | 2 | 1 |
-| 1 | metrics | 236 | 2 | 1 |
+| 0 | scripting | 403 | 2 | 5 |
+| 0 | security | 670 | 2 | 0 |
 | 1 | worker | 773 | 2 | 6 |
-| 1 | workflows | 1650 | 2 | 7 |
-| 0 | remote | 981 | 1 | 0 |
-| 1 | security | 670 | 1 | 0 |
-| 0 | tests | 0 | 1 | 0 |
-| 0 | api | 1225 | 0 | 9 |
-| 0 | bridge | 624 | 0 | 7 |
+| 0 | api | 1731 | 1 | 13 |
+| 1 | logging | 622 | 1 | 3 |
+| 0 | tests | 3231 | 1 | 14 |
+| 0 | bridge | 776 | 0 | 8 |
 | 0 | config | 8 | 0 | 0 |
-| 0 | logging | 621 | 0 | 3 |
 | 0 | plugins | 206 | 0 | 0 |
 | 0 | registry | 178 | 0 | 3 |
-| 0 | scripting | 403 | 0 | 5 |
 | 0 | sdk | 240 | 0 | 0 |
 
 **⚠ Döngüsel bağımlılıklar tespit edildi:**
 
-- orchestration → workflows → orchestration
-- task → wasm → task
+- api → orchestration → runtime → persistence → task → tests → api
+- orchestration → runtime → persistence → task → tests → orchestration
+- orchestration → runtime → persistence → task → tests → workflows → orchestration
+- persistence → task → tests → persistence
+- persistence → task → tests → runtime → runtime
+- persistence → task → tests → workflows → runtime → runtime
+- scripting → task → task → tests
+- scripting → wasm → task → task → tests
+- task → tests → task
+- task → tests → workflows → task
 
 ## Modüller
 
-### `agents` (katman 1, 917 LOC)
+### `agents` (katman 0, 917 LOC)
 
 **Bağımlı olduğu:** ai, errors, types
 
@@ -154,18 +162,26 @@
 - `pub enum AiError`
 - `pub trait StructuredOutput`
 
-### `api` (katman 0, 1225 LOC)
+### `api` (katman 0, 1731 LOC)
 
-**Bağımlı olduğu:** agents, events, metrics, orchestration, persistence, runtime, security, task, types
+**Bağımlı olduğu:** agents, events, metrics, orchestration, persistence, remote, runtime, scripting, security, task, types, wasm, workflows
+
+**Kendisine bağımlı olanlar:** tests
 
 **Public API:**
 
 - `pub struct HealthResponse`
 - `pub fn build_router() -> Router <AppState>`
+- `pub struct AgentStatus`
+- `pub struct WorkflowStatus`
 - `pub struct AppState`
+- `pub struct RegisterNodeRequest`
+- `pub struct ModuleUploadRequest`
+- `pub struct ScriptRunRequest`
 - `pub struct TaskSubmitRequest`
 - `pub struct AgentStartRequest`
 - `pub struct WorkflowSubmitRequest`
+- `pub struct WorkflowStepRequest`
 - `pub struct SubscriptionRequest`
 - `pub async fn ws_upgrade_handler(ws : WebSocketUpgrade, State (state) : State < AppState >) -> impl IntoResponse` — WebSocket upgrade endpoint. Router'a şöyle eklenir: .route("/ws", get(ws_upgrade_handler))
 - `pub struct WebsocketEvent`
@@ -173,7 +189,7 @@
 - `pub async fn auth_middleware(request : Request, next : Next) -> Response` — Bearer token'ı doğrula ve Claims'i extension'a ekle. Kullanım (router.rs'de): ```rust use axum::middleware; router.route_layer(middleware::from_fn_with_state( state, auth_middleware, )) ```
 - `pub async fn api_key_middleware(request : Request, next : Next) -> Response` — API key doğrulama (header: X-Api-Key).
 - `pub struct ApiServer`
-- `impl ApiServer :: fn new(runtime : RuntimeHandle, events : EventBus, persistence : Arc < PersistenceEngine >, metrics : Arc < RuntimeMetrics >, addr : SocketAddr) -> Self`
+- `impl ApiServer :: fn new(runtime : RuntimeHandle, events : EventBus, persistence : Arc < PersistenceEngine >, metrics : Arc < RuntimeMetrics >, module_store : Arc < ModuleStore >, addr : SocketAddr) -> Self`
 - `impl ApiServer :: async fn serve(self) -> Result <() , Box <dyn std::error::Error>>`
 - `pub struct WorkflowRoutes`
 - `impl WorkflowRoutes :: fn submit(workflow : WorkflowSubmission) -> Uuid`
@@ -184,9 +200,9 @@
 - `pub struct AgentDescriptor`
 - `pub async fn dashboard_handler() -> impl IntoResponse` — GET /dashboard → HTML dashboard
 
-### `bridge` (katman 0, 624 LOC)
+### `bridge` (katman 0, 776 LOC)
 
-**Bağımlı olduğu:** events, metrics, persistence, runtime, task, types, wasm
+**Bağımlı olduğu:** events, logging, metrics, persistence, runtime, task, types, wasm
 
 **Public API:**
 
@@ -198,6 +214,10 @@
 - `pub async fn get_task_status(task_id : String) -> Result <TaskStatusResponse , String>` — Task durumunu sorgula.
 - `pub async fn list_tasks(limit : u32) -> Result <Vec <TaskStatusResponse> , String>` — Tüm task'ları listele (son N tane).
 - `pub async fn upload_wasm_module(bytes : Vec < u8 >) -> Result <ModuleUploadResponse , String>` — WASM modülü yükle → hash döner. Flutter, dosyayı bytes olarak Rust'a verir. Rust, ModuleStore'a kaydeder ve SHA-256 hash döner. Sonraki task'larda bu hash kullanılır. Örnek (Dart): ```dart final bytes = await File("my_module.wasm").readAsBytes(); final hash = await AetherApi.uploadWasmModule(bytes: bytes); ```
+- `pub fn check_module_exists(hash_hex : String) -> Result <bool , String>` — Belirtilen hash'e sahip modül runtime'da kayıtlı mı? WasmModuleScreen açılışında, eski oturumdan kalan meta-data'yı doğrulamak için her modül için çağrılır.
+- `pub async fn resubmit_task(task_id : String) -> Result <String , String>` — Mevcut bir task'ı orijinal ayarlarıyla (hash, entrypoint, priority, retry policy) yeni bir UUID altında yeniden kuyruğa ekler. "Yeniden Dene" butonu için — sadece id ve zaman damgaları yenilenir, deadline sıfırlanır.
+- `pub fn get_recent_logs(limit : u32) -> Result <Vec <LogRecord> , String>` — Son `limit` kadar log entry döndür (yeniden eskiye sıralı). LogScreen 2 saniyede bir bu fonksiyonu polling ile çeker. limit: 0 → varsayılan 100.
+- `pub fn get_task_logs(task_id : String, limit : u32) -> Result <Vec <LogRecord> , String>` — Belirli bir task'a ait log entry'leri döndür. Task detay modalındaki "Loglar" sekmesi için. limit: 0 → varsayılan 50.
 - `pub async fn get_metrics() -> Result <MetricsSnapshot , String>` — Anlık metrik görüntüsü al.
 - `pub fn init_mobile_runtime(db_path : String, worker_count : usize) -> Result <() , String>` — Runtime'ı başlat. Flutter tarafından uygulama açılışında bir kez çağrılır. İkinci çağrı AlreadyInitialized hatası döner.
 - `pub fn get_runtime() -> Option <& 'static MobileRuntime>` — Global runtime'ı al. init_mobile_runtime() çağrılmadan önce kullanılırsa None döner. Bridge fonksiyonları bu durumda "RuntimeNotInitialized" hatası verir.
@@ -207,14 +227,15 @@
 - `pub struct TaskStatusResponse` — Flutter'ın task durumunu göstermek için kullandığı tip.
 - `pub struct RuntimeInfo`
 - `pub struct ModuleUploadResponse`
+- `pub struct LogRecord`
 
 ### `config` (katman 0, 8 LOC)
 
 _Public API yok._
 
-### `errors` (katman 1, 163 LOC)
+### `errors` (katman 0, 163 LOC)
 
-**Kendisine bağımlı olanlar:** agents, orchestration, persistence, runtime, scripting, task, wasm, worker, workflows
+**Kendisine bağımlı olanlar:** agents, orchestration, persistence, runtime, scripting, task, tests, wasm, worker, workflows
 
 **Public API:**
 
@@ -227,7 +248,7 @@ _Public API yok._
 
 **Bağımlı olduğu:** types
 
-**Kendisine bağımlı olanlar:** api, bridge, logging, metrics, runtime, worker
+**Kendisine bağımlı olanlar:** api, bridge, logging, metrics, runtime, tests, worker
 
 **Public API:**
 
@@ -241,9 +262,11 @@ _Public API yok._
 - `impl EventBus :: fn subscribe(& self) -> broadcast::Receiver <SystemEvent>`
 - `pub enum RuntimeEvent`
 
-### `logging` (katman 0, 621 LOC)
+### `logging` (katman 1, 622 LOC)
 
 **Bağımlı olduğu:** events, orchestration, workflows
+
+**Kendisine bağımlı olanlar:** bridge
 
 **Public API:**
 
@@ -279,7 +302,7 @@ _Public API yok._
 
 **Bağımlı olduğu:** events
 
-**Kendisine bağımlı olanlar:** api, bridge
+**Kendisine bağımlı olanlar:** api, bridge, tests
 
 **Public API:**
 
@@ -302,11 +325,11 @@ _Public API yok._
 - `impl RuntimeMetrics :: fn start_collecting(self : Arc < Self >, bus : EventBus)` — EventBus'tan beslenme döngüsünü arka planda başlat. Her SystemEvent::Task event'ine göre metrikleri günceller. Shutdown: bus kapanınca (RecvError::Closed) döngü çıkar.
 - `impl RuntimeMetrics :: fn process_event(& self, event : & SystemEvent)`
 
-### `orchestration` (katman 1, 1864 LOC)
+### `orchestration` (katman 2, 1933 LOC)
 
-**Bağımlı olduğu:** errors, remote, runtime, workflows
+**Bağımlı olduğu:** errors, remote, runtime, task, types, workflows
 
-**Kendisine bağımlı olanlar:** api, logging, workflows
+**Kendisine bağımlı olanlar:** api, logging, tests, workflows
 
 **Public API:**
 
@@ -345,7 +368,7 @@ _Public API yok._
 - `impl QuorumPolicy :: fn satisfied(& self, available : usize) -> bool`
 - `pub trait NodeDispatcher`
 - `pub struct ExecutionDispatcher<T>`
-- `impl ExecutionDispatcher <T> :: fn new(transport : Arc < T >, dispatcher : Arc < Dispatcher >) -> Self`
+- `impl ExecutionDispatcher <T> :: fn new(transport : Arc < T >, cluster : Arc < ClusterState >, runtime : RuntimeHandle) -> Self`
 - `pub struct ExecutionLineage`
 - `pub struct StateConvergence`
 - `impl StateConvergence :: fn new() -> Self`
@@ -416,7 +439,7 @@ _Public API yok._
 
 **Bağımlı olduğu:** errors, task, types
 
-**Kendisine bağımlı olanlar:** api, bridge, runtime, worker
+**Kendisine bağımlı olanlar:** api, bridge, runtime, tests, worker
 
 **Public API:**
 
@@ -484,7 +507,7 @@ _Public API yok._
 
 ### `remote` (katman 0, 981 LOC)
 
-**Kendisine bağımlı olanlar:** orchestration
+**Kendisine bağımlı olanlar:** api, orchestration, tests
 
 **Public API:**
 
@@ -543,7 +566,7 @@ _Public API yok._
 
 **Bağımlı olduğu:** errors, events, persistence, task, wasm, worker
 
-**Kendisine bağımlı olanlar:** api, bridge, orchestration, workflows
+**Kendisine bağımlı olanlar:** api, bridge, orchestration, tests, workflows
 
 **Public API:**
 
@@ -591,6 +614,8 @@ _Public API yok._
 ### `scripting` (katman 0, 403 LOC)
 
 **Bağımlı olduğu:** agents, errors, task, types, wasm
+
+**Kendisine bağımlı olanlar:** api, tests
 
 **Public API:**
 
@@ -640,9 +665,9 @@ _Public API yok._
 - `impl AetherClient :: async fn health(& self) -> Result <HealthResponse , ClientError>` — GET /health
 - `pub struct TypeScriptSdk`
 
-### `security` (katman 1, 670 LOC)
+### `security` (katman 0, 670 LOC)
 
-**Kendisine bağımlı olanlar:** api
+**Kendisine bağımlı olanlar:** api, tests
 
 **Public API:**
 
@@ -685,11 +710,11 @@ _Public API yok._
 - `pub trait SignatureVerifier`
 - `pub struct WasmSignature`
 
-### `task` (katman 1, 805 LOC)
+### `task` (katman 1, 771 LOC)
 
 **Bağımlı olduğu:** errors, tests, types, wasm
 
-**Kendisine bağımlı olanlar:** api, bridge, persistence, registry, runtime, scripting, wasm, worker, workflows
+**Kendisine bağımlı olanlar:** api, bridge, orchestration, persistence, registry, runtime, scripting, tests, wasm, worker, workflows
 
 **Public API:**
 
@@ -723,9 +748,20 @@ _Public API yok._
 - `pub struct TaskDependency`
 - `pub struct TaskOrchestration`
 
+### `tests` (katman 0, 3231 LOC)
+
+**Bağımlı olduğu:** api, errors, events, metrics, orchestration, persistence, remote, runtime, scripting, security, task, types, wasm, workflows
+
+**Kendisine bağımlı olanlar:** task
+
+**Public API:**
+
+- `pub fn make_task(priority : TaskPriority, entrypoint : & str) -> TaskDefinition`
+- `pub fn make_task_with_hash(priority : TaskPriority, hash : [u8 ; 32]) -> TaskDefinition`
+
 ### `types` (katman 1, 99 LOC)
 
-**Kendisine bağımlı olanlar:** agents, ai, api, bridge, events, persistence, registry, scripting, task, worker, workflows
+**Kendisine bağımlı olanlar:** agents, ai, api, bridge, events, orchestration, persistence, registry, scripting, task, tests, worker, workflows
 
 **Public API:**
 
@@ -738,11 +774,11 @@ _Public API yok._
 - `pub struct AgentPlanStep`
 - `pub trait AgentTool` — `agents` ve `ai` modüllerinin her ikisi de bu trait'e ihtiyaç duyduğu için döngüsel bağımlılığı önlemek amacıyla buraya (types) taşındı. Önceki konum: src/agents/tools.rs
 
-### `wasm` (katman 1, 887 LOC)
+### `wasm` (katman 1, 896 LOC)
 
 **Bağımlı olduğu:** errors, task
 
-**Kendisine bağımlı olanlar:** bridge, runtime, scripting, task, worker
+**Kendisine bağımlı olanlar:** api, bridge, runtime, scripting, task, tests, worker
 
 **Public API:**
 
@@ -753,6 +789,7 @@ _Public API yok._
 - `impl ModuleStore :: fn get(& self, hash : & ModuleHash) -> Result <Arc <Vec <u8>> , ModuleStoreError>` — Hash'e göre binary'yi al.
 - `impl ModuleStore :: fn contains(& self, hash : & ModuleHash) -> bool` — Binary mevcutsa true.
 - `impl ModuleStore :: fn count(& self) -> usize` — Depolanan modül sayısı.
+- `impl ModuleStore :: fn list_hashes(& self) -> Vec <String>` — Tüm hash'leri hex string listesi olarak döndür. GET /modules endpoint'i için.
 - `impl ModuleStore :: fn hash_to_hex(hash : & ModuleHash) -> String` — Hash'i hex string'e çevir (API response için).
 - `impl ModuleStore :: fn hex_to_hash(hex_str : & str) -> Result <ModuleHash , ModuleStoreError>` — Hex string'i hash'e çevir (API request için).
 - `impl ModuleStore :: fn binary_size(& self, hash : & ModuleHash) -> Option <usize>` — Belirli bir hash için binary boyutunu döndür.
@@ -816,11 +853,11 @@ _Public API yok._
 - `impl WorkerSupervisor :: fn senders(& self) -> & [tokio::sync::mpsc::Sender <WorkerMessage>]` — Dispatcher'ın task göndermesi için sender'ları al.
 - `impl WorkerSupervisor :: async fn run(mut self, mut shutdown_rx : watch :: Receiver < bool >)` — Arka plan izleme döngüsünü başlat. Shutdown sinyali alınınca izlemeyi durdurur. Kalan worker'lar Shutdown mesajı aldıktan sonra temiz çıkar (WorkerManager.send_shutdown_all() ile).
 
-### `workflows` (katman 1, 1650 LOC)
+### `workflows` (katman 2, 1650 LOC)
 
 **Bağımlı olduğu:** agents, ai, errors, orchestration, runtime, task, types
 
-**Kendisine bağımlı olanlar:** logging, orchestration
+**Kendisine bağımlı olanlar:** api, logging, orchestration, tests
 
 **Public API:**
 
@@ -890,7 +927,7 @@ _Public API yok._
 
 | Katman | Modül | LOC | Fan-in | Fan-out |
 |---|---|---|---|---|
-| 3 | src | 2353 | 3 | 0 |
+| 3 | src | 2410 | 3 | 0 |
 | 2 | api | 121 | 1 | 1 |
 | 1 | screens | 3709 | 1 | 3 |
 | 2 | services | 204 | 1 | 0 |
@@ -947,7 +984,7 @@ _Public API yok._
 - `class GeminiService`
 - `class GeminiException implements Exception`
 
-### `src` (katman 3, 2353 LOC)
+### `src` (katman 3, 2410 LOC)
 
 **Amaç:** Flutter'ın task göndermek için kullandığı tip.  wasm_module_hash: 64 karakter hex string (SHA-256) Boş string → modülsüz task (test için)
 
@@ -963,6 +1000,7 @@ _Public API yok._
 - `class MetricsSnapshot`
 - `class RuntimeInfo`
 - `class ModuleUploadResponse`
+- `class LogRecord`
 - `abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire>`
 - `class RustLibWire implements BaseWire`
 - `abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire>`

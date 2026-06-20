@@ -58,10 +58,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Box::new(e) as Box<dyn std::error::Error>
         })?;
 
-    let handle      = bootstrap.runtime_handle();
-    let runtime     = bootstrap.runtime();
-    let events      = runtime.events();
-    let persistence = runtime.persistence();
+    let handle       = bootstrap.runtime_handle();
+    let runtime      = bootstrap.runtime();
+    let events       = runtime.events();
+    let persistence  = runtime.persistence();
+    let module_store = runtime.module_store();
 
     // ── 4. Metrics Collector ──────────────────────────────
     let metrics = Arc::new(RuntimeMetrics::new());
@@ -84,6 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         events,
         Arc::clone(&persistence),
         metrics,
+        module_store,
         addr,
     );
 

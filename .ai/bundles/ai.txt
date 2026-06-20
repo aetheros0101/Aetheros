@@ -848,7 +848,7 @@ impl ModelProvider for GeminiProvider {
 
         let user_part = GeminiPart { text: &request.prompt };
 
-        let system_instruction = request.system_prompt.as_deref().map(|s| {
+        let _system_instruction = request.system_prompt.as_deref().map(|s| {
             GeminiSystemInstruction {
                 parts: vec![GeminiPart { text: s }],
             }

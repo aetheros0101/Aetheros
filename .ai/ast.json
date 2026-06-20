@@ -1536,6 +1536,7 @@
                 "events : EventBus",
                 "persistence : Arc < PersistenceEngine >",
                 "metrics : Arc < RuntimeMetrics >",
+                "module_store : Arc < ModuleStore >",
                 "addr : SocketAddr"
               ],
               "ret": "Self",
@@ -1556,11 +1557,14 @@
         }
       ],
       "crate_uses": [
-        "use crate:: api::rest::router::{ build_router , AppState , } ",
+        "use crate:: api::rest::router::{ AgentRegistry , WorkflowRegistry , build_router , AppState , } ",
+        "use crate:: scripting::registry::ScriptRegistry ",
+        "use crate:: remote::cluster::ClusterState ",
         "use crate:: events::bus::EventBus ",
         "use crate:: metrics::runtime::RuntimeMetrics ",
         "use crate:: persistence::engine::PersistenceEngine ",
-        "use crate:: runtime::api::RuntimeHandle "
+        "use crate:: runtime::api::RuntimeHandle ",
+        "use crate:: wasm::module_store::ModuleStore "
       ]
     },
     "src/api/models/agent.rs": {
@@ -1676,7 +1680,37 @@
       "pub_types": [
         {
           "kind": "struct",
+          "name": "AgentStatus",
+          "generics": [],
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "name": "WorkflowStatus",
+          "generics": [],
+          "doc": null
+        },
+        {
+          "kind": "struct",
           "name": "AppState",
+          "generics": [],
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "name": "RegisterNodeRequest",
+          "generics": [],
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "name": "ModuleUploadRequest",
+          "generics": [],
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "name": "ScriptRunRequest",
           "generics": [],
           "doc": null
         },
@@ -1697,6 +1731,12 @@
           "name": "WorkflowSubmitRequest",
           "generics": [],
           "doc": null
+        },
+        {
+          "kind": "struct",
+          "name": "WorkflowStepRequest",
+          "generics": [],
+          "doc": null
         }
       ],
       "impls": [],
@@ -1712,7 +1752,15 @@
         "use crate:: task::priority::TaskPriority ",
         "use crate:: task::retry::RetryPolicy ",
         "use crate:: task::task::{ TaskDefinition , TaskMetadata , TaskState , } ",
-        "use crate:: types::ids::TaskId "
+        "use crate:: types::ids::TaskId ",
+        "use crate:: wasm::module_store::ModuleStore ",
+        "use crate:: workflows::compiler::{ StepDsl , WorkflowDsl } ",
+        "use crate:: workflows::engine::WorkflowEngine ",
+        "use crate:: scripting::definition::ScriptDefinition ",
+        "use crate:: scripting::registry::ScriptRegistry ",
+        "use crate:: remote::cluster::ClusterState ",
+        "use crate:: remote::node::{ NodeCapability , RemoteNode } ",
+        "use crate:: remote::protocol::RemoteCommand "
       ]
     },
     "src/api/routes/mod.rs": {
@@ -1892,6 +1940,47 @@
           "doc": "WASM modülü yükle → hash döner. Flutter, dosyayı bytes olarak Rust'a verir. Rust, ModuleStore'a kaydeder ve SHA-256 hash döner. Sonraki task'larda bu hash kullanılır. Örnek (Dart): ```dart final bytes = await File(\"my_module.wasm\").readAsBytes(); final hash = await AetherApi.uploadWasmModule(bytes: bytes); ```"
         },
         {
+          "name": "check_module_exists",
+          "is_async": false,
+          "params": [
+            "hash_hex : String"
+          ],
+          "ret": "Result <bool , String>",
+          "is_method": false,
+          "doc": "Belirtilen hash'e sahip modül runtime'da kayıtlı mı? WasmModuleScreen açılışında, eski oturumdan kalan meta-data'yı doğrulamak için her modül için çağrılır."
+        },
+        {
+          "name": "resubmit_task",
+          "is_async": true,
+          "params": [
+            "task_id : String"
+          ],
+          "ret": "Result <String , String>",
+          "is_method": false,
+          "doc": "Mevcut bir task'ı orijinal ayarlarıyla (hash, entrypoint, priority, retry policy) yeni bir UUID altında yeniden kuyruğa ekler. \"Yeniden Dene\" butonu için — sadece id ve zaman damgaları yenilenir, deadline sıfırlanır."
+        },
+        {
+          "name": "get_recent_logs",
+          "is_async": false,
+          "params": [
+            "limit : u32"
+          ],
+          "ret": "Result <Vec <LogRecord> , String>",
+          "is_method": false,
+          "doc": "Son `limit` kadar log entry döndür (yeniden eskiye sıralı). LogScreen 2 saniyede bir bu fonksiyonu polling ile çeker. limit: 0 → varsayılan 100."
+        },
+        {
+          "name": "get_task_logs",
+          "is_async": false,
+          "params": [
+            "task_id : String",
+            "limit : u32"
+          ],
+          "ret": "Result <Vec <LogRecord> , String>",
+          "is_method": false,
+          "doc": "Belirli bir task'a ait log entry'leri döndür. Task detay modalındaki \"Loglar\" sekmesi için. limit: 0 → varsayılan 50."
+        },
+        {
           "name": "get_metrics",
           "is_async": true,
           "params": [],
@@ -1904,7 +1993,7 @@
       "impls": [],
       "crate_uses": [
         "use crate:: bridge::state::{ get_runtime , init_mobile_runtime } ",
-        "use crate:: bridge::types::{ MetricsSnapshot , ModuleUploadResponse , RuntimeInfo , TaskRequest , TaskStatusResponse , } ",
+        "use crate:: bridge::types::{ LogRecord , MetricsSnapshot , ModuleUploadResponse , RuntimeInfo , TaskRequest , TaskStatusResponse , } ",
         "use crate:: task::priority::TaskPriority ",
         "use crate:: task::retry::RetryPolicy ",
         "use crate:: task::task::{ TaskDefinition , TaskMetadata , TaskState } ",
@@ -1962,6 +2051,7 @@
       "impls": [],
       "crate_uses": [
         "use crate:: events::bus::EventBus ",
+        "use crate:: logging::buffer::{ LogBuffer , log_collector } ",
         "use crate:: metrics::runtime::RuntimeMetrics ",
         "use crate:: persistence::engine::PersistenceEngine ",
         "use crate:: runtime::api::RuntimeHandle ",
@@ -1995,6 +2085,12 @@
         {
           "kind": "struct",
           "name": "ModuleUploadResponse",
+          "generics": [],
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "name": "LogRecord",
           "generics": [],
           "doc": null
         }
@@ -3359,7 +3455,8 @@
               "is_async": false,
               "params": [
                 "transport : Arc < T >",
-                "dispatcher : Arc < Dispatcher >"
+                "cluster : Arc < ClusterState >",
+                "runtime : RuntimeHandle"
               ],
               "ret": "Self",
               "is_method": true,
@@ -3375,10 +3472,17 @@
       ],
       "crate_uses": [
         "use crate:: errors::runtime::RuntimeError ",
-        "use crate:: orchestration::graph::{ ExecutionNode , ExecutionNodeKind , } ",
+        "use crate:: orchestration::graph::{ ExecutionNode , ExecutionNodeKind } ",
+        "use crate:: remote::cluster::ClusterState ",
+        "use crate:: remote::node::NodeCapability ",
+        "use crate:: remote::protocol::RemoteCommand ",
         "use crate:: remote::scheduler::RemoteScheduler ",
         "use crate:: remote::transport::RemoteTransport ",
-        "use crate:: runtime::dispatcher::Dispatcher "
+        "use crate:: runtime::api::RuntimeHandle ",
+        "use crate:: task::priority::TaskPriority ",
+        "use crate:: task::retry::RetryPolicy ",
+        "use crate:: task::task::{ TaskDefinition , TaskMetadata , TaskState } ",
+        "use crate:: types::ids::TaskId "
       ]
     },
     "src/orchestration/durability.rs": {
@@ -7585,6 +7689,248 @@
         "use crate:: wasm::module_store::ModuleHash "
       ]
     },
+    "src/tests/cluster_tests.rs": {
+      "module_doc": null,
+      "pub_fns": [],
+      "pub_types": [],
+      "impls": [],
+      "crate_uses": [
+        "use crate:: orchestration::election::LeaderElection ",
+        "use crate:: orchestration::quorum::{ QuorumPolicy , QuorumState , } ",
+        "use crate:: remote::cluster::ClusterState ",
+        "use crate:: remote::cluster_health::ClusterHealth ",
+        "use crate:: remote::discovery::StaticDiscovery ",
+        "use crate:: remote::heartbeat::Heartbeat ",
+        "use crate:: remote::node::{ NodeCapability , RemoteNode , } "
+      ]
+    },
+    "src/tests/dashboard_tests.rs": {
+      "module_doc": null,
+      "pub_fns": [],
+      "pub_types": [],
+      "impls": [],
+      "crate_uses": [
+        "use crate:: events::bus::{ EventBus , SystemEvent } ",
+        "use crate:: events::task::TaskEvent ",
+        "use crate:: metrics::runtime::RuntimeMetrics ",
+        "use crate:: types::ids::TaskId ",
+        "use crate:: api::dashboard::DASHBOARD_HTML ",
+        "use crate:: api::dashboard::DASHBOARD_HTML ",
+        "use crate:: api::dashboard::DASHBOARD_HTML "
+      ]
+    },
+    "src/tests/helpers.rs": {
+      "module_doc": null,
+      "pub_fns": [
+        {
+          "name": "make_task",
+          "is_async": false,
+          "params": [
+            "priority : TaskPriority",
+            "entrypoint : & str"
+          ],
+          "ret": "TaskDefinition",
+          "is_method": false,
+          "doc": null
+        },
+        {
+          "name": "make_task_with_hash",
+          "is_async": false,
+          "params": [
+            "priority : TaskPriority",
+            "hash : [u8 ; 32]"
+          ],
+          "ret": "TaskDefinition",
+          "is_method": false,
+          "doc": null
+        }
+      ],
+      "pub_types": [],
+      "impls": [],
+      "crate_uses": [
+        "use crate:: task::priority::TaskPriority ",
+        "use crate:: task::retry::RetryPolicy ",
+        "use crate:: task::task::{ TaskDefinition , TaskMetadata , TaskState , } ",
+        "use crate:: types::ids::TaskId "
+      ]
+    },
+    "src/tests/integration/api_tests.rs": {
+      "module_doc": null,
+      "pub_fns": [],
+      "pub_types": [],
+      "impls": [],
+      "crate_uses": [
+        "use crate:: events::bus::EventBus ",
+        "use crate:: persistence::engine::PersistenceEngine ",
+        "use crate:: persistence::models::PersistedTask ",
+        "use crate:: runtime::api::RuntimeHandle ",
+        "use crate:: runtime::lifecycle::RuntimeState ",
+        "use crate:: task::priority::TaskPriority ",
+        "use crate:: task::retry::RetryPolicy ",
+        "use crate:: task::task::{ TaskDefinition , TaskMetadata , TaskState , } ",
+        "use crate:: types::ids::TaskId "
+      ]
+    },
+    "src/tests/integration/eventbus_tests.rs": {
+      "module_doc": null,
+      "pub_fns": [],
+      "pub_types": [],
+      "impls": [],
+      "crate_uses": [
+        "use crate:: events::bus::{ EventBus , SystemEvent , } ",
+        "use crate:: events::task::TaskEvent ",
+        "use crate:: events::runtime::RuntimeEvent ",
+        "use crate:: types::ids::TaskId "
+      ]
+    },
+    "src/tests/integration/mod.rs": {
+      "module_doc": null,
+      "pub_fns": [],
+      "pub_types": [],
+      "impls": [],
+      "crate_uses": []
+    },
+    "src/tests/integration/pipeline_tests.rs": {
+      "module_doc": null,
+      "pub_fns": [],
+      "pub_types": [],
+      "impls": [],
+      "crate_uses": [
+        "use crate:: persistence::engine::PersistenceEngine ",
+        "use crate:: persistence::models::PersistedTask ",
+        "use crate:: runtime::api::RuntimeHandle ",
+        "use crate:: task::priority::TaskPriority ",
+        "use crate:: task::queue::PriorityTaskQueue ",
+        "use crate:: task::retry::RetryPolicy ",
+        "use crate:: task::task::{ TaskDefinition , TaskMetadata , TaskState , } ",
+        "use crate:: types::ids::TaskId ",
+        "use crate:: task::deadline::deadline_expired ",
+        "use crate:: task::deadline::deadline_expired "
+      ]
+    },
+    "src/tests/mod.rs": {
+      "module_doc": null,
+      "pub_fns": [],
+      "pub_types": [],
+      "impls": [],
+      "crate_uses": []
+    },
+    "src/tests/module_store_tests.rs": {
+      "module_doc": null,
+      "pub_fns": [],
+      "pub_types": [],
+      "impls": [],
+      "crate_uses": [
+        "use crate:: wasm::module_store::ModuleStore ",
+        "use crate:: tests::helpers::make_task ",
+        "use crate:: task::priority::TaskPriority ",
+        "use crate:: tests::helpers::make_task_with_hash ",
+        "use crate:: task::priority::TaskPriority ",
+        "use crate:: tests::helpers::make_task_with_hash ",
+        "use crate:: task::priority::TaskPriority ",
+        "use crate:: tests::helpers::make_task_with_hash ",
+        "use crate:: task::priority::TaskPriority ",
+        "use crate:: task::task::TaskDefinition "
+      ]
+    },
+    "src/tests/persistence_tests.rs": {
+      "module_doc": null,
+      "pub_fns": [],
+      "pub_types": [],
+      "impls": [],
+      "crate_uses": [
+        "use crate:: persistence::engine::PersistenceEngine ",
+        "use crate:: persistence::models::PersistedTask ",
+        "use crate:: persistence::recovery::RecoveryEngine ",
+        "use crate:: task::priority::TaskPriority ",
+        "use crate:: task::retry::RetryPolicy ",
+        "use crate:: task::task::{ TaskDefinition , TaskMetadata , TaskState , } ",
+        "use crate:: types::ids::TaskId "
+      ]
+    },
+    "src/tests/queue_tests.rs": {
+      "module_doc": null,
+      "pub_fns": [],
+      "pub_types": [],
+      "impls": [],
+      "crate_uses": [
+        "use crate:: task::priority::TaskPriority ",
+        "use crate:: task::queue::PriorityTaskQueue ",
+        "use crate:: task::task::{ TaskDefinition , TaskMetadata , TaskState , } ",
+        "use crate:: task::retry::RetryPolicy ",
+        "use crate:: types::ids::TaskId "
+      ]
+    },
+    "src/tests/remote_tests.rs": {
+      "module_doc": null,
+      "pub_fns": [],
+      "pub_types": [],
+      "impls": [],
+      "crate_uses": [
+        "use crate:: remote::heartbeat::Heartbeat ",
+        "use crate:: remote::node::{ NodeCapability , RemoteNode , } ",
+        "use crate:: remote::scheduler::RemoteScheduler "
+      ]
+    },
+    "src/tests/retry_tests.rs": {
+      "module_doc": null,
+      "pub_fns": [],
+      "pub_types": [],
+      "impls": [],
+      "crate_uses": [
+        "use crate:: errors::wasm::WasmError ",
+        "use crate:: task::retry::{ RetryClassification , RetryPolicy , } "
+      ]
+    },
+    "src/tests/runtime_tests.rs": {
+      "module_doc": null,
+      "pub_fns": [],
+      "pub_types": [],
+      "impls": [],
+      "crate_uses": [
+        "use crate:: runtime::api::RuntimeHandle ",
+        "use crate:: runtime::backpressure::BackpressureController ",
+        "use crate:: runtime::config::RuntimeConfig ",
+        "use crate:: runtime::lifecycle::RuntimeState ",
+        "use crate:: runtime::runtime::Runtime ",
+        "use crate:: task::priority::TaskPriority ",
+        "use crate:: task::retry::RetryPolicy ",
+        "use crate:: task::task::{ TaskDefinition , TaskMetadata , TaskState , } ",
+        "use crate:: types::ids::TaskId "
+      ]
+    },
+    "src/tests/scripting_tests.rs": {
+      "module_doc": null,
+      "pub_fns": [],
+      "pub_types": [],
+      "impls": [],
+      "crate_uses": [
+        "use crate:: scripting::definition::ScriptDefinition ",
+        "use crate:: scripting::registry::ScriptRegistry ",
+        "use crate:: scripting::result::ScriptResult "
+      ]
+    },
+    "src/tests/security_tests.rs": {
+      "module_doc": null,
+      "pub_fns": [],
+      "pub_types": [],
+      "impls": [],
+      "crate_uses": [
+        "use crate:: security::rbac::{ Action , AuthzError , RbacGuard , Role , } ",
+        "use crate:: security::auth::token::{ ApiKey , Claims , TokenError , TokenManager , } "
+      ]
+    },
+    "src/tests/workflow_tests.rs": {
+      "module_doc": null,
+      "pub_fns": [],
+      "pub_types": [],
+      "impls": [],
+      "crate_uses": [
+        "use crate:: workflows::compiler::{ CompilerError , StepDsl , WorkflowCompiler , WorkflowDsl , } ",
+        "use crate:: workflows::validation::WorkflowValidator ",
+        "use crate:: workflows::topology::WorkflowTopology "
+      ]
+    },
     "src/types/agent_plan.rs": {
       "module_doc": null,
       "pub_fns": [],
@@ -7964,6 +8310,16 @@
               "ret": "usize",
               "is_method": true,
               "doc": "Depolanan modül sayısı."
+            },
+            {
+              "name": "list_hashes",
+              "is_async": false,
+              "params": [
+                "& self"
+              ],
+              "ret": "Vec <String>",
+              "is_method": true,
+              "doc": "Tüm hash'leri hex string listesi olarak döndür. GET /modules endpoint'i için."
             },
             {
               "name": "hash_to_hex",
@@ -9301,5 +9657,5 @@
       ]
     }
   },
-  "total_pub_items": 349
+  "total_pub_items": 362
 }

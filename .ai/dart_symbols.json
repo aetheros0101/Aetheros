@@ -8,6 +8,7 @@
   "GeminiException": "flutter_app/lib/services/gemini_service.dart",
   "GeminiService": "flutter_app/lib/services/gemini_service.dart",
   "HomeScreen": "flutter_app/lib/screens/home_screen.dart",
+  "LogRecord": "flutter_app/lib/src/rust/api/aetheros.dart",
   "LogScreen": "flutter_app/lib/screens/log_screen.dart",
   "MessageRole": "flutter_app/lib/services/gemini_service.dart",
   "MetricsSnapshot": "flutter_app/lib/src/rust/metrics/runtime.dart",

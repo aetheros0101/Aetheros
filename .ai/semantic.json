@@ -2,7 +2,7 @@
   "modules": {
     "agents": {
       "purpose": null,
-      "layer": 1,
+      "layer": 0,
       "loc": 917,
       "depends_on": [
         "ai",
@@ -524,19 +524,25 @@
     "api": {
       "purpose": null,
       "layer": 0,
-      "loc": 1225,
+      "loc": 1731,
       "depends_on": [
         "agents",
         "events",
         "metrics",
         "orchestration",
         "persistence",
+        "remote",
         "runtime",
+        "scripting",
         "security",
         "task",
-        "types"
+        "types",
+        "wasm",
+        "workflows"
       ],
-      "depended_by": [],
+      "depended_by": [
+        "tests"
+      ],
       "api": [
         {
           "kind": "struct",
@@ -550,7 +556,32 @@
         },
         {
           "kind": "struct",
+          "signature": "pub struct AgentStatus",
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "signature": "pub struct WorkflowStatus",
+          "doc": null
+        },
+        {
+          "kind": "struct",
           "signature": "pub struct AppState",
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "signature": "pub struct RegisterNodeRequest",
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "signature": "pub struct ModuleUploadRequest",
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "signature": "pub struct ScriptRunRequest",
           "doc": null
         },
         {
@@ -566,6 +597,11 @@
         {
           "kind": "struct",
           "signature": "pub struct WorkflowSubmitRequest",
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "signature": "pub struct WorkflowStepRequest",
           "doc": null
         },
         {
@@ -605,7 +641,7 @@
         },
         {
           "kind": "method",
-          "signature": "impl ApiServer :: fn new(runtime : RuntimeHandle, events : EventBus, persistence : Arc < PersistenceEngine >, metrics : Arc < RuntimeMetrics >, addr : SocketAddr) -> Self",
+          "signature": "impl ApiServer :: fn new(runtime : RuntimeHandle, events : EventBus, persistence : Arc < PersistenceEngine >, metrics : Arc < RuntimeMetrics >, module_store : Arc < ModuleStore >, addr : SocketAddr) -> Self",
           "doc": null
         },
         {
@@ -658,9 +694,10 @@
     "bridge": {
       "purpose": null,
       "layer": 0,
-      "loc": 624,
+      "loc": 776,
       "depends_on": [
         "events",
+        "logging",
         "metrics",
         "persistence",
         "runtime",
@@ -712,6 +749,26 @@
         },
         {
           "kind": "fn",
+          "signature": "pub fn check_module_exists(hash_hex : String) -> Result <bool , String>",
+          "doc": "Belirtilen hash'e sahip modül runtime'da kayıtlı mı? WasmModuleScreen açılışında, eski oturumdan kalan meta-data'yı doğrulamak için her modül için çağrılır."
+        },
+        {
+          "kind": "fn",
+          "signature": "pub async fn resubmit_task(task_id : String) -> Result <String , String>",
+          "doc": "Mevcut bir task'ı orijinal ayarlarıyla (hash, entrypoint, priority, retry policy) yeni bir UUID altında yeniden kuyruğa ekler. \"Yeniden Dene\" butonu için — sadece id ve zaman damgaları yenilenir, deadline sıfırlanır."
+        },
+        {
+          "kind": "fn",
+          "signature": "pub fn get_recent_logs(limit : u32) -> Result <Vec <LogRecord> , String>",
+          "doc": "Son `limit` kadar log entry döndür (yeniden eskiye sıralı). LogScreen 2 saniyede bir bu fonksiyonu polling ile çeker. limit: 0 → varsayılan 100."
+        },
+        {
+          "kind": "fn",
+          "signature": "pub fn get_task_logs(task_id : String, limit : u32) -> Result <Vec <LogRecord> , String>",
+          "doc": "Belirli bir task'a ait log entry'leri döndür. Task detay modalındaki \"Loglar\" sekmesi için. limit: 0 → varsayılan 50."
+        },
+        {
+          "kind": "fn",
           "signature": "pub async fn get_metrics() -> Result <MetricsSnapshot , String>",
           "doc": "Anlık metrik görüntüsü al."
         },
@@ -754,6 +811,11 @@
           "kind": "struct",
           "signature": "pub struct ModuleUploadResponse",
           "doc": null
+        },
+        {
+          "kind": "struct",
+          "signature": "pub struct LogRecord",
+          "doc": null
         }
       ]
     },
@@ -767,7 +829,7 @@
     },
     "errors": {
       "purpose": null,
-      "layer": 1,
+      "layer": 0,
       "loc": 163,
       "depends_on": [],
       "depended_by": [
@@ -777,6 +839,7 @@
         "runtime",
         "scripting",
         "task",
+        "tests",
         "wasm",
         "worker",
         "workflows"
@@ -817,6 +880,7 @@
         "logging",
         "metrics",
         "runtime",
+        "tests",
         "worker"
       ],
       "api": [
@@ -869,14 +933,16 @@
     },
     "logging": {
       "purpose": null,
-      "layer": 0,
-      "loc": 621,
+      "layer": 1,
+      "loc": 622,
       "depends_on": [
         "events",
         "orchestration",
         "workflows"
       ],
-      "depended_by": [],
+      "depended_by": [
+        "bridge"
+      ],
       "api": [
         {
           "kind": "fn",
@@ -1024,7 +1090,8 @@
       ],
       "depended_by": [
         "api",
-        "bridge"
+        "bridge",
+        "tests"
       ],
       "api": [
         {
@@ -1121,17 +1188,20 @@
     },
     "orchestration": {
       "purpose": null,
-      "layer": 1,
-      "loc": 1864,
+      "layer": 2,
+      "loc": 1933,
       "depends_on": [
         "errors",
         "remote",
         "runtime",
+        "task",
+        "types",
         "workflows"
       ],
       "depended_by": [
         "api",
         "logging",
+        "tests",
         "workflows"
       ],
       "api": [
@@ -1312,7 +1382,7 @@
         },
         {
           "kind": "method",
-          "signature": "impl ExecutionDispatcher <T> :: fn new(transport : Arc < T >, dispatcher : Arc < Dispatcher >) -> Self",
+          "signature": "impl ExecutionDispatcher <T> :: fn new(transport : Arc < T >, cluster : Arc < ClusterState >, runtime : RuntimeHandle) -> Self",
           "doc": null
         },
         {
@@ -1655,6 +1725,7 @@
         "api",
         "bridge",
         "runtime",
+        "tests",
         "worker"
       ],
       "api": [
@@ -1933,7 +2004,9 @@
       "loc": 981,
       "depends_on": [],
       "depended_by": [
-        "orchestration"
+        "api",
+        "orchestration",
+        "tests"
       ],
       "api": [
         {
@@ -2204,6 +2277,7 @@
         "api",
         "bridge",
         "orchestration",
+        "tests",
         "workflows"
       ],
       "api": [
@@ -2420,7 +2494,10 @@
         "types",
         "wasm"
       ],
-      "depended_by": [],
+      "depended_by": [
+        "api",
+        "tests"
+      ],
       "api": [
         {
           "kind": "struct",
@@ -2635,11 +2712,12 @@
     },
     "security": {
       "purpose": null,
-      "layer": 1,
+      "layer": 0,
       "loc": 670,
       "depends_on": [],
       "depended_by": [
-        "api"
+        "api",
+        "tests"
       ],
       "api": [
         {
@@ -2837,7 +2915,7 @@
     "task": {
       "purpose": null,
       "layer": 1,
-      "loc": 805,
+      "loc": 771,
       "depends_on": [
         "errors",
         "tests",
@@ -2847,10 +2925,12 @@
       "depended_by": [
         "api",
         "bridge",
+        "orchestration",
         "persistence",
         "registry",
         "runtime",
         "scripting",
+        "tests",
         "wasm",
         "worker",
         "workflows"
@@ -3003,6 +3083,42 @@
         }
       ]
     },
+    "tests": {
+      "purpose": null,
+      "layer": 0,
+      "loc": 3231,
+      "depends_on": [
+        "api",
+        "errors",
+        "events",
+        "metrics",
+        "orchestration",
+        "persistence",
+        "remote",
+        "runtime",
+        "scripting",
+        "security",
+        "task",
+        "types",
+        "wasm",
+        "workflows"
+      ],
+      "depended_by": [
+        "task"
+      ],
+      "api": [
+        {
+          "kind": "fn",
+          "signature": "pub fn make_task(priority : TaskPriority, entrypoint : & str) -> TaskDefinition",
+          "doc": null
+        },
+        {
+          "kind": "fn",
+          "signature": "pub fn make_task_with_hash(priority : TaskPriority, hash : [u8 ; 32]) -> TaskDefinition",
+          "doc": null
+        }
+      ]
+    },
     "types": {
       "purpose": null,
       "layer": 1,
@@ -3014,10 +3130,12 @@
         "api",
         "bridge",
         "events",
+        "orchestration",
         "persistence",
         "registry",
         "scripting",
         "task",
+        "tests",
         "worker",
         "workflows"
       ],
@@ -3067,16 +3185,18 @@
     "wasm": {
       "purpose": null,
       "layer": 1,
-      "loc": 887,
+      "loc": 896,
       "depends_on": [
         "errors",
         "task"
       ],
       "depended_by": [
+        "api",
         "bridge",
         "runtime",
         "scripting",
         "task",
+        "tests",
         "worker"
       ],
       "api": [
@@ -3114,6 +3234,11 @@
           "kind": "method",
           "signature": "impl ModuleStore :: fn count(& self) -> usize",
           "doc": "Depolanan modül sayısı."
+        },
+        {
+          "kind": "method",
+          "signature": "impl ModuleStore :: fn list_hashes(& self) -> Vec <String>",
+          "doc": "Tüm hash'leri hex string listesi olarak döndür. GET /modules endpoint'i için."
         },
         {
           "kind": "method",
@@ -3403,7 +3528,7 @@
     },
     "workflows": {
       "purpose": null,
-      "layer": 1,
+      "layer": 2,
       "loc": 1650,
       "depends_on": [
         "agents",
@@ -3415,8 +3540,10 @@
         "types"
       ],
       "depended_by": [
+        "api",
         "logging",
-        "orchestration"
+        "orchestration",
+        "tests"
       ],
       "api": [
         {

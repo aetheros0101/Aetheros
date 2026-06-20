@@ -531,6 +531,13 @@
           "signature": "class ModuleUploadResponse",
           "doc": null,
           "is_public": true
+        },
+        {
+          "kind": "class",
+          "name": "LogRecord",
+          "signature": "class LogRecord",
+          "doc": null,
+          "is_public": true
         }
       ]
     },
@@ -782,5 +789,5 @@
       ]
     }
   },
-  "total_types": 96
+  "total_types": 97
 }

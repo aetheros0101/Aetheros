@@ -13,13 +13,18 @@
     "metrics",
     "orchestration",
     "persistence",
+    "remote",
     "runtime",
+    "scripting",
     "security",
     "task",
-    "types"
+    "types",
+    "wasm",
+    "workflows"
   ],
   "bridge": [
     "events",
+    "logging",
     "metrics",
     "persistence",
     "runtime",
@@ -42,6 +47,8 @@
     "errors",
     "remote",
     "runtime",
+    "task",
+    "types",
     "workflows"
   ],
   "persistence": [
@@ -74,6 +81,22 @@
     "tests",
     "types",
     "wasm"
+  ],
+  "tests": [
+    "api",
+    "errors",
+    "events",
+    "metrics",
+    "orchestration",
+    "persistence",
+    "remote",
+    "runtime",
+    "scripting",
+    "security",
+    "task",
+    "types",
+    "wasm",
+    "workflows"
   ],
   "wasm": [
     "errors",

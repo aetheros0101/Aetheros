@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================
-# AetherOS Kapsamlı Stres Testi v2
+# AetherOS Kapsamlı Stres Testi v3
 #
 # Kullanım:
 #   bash stress_test.sh
@@ -204,7 +204,7 @@ get_metrics() {
 
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════════════╗${NC}"
-echo -e "${BOLD}║       AetherOS Stres Testi v2                ║${NC}"
+echo -e "${BOLD}║       AetherOS Stres Testi v3                ║${NC}"
 echo -e "${BOLD}║  URL : ${BASE_URL}                      ${NC}"
 echo -e "${BOLD}╚══════════════════════════════════════════════╝${NC}"
 echo -e "  Workers: ${WORKERS}  |  MaxConcurrent: ${MAX_CONCURRENT}  |  Channel: ${TASK_CHANNEL}"
@@ -300,13 +300,13 @@ done
 subheader "POST /agents"
 agent_body=$(http_body POST /agents \
   '{"objective":"test objective","max_steps":5,"max_tokens":512}')
-assert_json "Agent: status=started" "$agent_body" ".status" "started"
+assert_json "Agent: status=running"  "$agent_body" ".status" "running"
 agent_exec_id=$(echo "$agent_body" | jq -r '.execution_id // empty')
 [[ -n "$agent_exec_id" ]] && pass "Agent: execution_id mevcut" || fail "Agent: execution_id eksik"
 
 subheader "POST /workflows"
 wf_body=$(http_body POST /workflows '{"name":"test-workflow"}')
-assert_json "Workflow: status=accepted" "$wf_body" ".status" "accepted"
+assert_json "Workflow: status=running"  "$wf_body" ".status" "running"
 assert_json "Workflow: name doğru"      "$wf_body" ".name"   "test-workflow"
 
 # =============================================================
@@ -564,8 +564,228 @@ done
 pass "Workflow: ${wf_ok}/${WF_N} başarıyla gönderildi"
 [[ $wf_fail -gt 0 ]] && fail "Workflow: ${wf_fail} gönderim başarısız"
 
+
 # =============================================================
-header "BÖLÜM 10: WebSocket Testi"
+header "BÖLÜM 10: Yeni Endpoint Doğrulaması"
+# =============================================================
+
+# ── POST /modules ────────────────────────────────────────────
+subheader "POST /modules — WASM binary yükle"
+mod_body=$(http_body POST /modules "{\"wasm_hex\":\"${WASM_HEX}\"}")
+mod_hash=$(echo "$mod_body" | jq -r '.hash // empty')
+mod_size=$(echo "$mod_body" | jq -r '.size // empty')
+
+if [[ -n "$mod_hash" ]] && [[ ${#mod_hash} -eq 64 ]]; then
+  pass "POST /modules → hash döndü (${#mod_hash} char)"
+else
+  fail "POST /modules → hash eksik veya kısa: '${mod_hash}'"
+fi
+
+if [[ -n "$mod_size" ]] && [[ "$mod_size" -gt 0 ]]; then
+  pass "POST /modules → size=${mod_size} bayt"
+else
+  fail "POST /modules → size eksik: '${mod_size}'"
+fi
+
+# Aynı binary tekrar → idempotent (aynı hash)
+mod_body2=$(http_body POST /modules "{\"wasm_hex\":\"${WASM_HEX}\"}")
+mod_hash2=$(echo "$mod_body2" | jq -r '.hash // empty')
+if [[ "$mod_hash" == "$mod_hash2" ]]; then
+  pass "POST /modules → idempotent (aynı binary = aynı hash)"
+else
+  fail "POST /modules → aynı binary farklı hash döndürdü (idempotency kırık)"
+fi
+
+# ── GET /modules ─────────────────────────────────────────────
+subheader "GET /modules — modül listesi"
+list_body=$(http_body GET /modules)
+mod_count=$(echo "$list_body" | jq '.count // -1')
+if (( mod_count >= 1 )); then
+  pass "GET /modules → count=${mod_count} (en az 1 modül)"
+else
+  fail "GET /modules → count=${mod_count} (0 veya eksik)"
+fi
+
+# ── GET /modules/{hash} ──────────────────────────────────────
+subheader "GET /modules/{hash} — tekil modül sorgulama"
+if [[ -n "$mod_hash" ]]; then
+  mh_body=$(http_body GET "/modules/${mod_hash}")
+  mh_exists=$(echo "$mh_body" | jq -r '.exists // "false"')
+  if [[ "$mh_exists" == "true" ]]; then
+    pass "GET /modules/{hash} → exists=true"
+  else
+    fail "GET /modules/{hash} → exists=${mh_exists}"
+  fi
+  mh_size=$(echo "$mh_body" | jq -r '.size // 0')
+  if (( mh_size > 0 )); then
+    pass "GET /modules/{hash} → size=${mh_size} bayt"
+  else
+    fail "GET /modules/{hash} → size=${mh_size}"
+  fi
+fi
+
+# Var olmayan hash → 404
+FAKE_HASH="0000000000000000000000000000000000000000000000000000000000000000"
+assert_code "GET /modules/{yok_hash} → 404" 404 GET "/modules/${FAKE_HASH}"
+
+# Geçersiz hash formatı → 400
+assert_code "GET /modules/{bozuk_hash} → 400" 400 GET "/modules/not-a-hash"
+
+# ── POST /modules → POST /tasks pipeline ─────────────────────
+subheader "/modules → /tasks entegrasyon pipeline"
+if [[ -n "$mod_hash" ]]; then
+  pipe_body=$(http_body POST /tasks \
+    "{\"entrypoint\":\"run\",\"wasm_module_hex\":\"${WASM_HEX}\",\"max_attempts\":1}")
+  pipe_mhash=$(echo "$pipe_body" | jq -r '.module_hash // empty')
+  pipe_tid=$(echo "$pipe_body" | jq -r '.task_id // empty')
+  if [[ "$pipe_mhash" == "$mod_hash" ]]; then
+    pass "/tasks response'daki module_hash önceden yüklenen hash ile aynı"
+  else
+    fail "/tasks → module_hash uyumsuz (beklenen: ${mod_hash}, alınan: ${pipe_mhash})"
+  fi
+fi
+
+# ── GET /agents/{id} ─────────────────────────────────────────
+subheader "GET /agents/{id} — execution durumu sorgulama"
+ag_body=$(http_body POST /agents \
+  '{"objective":"durum testi","max_steps":3,"max_tokens":256}')
+ag_exec_id=$(echo "$ag_body" | jq -r '.execution_id // empty')
+ag_status=$(echo "$ag_body" | jq -r '.status // empty')
+
+if [[ "$ag_status" == "running" ]]; then
+  pass "POST /agents → status=running (önceki: 'started' değil)"
+else
+  fail "POST /agents → beklenen status=running, alınan: ${ag_status}"
+fi
+
+if [[ -n "$ag_exec_id" ]]; then
+  # İlk sorgulama (hemen) — running veya completed olabilir
+  ag_state_body=$(http_body GET "/agents/${ag_exec_id}")
+  ag_state=$(echo "$ag_state_body" | jq -r '.status // empty')
+  if [[ "$ag_state" =~ ^(running|completed|failed)$ ]]; then
+    pass "GET /agents/{id} → status=${ag_state} (geçerli)"
+  else
+    fail "GET /agents/{id} → geçersiz status='${ag_state}'"
+  fi
+
+  # Birkaç saniye bekleyip tekrar sorgula — tamamlanmış olmalı
+  sleep 2
+  ag_final_body=$(http_body GET "/agents/${ag_exec_id}")
+  ag_final=$(echo "$ag_final_body" | jq -r '.status // empty')
+  ag_started=$(echo "$ag_final_body" | jq -r '.started_at // empty')
+  if [[ "$ag_final" == "completed" ]]; then
+    pass "GET /agents/{id} → status=completed (execution bitti)"
+  elif [[ "$ag_final" == "failed" ]]; then
+    ag_err=$(echo "$ag_final_body" | jq -r '.error // "?"')
+    warn "GET /agents/{id} → status=failed (error: ${ag_err:0:60})"
+  else
+    warn "GET /agents/{id} → status=${ag_final} (hâlâ tamamlanmadı)"
+  fi
+
+  if [[ -n "$ag_started" ]] && [[ "$ag_started" != "null" ]]; then
+    pass "GET /agents/{id} → started_at mevcut"
+  else
+    fail "GET /agents/{id} → started_at eksik"
+  fi
+fi
+
+# Var olmayan agent → 404
+assert_code "GET /agents/{yok_id} → 404" 404 GET \
+  "/agents/00000000-0000-0000-0000-000000000000"
+
+# ── POST /workflows + GET /workflows/{id} ────────────────────
+subheader "POST /workflows (adım tanımlı) + GET /workflows/{id}"
+wf2_body=$(http_body POST /workflows \
+  '{"name":"end2end-test","steps":[
+     {"id":"s1","name":"Step 1","type":"wasm","entrypoint":"run"},
+     {"id":"s2","name":"Step 2","type":"agent","depends_on":["s1"]}
+  ]}')
+wf2_id=$(echo "$wf2_body" | jq -r '.workflow_id // empty')
+wf2_status=$(echo "$wf2_body" | jq -r '.status // empty')
+
+if [[ "$wf2_status" == "running" ]]; then
+  pass "POST /workflows (adımlı) → status=running"
+else
+  fail "POST /workflows (adımlı) → beklenen running, alınan: ${wf2_status}"
+fi
+
+if [[ -n "$wf2_id" ]]; then
+  # GET /workflows/{id} hemen
+  wf2_state_body=$(http_body GET "/workflows/${wf2_id}")
+  wf2_state=$(echo "$wf2_state_body" | jq -r '.status // empty')
+  if [[ "$wf2_state" =~ ^(running|completed|failed)$ ]]; then
+    pass "GET /workflows/{id} → status=${wf2_state}"
+  else
+    fail "GET /workflows/{id} → geçersiz status='${wf2_state}'"
+  fi
+
+  # Bitiş bekleme
+  sleep 2
+  wf2_final=$(http_body GET "/workflows/${wf2_id}" | jq -r '.status // empty')
+  if [[ "$wf2_final" == "completed" ]]; then
+    pass "GET /workflows/{id} → status=completed (workflow bitti)"
+  elif [[ "$wf2_final" == "failed" ]]; then
+    wf2_err=$(http_body GET "/workflows/${wf2_id}" | jq -r '.error // "?"')
+    warn "GET /workflows/{id} → failed (${wf2_err:0:60})"
+  else
+    warn "GET /workflows/{id} → hâlâ ${wf2_final}"
+  fi
+
+  wf2_finished=$(http_body GET "/workflows/${wf2_id}" | jq -r '.finished_at // empty')
+  if [[ -n "$wf2_finished" ]] && [[ "$wf2_finished" != "null" ]]; then
+    pass "GET /workflows/{id} → finished_at mevcut"
+  else
+    warn "GET /workflows/{id} → finished_at henüz yok (timeout olabilir)"
+  fi
+fi
+
+# Var olmayan workflow → 404
+assert_code "GET /workflows/{yok_id} → 404" 404 GET \
+  "/workflows/00000000-0000-0000-0000-000000000000"
+
+# ── POST /scripts ─────────────────────────────────────────────
+subheader "POST /scripts — script yükle ve çalıştır"
+sc_body=$(http_body POST /scripts \
+  "{\"name\":\"test-script\",\"wasm_hex\":\"${WASM_HEX}\",
+    \"entrypoint\":\"run\",\"timeout_ms\":5000}")
+sc_tid=$(echo "$sc_body" | jq -r '.task_id // empty')
+sc_name=$(echo "$sc_body" | jq -r '.script_name // empty')
+sc_hash=$(echo "$sc_body" | jq -r '.module_hash // empty')
+sc_status=$(echo "$sc_body" | jq -r '.status // empty')
+
+if [[ "$sc_status" == "queued" ]]; then
+  pass "POST /scripts → status=queued"
+else
+  fail "POST /scripts → beklenen queued, alınan: ${sc_status}"
+fi
+[[ -n "$sc_tid" ]]   && pass "POST /scripts → task_id döndü" \
+                      || fail "POST /scripts → task_id eksik"
+[[ "$sc_name" == "test-script" ]] && pass "POST /scripts → script_name doğru" \
+                                   || fail "POST /scripts → script_name yanlış: ${sc_name}"
+[[ ${#sc_hash} -eq 64 ]] && pass "POST /scripts → module_hash döndü" \
+                          || fail "POST /scripts → module_hash eksik"
+
+# ── GET /scripts ─────────────────────────────────────────────
+subheader "GET /scripts — kayıtlı script listesi"
+scripts_body=$(http_body GET /scripts)
+scripts_count=$(echo "$scripts_body" | jq '.count // -1')
+if (( scripts_count >= 1 )); then
+  pass "GET /scripts → count=${scripts_count} (en az 1 script)"
+else
+  fail "GET /scripts → count=${scripts_count}"
+fi
+# Script alanları doğrula
+sc_entry=$(echo "$scripts_body" | jq '.scripts[0] // empty')
+[[ $(echo "$sc_entry" | jq -r '.name') == "test-script" ]] \
+  && pass "GET /scripts → script.name doğru" \
+  || warn "GET /scripts → script.name: $(echo "$sc_entry" | jq -r '.name')"
+[[ $(echo "$sc_entry" | jq -r '.entrypoint') == "run" ]] \
+  && pass "GET /scripts → script.entrypoint doğru" \
+  || warn "GET /scripts → script.entrypoint: $(echo "$sc_entry" | jq -r '.entrypoint')"
+
+
+# =============================================================
+header "BÖLÜM 11: WebSocket Testi"
 # =============================================================
 
 WS_URL="${BASE_URL/http/ws}/ws"
@@ -697,7 +917,7 @@ else
 fi  # websocat mevcut
 
 # =============================================================
-header "BÖLÜM 11: Dayanıklılık & Bellek Sızıntısı Testi"
+header "BÖLÜM 12: Dayanıklılık & Bellek Sızıntısı Testi"
 # =============================================================
 
 ROUNDS=5
@@ -733,7 +953,7 @@ else
 fi
 
 # =============================================================
-header "BÖLÜM 12: Metrik Tutarlılık Doğrulaması"
+header "BÖLÜM 13: Metrik Tutarlılık Doğrulaması"
 # =============================================================
 
 subheader "Tüm testler bittikten sonra metrik anlık görüntüsü"
