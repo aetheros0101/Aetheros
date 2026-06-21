@@ -220,7 +220,7 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
         timeoutMs:  30000,
       );
 
-      // SharedPreferences'a da kaydet (editör içeriği korunsun)
+      // SharedPreferences'a da kaydet
       final p = await SharedPreferences.getInstance();
       await p.setString(_watKey, watSource);
 

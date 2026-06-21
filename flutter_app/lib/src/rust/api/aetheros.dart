@@ -173,6 +173,27 @@ Future<ModuleUploadResponse> uploadWasmModule({
   );
 }
 
+/// WAT → WASM derle + ModuleStore'a kaydet.
+/// FRB bridge'de compile_wat_to_wasm olarak tanımlı.
+/// Codegen'den geçince _bridge.compileWatToWasm() direkt çağrılabilir.
+Future<ModuleUploadResponse> compileWatToWasm({
+  required String name,
+  required String watSource,
+  required String entrypoint,
+  required int timeoutMs,
+}) async {
+  final r = await _bridge.compileWatToWasm(
+    name:       name,
+    watSource:  watSource,
+    entrypoint: entrypoint,
+    timeoutMs:  timeoutMs,
+  );
+  return ModuleUploadResponse(
+    hash: r.hash,
+    size: r.size.toInt(),
+  );
+}
+
 Future<MetricsSnapshot> getMetrics() async {
   final s = await _bridge.getMetrics();
   return MetricsSnapshot(

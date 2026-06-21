@@ -96,6 +96,9 @@ class AetherApi {
     required String entrypoint,
     int timeoutMs = 30000,
   }) async {
+    // NOT: Bu metod FRB codegen'den geçtikten sonra
+    // _bridge.compileWatToWasm() çağrısı aktif olacak.
+    // Şimdilik adaptör katmanı üzerinden çağrılıyor.
     return rust.compileWatToWasm(
       name:       name,
       watSource:  watSource,
