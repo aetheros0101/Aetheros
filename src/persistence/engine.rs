@@ -32,7 +32,7 @@ use tokio::time::{
     interval,
     Duration,
 };
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::errors::persistence::PersistenceError;
 use crate::persistence::models::PersistedTask;
@@ -170,19 +170,36 @@ impl PersistenceEngine {
     pub fn load_all_tasks(
         &self,
     ) -> Result<Vec<PersistedTask>, PersistenceError> {
-        let mut tasks = Vec::new();
+        let mut tasks   = Vec::new();
+        let mut skipped = 0usize;
 
         for entry in self.tasks.iter() {
-            let (_, value) = entry.map_err(|_| {
-                PersistenceError::StorageFailure
-            })?;
+            let (key, value) = match entry {
+                Ok(kv)  => kv,
+                Err(e)  => {
+                    warn!(err = %e, "Sled iter hatası, kayıt atlanıyor");
+                    skipped += 1;
+                    continue;
+                }
+            };
 
-            let task = rmp_serde::from_slice(&value)
-                .map_err(|_| {
-                    PersistenceError::SerializationFailure
-                })?;
+            match rmp_serde::from_slice::<PersistedTask>(&value) {
+                Ok(task)  => tasks.push(task),
+                Err(e)    => {
+                    // Eski format (hex serde dönemi) veya schema değişikliği.
+                    // Tek kayıt bozuksa tüm listeyi mahvetme — atla ve logla.
+                    warn!(
+                        key  = %String::from_utf8_lossy(&key),
+                        err  = %e,
+                        "Kayıt deserialize edilemedi, atlanıyor (eski format?)"
+                    );
+                    skipped += 1;
+                }
+            }
+        }
 
-            tasks.push(task);
+        if skipped > 0 {
+            warn!(skipped, "load_all_tasks: bazı kayıtlar atlandı");
         }
 
         Ok(tasks)

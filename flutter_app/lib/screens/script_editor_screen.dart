@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import '../api/aetheros_api.dart';
 
 // ── Şablonlar ─────────────────────────────────────────────
@@ -220,9 +221,26 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
         timeoutMs:  30000,
       );
 
-      // SharedPreferences'a da kaydet
+      // SharedPreferences'a da kaydet (editör içeriği)
       final p = await SharedPreferences.getInstance();
       await p.setString(_watKey, watSource);
+
+      // WasmModuleScreen listesine de ekle
+      const modulesKey = 'aetheros_wasm_modules';
+      final rawList = p.getStringList(modulesKey) ?? [];
+      final alreadyExists = rawList.any((s) {
+        try { return (jsonDecode(s) as Map)['hash'] == result.hash; }
+        catch (_) { return false; }
+      });
+      if (!alreadyExists) {
+        rawList.insert(0, jsonEncode({
+          'hash':       result.hash,
+          'size':       result.size,
+          'filename':   'script-${DateTime.now().millisecondsSinceEpoch}.wasm',
+          'uploadedAt': DateTime.now().millisecondsSinceEpoch,
+        }));
+        await p.setStringList(modulesKey, rawList);
+      }
 
       if (!mounted) return;
       setState(() { _compiling = false; _saved = true; _compileError = null; });

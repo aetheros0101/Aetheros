@@ -297,10 +297,10 @@ pub async fn list_tasks(
 /// Başarı: ModuleUploadResponse { hash, size } döner.
 /// Hata:  WAT sözdizimi hatası string olarak döner.
 pub async fn compile_wat_to_wasm(
-    name:        String,
-    wat_source:  String,
-    entrypoint:  String,
-    timeout_ms:  u64,
+    name:         String,
+    wat_source:   String,
+    entrypoint:   String,
+    _timeout_ms:  u64,   // Gelecekte execution timeout için — şimdilik WAT compile'da kullanılmıyor
 ) -> Result<ModuleUploadResponse, String> {
     // WAT → WASM binary (Rust tarafında, zero-dependency)
     let wasm_binary = wat::parse_str(&wat_source)
