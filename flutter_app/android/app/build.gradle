@@ -18,7 +18,7 @@ plugins {
 android {
     namespace "com.aetheros.app"
 
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 35  // flutter_plugin_android_lifecycle ≥35 gerektiriyor
     ndkVersion = "27.0.12077973"  // cargo-ndk ile uyumlu
 
     compileOptions {

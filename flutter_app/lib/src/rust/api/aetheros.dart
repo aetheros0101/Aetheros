@@ -186,7 +186,7 @@ Future<ModuleUploadResponse> compileWatToWasm({
     name:       name,
     watSource:  watSource,
     entrypoint: entrypoint,
-    timeoutMs:  timeoutMs,
+    timeoutMs:  BigInt.from(timeoutMs), // u64 → BigInt
   );
   return ModuleUploadResponse(
     hash: r.hash,
