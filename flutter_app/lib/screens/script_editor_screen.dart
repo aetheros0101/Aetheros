@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../api/aetheros_api.dart';
 
 // ── Şablonlar ─────────────────────────────────────────────
 
@@ -151,7 +152,9 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
   late final TabController _tabs;
   final _watCtrl  = TextEditingController();
   final _jsonCtrl = TextEditingController();
-  bool _saved = false;
+  bool   _saved      = false;
+  bool   _compiling  = false;
+  String? _compileError;
 
   @override
   void initState() {
@@ -181,13 +184,69 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
     }
   }
 
+  /// WAT sekmesi: derle + yükle.
+  /// JSON sekmesi: SharedPreferences'a kaydet.
   Future<void> _save() async {
+    if (_tabs.index == 0) {
+      await _compileAndUpload();
+    } else {
+      await _saveJson();
+    }
+  }
+
+  Future<void> _saveJson() async {
     final p = await SharedPreferences.getInstance();
     await p.setString(_watKey,  _watCtrl.text);
     await p.setString(_jsonKey, _jsonCtrl.text);
-    setState(() => _saved = true);
+    setState(() { _saved = true; _compileError = null; });
     await Future.delayed(const Duration(seconds: 2));
     if (mounted) setState(() => _saved = false);
+  }
+
+  Future<void> _compileAndUpload() async {
+    final watSource = _watCtrl.text.trim();
+    if (watSource.isEmpty) {
+      setState(() => _compileError = 'WAT kodu boş.');
+      return;
+    }
+
+    setState(() { _compiling = true; _compileError = null; });
+
+    try {
+      final result = await AetherApi.compileWatToWasm(
+        name:       'script-${DateTime.now().millisecondsSinceEpoch}',
+        watSource:  watSource,
+        entrypoint: 'run',
+        timeoutMs:  30000,
+      );
+
+      // SharedPreferences'a da kaydet (editör içeriği korunsun)
+      final p = await SharedPreferences.getInstance();
+      await p.setString(_watKey, watSource);
+
+      if (!mounted) return;
+      setState(() { _compiling = false; _saved = true; _compileError = null; });
+
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          '✓ Derlendi & yüklendi\n'
+          'Hash: ${result.hash.substring(0, 16)}…\n'
+          'Boyut: ${result.size} bayt',
+        ),
+        backgroundColor: const Color(0xFF4CAF50),
+        duration: const Duration(seconds: 3),
+      ));
+
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) setState(() => _saved = false);
+
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _compiling    = false;
+        _compileError = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
   }
 
   void _applyTemplate(_Template t) {
@@ -245,17 +304,33 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
             style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white70),
         actions: [
-          // Kaydet
-          IconButton(
-            icon: Icon(
-              _saved ? Icons.check : Icons.save,
-              color: _saved
-                  ? const Color(0xFF4CAF50)
-                  : Colors.white70,
+          // WAT sekmesi → Derle & Yükle | JSON sekmesi → Kaydet
+          if (_compiling)
+            const Padding(
+              padding: EdgeInsets.all(14),
+              child: SizedBox(
+                width: 18, height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF6C63FF),
+                ),
+              ),
+            )
+          else
+            IconButton(
+              icon: Icon(
+                _saved
+                    ? Icons.check
+                    : (_tabs.index == 0 ? Icons.play_arrow : Icons.save),
+                color: _saved
+                    ? const Color(0xFF4CAF50)
+                    : (_tabs.index == 0
+                        ? const Color(0xFF6C63FF)
+                        : Colors.white70),
+              ),
+              tooltip: _tabs.index == 0 ? 'Derle & Yükle' : 'Kaydet',
+              onPressed: _save,
             ),
-            tooltip: 'Kaydet',
-            onPressed: _save,
-          ),
           // Kopyala
           IconButton(
             icon: const Icon(Icons.copy, color: Colors.white70),
@@ -275,6 +350,27 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
         ),
       ),
       body: Column(children: [
+        // ── Derleme hatası banner ─────────────────────
+        if (_compileError != null)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            color: const Color(0xFF3D1515),
+            child: Row(children: [
+              const Icon(Icons.error_outline,
+                  color: Color(0xFFFF5252), size: 14),
+              const SizedBox(width: 8),
+              Expanded(child: Text(
+                _compileError!,
+                style: const TextStyle(
+                    color: Color(0xFFFF8A80), fontSize: 11),
+              )),
+              GestureDetector(
+                onTap: () => setState(() => _compileError = null),
+                child: const Icon(Icons.close,
+                    color: Colors.white38, size: 14),
+              ),
+            ]),
+          ),
         // ── Şablon seçici ────────────────────────────
         _TemplateBar(
           templates: templates,
@@ -291,7 +387,7 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
             ],
           ),
         ),
-        // ── Sprint 4 notu ────────────────────────────
+        // ── Alt not ──────────────────────────────────
         _CompilerNotice(isWat: isWat),
       ]),
     );
@@ -452,15 +548,18 @@ class _CompilerNotice extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
     color: const Color(0xFF12121F),
     child: Row(children: [
-      const Icon(Icons.info_outline,
-          color: Color(0xFF6C63FF), size: 14),
+      Icon(
+        isWat ? Icons.rocket_launch : Icons.info_outline,
+        color: const Color(0xFF6C63FF),
+        size: 14,
+      ),
       const SizedBox(width: 8),
       Expanded(child: Text(
         isWat
-            ? 'WAT → WASM derleme Sprint 4\'te gelecek. '
-              'Şimdi wat2wasm aracıyla derleyip yükleyebilirsin.'
-            : 'JSON workflow çalıştırma Sprint 4\'te (AI motoru ile). '
-              'Şimdi kopyalayıp kaydet.',
+            ? '▶ butonu: WAT → WASM derle + ModuleStore\'a yükle. '
+              'Ardından WASM Modüller ekranından task gönder.'
+            : 'JSON workflow kopyalayıp kaydet. '
+              'Workflow çalıştırma ayrı aşamada gelecek.',
         style: const TextStyle(color: Colors.white38, fontSize: 11),
       )),
     ]),

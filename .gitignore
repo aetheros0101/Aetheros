@@ -2,3 +2,6 @@ target/
 aetheros.db/
 test.db/
 tools/
+.ai/
+benches/
+scripts/

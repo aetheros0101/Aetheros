@@ -85,6 +85,25 @@ class AetherApi {
     return rust.checkModuleExists(hashHex: hashHex);
   }
 
+  /// WAT (WebAssembly Text Format) kaynak kodunu derle → WASM binary →
+  /// ModuleStore'a kaydet. Script editörünün "Derle & Yükle" butonu için.
+  ///
+  /// Başarı: ModuleUploadResponse { hash, size }
+  /// Hata:   WAT sözdizimi hatası mesajı (kullanıcıya gösterilebilir)
+  static Future<rust.ModuleUploadResponse> compileWatToWasm({
+    required String name,
+    required String watSource,
+    required String entrypoint,
+    int timeoutMs = 30000,
+  }) async {
+    return rust.compileWatToWasm(
+      name:       name,
+      watSource:  watSource,
+      entrypoint: entrypoint,
+      timeoutMs:  timeoutMs,
+    );
+  }
+
   /// Mevcut bir task'ı yeni UUID ile yeniden kuyruğa ekle.
   ///
   /// "Yeniden Dene" butonu için — orijinal ayarlar (hash,
