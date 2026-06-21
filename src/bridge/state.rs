@@ -38,30 +38,16 @@ use crate::wasm::module_store::ModuleStore;
 static MOBILE_RUNTIME: OnceLock<MobileRuntime> = OnceLock::new();
 
 pub struct MobileRuntime {
-    /// AetherOS iç runtime handle — task submit için.
-    pub handle: RuntimeHandle,
-
-    /// Event bus — WebSocket veya yerel listener için.
-    pub events: EventBus,
-
-    /// Persistence engine — task sorgulama için.
-    pub persistence: Arc<PersistenceEngine>,
-
-    /// Runtime metrikleri — anlık görüntü için.
-    pub metrics: Arc<RuntimeMetrics>,
-
-    /// WASM modül deposu — upload_wasm_module() buraya yazar,
-    /// WasmiEngine (worker'lar) aynı Arc'tan okur.
+    pub handle:       RuntimeHandle,
+    pub events:       EventBus,
+    pub persistence:  Arc<PersistenceEngine>,
+    pub metrics:      Arc<RuntimeMetrics>,
     pub module_store: Arc<ModuleStore>,
-
-    /// Log tamponu — EventBus'tan gelen olayları LogEntry'ye
-    /// çevirip dairesel tamponda tutar. getRecentLogs/getTaskLogs
-    /// buradan okur (bkz. bridge/api.rs).
-    pub log_buffer: LogBuffer,
-
-    /// Tokio runtime — FRB bu üzerinden spawn eder.
-    /// Option<> olması shutdown() sonrası temiz drop için.
-    pub tokio: TokioRuntime,
+    pub log_buffer:   LogBuffer,
+    /// WASM binary'lerinin kalıcı dizini: {docDir}/modules/
+    /// upload_wasm_module() buraya yazar, restart'ta restore edilir.
+    pub modules_dir:  String,
+    pub tokio:        TokioRuntime,
 }
 
 // ── Public API ────────────────────────────────────────────
@@ -78,29 +64,23 @@ pub fn init_mobile_runtime(
         return Err("Runtime zaten başlatılmış".into());
     }
 
-    // ── Tokio runtime ─────────────────────────────────────
-    // multi_thread: worker sayısı = CPU çekirdeği (mobilde 4-8)
-    // Mobil için sınırlandırmak istersen worker_threads(2) kullan.
     let tokio = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(worker_count.max(2))
         .enable_all()
         .build()
         .map_err(|e| format!("Tokio başlatma hatası: {e}"))?;
 
-    // ── AetherOS bootstrap ────────────────────────────────
     let config = RuntimeConfig {
         worker_count,
-        task_channel_capacity:   512,
-        event_channel_capacity:  1024,
-        max_concurrent_tasks:    64,
-        persistence_path:        db_path,
-        shutdown_timeout:        std::time::Duration::from_secs(10),
+        task_channel_capacity:  512,
+        event_channel_capacity: 1024,
+        max_concurrent_tasks:   64,
+        persistence_path:       db_path.clone(),
+        shutdown_timeout:       std::time::Duration::from_secs(10),
     };
 
     let bootstrap = tokio
-        .block_on(async {
-            RuntimeBootstrap::build(config)
-        })
+        .block_on(async { RuntimeBootstrap::build(config) })
         .map_err(|e| format!("Bootstrap hatası: {e}"))?;
 
     let handle       = bootstrap.runtime_handle();
@@ -109,14 +89,24 @@ pub fn init_mobile_runtime(
     let persistence  = runtime.persistence();
     let module_store = runtime.module_store();
 
+    // ── Modules dizini ───────────────────────────────────
+    // db_path = {docDir}/aetheros.db → modules_dir = {docDir}/modules/
+    let modules_dir = {
+        let p = std::path::Path::new(&db_path);
+        let parent = p.parent().unwrap_or(std::path::Path::new("."));
+        parent.join("modules").display().to_string()
+    };
+    std::fs::create_dir_all(&modules_dir)
+        .map_err(|e| format!("Modules dizini oluşturulamadı: {e}"))?;
+
+    // ── Önceki oturumdan kalan WASM binary'lerini restore et ─
+    restore_modules_from_disk(&modules_dir, &module_store);
+
     // ── Metrics collector ────────────────────────────────
     let metrics = Arc::new(RuntimeMetrics::new());
     metrics.clone().start_collecting(events.clone());
 
     // ── Log collector ─────────────────────────────────────
-    // EventBus'taki tüm task event'lerini LogEntry'ye çevirip
-    // dairesel tampona yazar. getRecentLogs/getTaskLogs bu
-    // tampondan okur (bkz. bridge/api.rs).
     let log_buffer = LogBuffer::new();
     tokio.spawn(log_collector(events.clone(), log_buffer.clone()));
 
@@ -127,10 +117,7 @@ pub fn init_mobile_runtime(
         }
     });
 
-    info!(
-        workers = worker_count,
-        "AetherOS mobile runtime başlatıldı"
-    );
+    info!(workers = worker_count, modules_dir = %modules_dir, "AetherOS mobile runtime başlatıldı");
 
     let mobile = MobileRuntime {
         handle,
@@ -139,14 +126,55 @@ pub fn init_mobile_runtime(
         metrics,
         module_store,
         log_buffer,
+        modules_dir,
         tokio,
     };
 
-    // OnceLock: set() başarısız olursa zaten başka bir thread
-    // set etmiş demektir — AlreadyInitialized dön.
     MOBILE_RUNTIME
         .set(mobile)
         .map_err(|_| "Runtime zaten başlatılmış (race)".into())
+}
+
+/// Diske kaydedilmiş WASM binary'lerini ModuleStore'a yükle.
+/// Yalnızca startup'ta çağrılır.
+fn restore_modules_from_disk(modules_dir: &str, store: &Arc<ModuleStore>) {
+    let dir = match std::fs::read_dir(modules_dir) {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::warn!(dir = modules_dir, err = %e, "Modules dizini okunamadı");
+            return;
+        }
+    };
+
+    let mut count = 0usize;
+    for entry in dir.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("wasm") {
+            continue;
+        }
+        match std::fs::read(&path) {
+            Ok(bytes) => match store.store(bytes) {
+                Ok(hash) => {
+                    info!(
+                        hash = %crate::wasm::module_store::ModuleStore::hash_to_hex(&hash),
+                        file = %path.display(),
+                        "WASM modülü restore edildi"
+                    );
+                    count += 1;
+                }
+                Err(e) => {
+                    tracing::warn!(file = %path.display(), err = ?e, "Modül restore edilemedi");
+                }
+            },
+            Err(e) => {
+                tracing::warn!(file = %path.display(), err = %e, "Modül dosyası okunamadı");
+            }
+        }
+    }
+
+    if count > 0 {
+        info!(count, "WASM modülleri diskten restore edildi");
+    }
 }
 
 /// Global runtime'ı al.

@@ -290,19 +290,30 @@ pub async fn upload_wasm_module(
 
     let size = bytes.len() as u64;
 
-    // ModuleStore::store(): SHA-256 hesaplar, binary'yi
-    // hash → Arc<Vec<u8>> olarak kaydeder (idempotent —
-    // aynı binary tekrar yüklenirse üzerine yazmaz).
-    // Bu binary artık WasmiEngine (worker'lar) tarafından
-    // execute sırasında module_store.get(&hash) ile bulunabilir.
+    // ModuleStore'a kaydet → SHA-256 hash al (idempotent)
     let hash_bytes = rt
         .module_store
-        .store(bytes)
+        .store(bytes.clone())
         .map_err(|e| format!("Modül kaydedilemedi: {e}"))?;
 
     let hash = crate::wasm::module_store::ModuleStore::hash_to_hex(&hash_bytes);
 
-    info!(hash = %hash, size = size, "WASM modülü yüklendi ve kaydedildi");
+    // Diske kaydet → restart'ta otomatik restore edilir
+    // {docDir}/modules/{hash}.wasm
+    let file_path = format!("{}/{}.wasm", rt.modules_dir, hash);
+    if let Err(e) = std::fs::write(&file_path, &bytes) {
+        // Disk yazma hatası — in-memory yükleme başarılı, sadece persist olmayacak.
+        // Uyarı log'la, hata döndürme (modül bu session'da çalışır).
+        tracing::warn!(
+            path = %file_path,
+            err  = %e,
+            "WASM modülü diske yazılamadı (session'da çalışır ama restart'ta kaybolur)"
+        );
+    } else {
+        info!(hash = %hash, path = %file_path, "WASM modülü diske kaydedildi");
+    }
+
+    info!(hash = %hash, size = size, "WASM modülü yüklendi");
 
     Ok(ModuleUploadResponse { hash, size })
 }
