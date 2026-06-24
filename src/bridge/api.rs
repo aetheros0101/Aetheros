@@ -22,8 +22,13 @@ use tracing::info;
 
 use crate::bridge::state::{get_runtime, init_mobile_runtime};
 use crate::bridge::types::{
+    AgentStartResponse, AgentStatusResponse,
+    ClusterNodeResponse, ClusterStatusResponse,
     LogRecord, MetricsSnapshot, ModuleUploadResponse,
+    NodeRegistrationResponse,
     RuntimeInfo, TaskRequest, TaskStatusResponse,
+    WorkflowStartResponse, WorkflowStatusResponse,
+    WorkflowStepRequest,
 };
 use crate::task::priority::TaskPriority;
 use crate::task::retry::RetryPolicy;
@@ -535,4 +540,267 @@ fn parse_hash(hex_str: &str) -> Result<[u8; 32], String> {
     let mut hash = [0u8; 32];
     hash.copy_from_slice(&bytes);
     Ok(hash)
+}
+
+
+// ── Agent fonksiyonları (FRB) ─────────────────────────────────
+
+/// Agent başlat → execution_id döner.
+pub async fn start_agent(
+    objective:  String,
+    max_steps:  usize,
+    max_tokens: usize,
+) -> Result<AgentStartResponse, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    let execution_id = uuid::Uuid::new_v4();
+    let agent_id     = uuid::Uuid::new_v4();
+    let started_at   = chrono::Utc::now();
+    let objective_c  = objective.clone();
+
+    rt.agent_registry.insert(execution_id, crate::bridge::agent::AgentEntry {
+        execution_id,
+        agent_id,
+        objective:   objective.clone(),
+        status:      "running".into(),
+        error:       None,
+        started_at,
+        finished_at: None,
+    });
+
+    let registry = rt.agent_registry.clone();
+    let context  = crate::agents::context::AgentContext {
+        agent_id, execution_id, workflow_id: None,
+    };
+    let budget = crate::agents::budget::AgentExecutionBudget {
+        max_tokens,
+        max_steps,
+        max_runtime_seconds: 300,
+    };
+
+    tokio::spawn(async move {
+        let result      = crate::agents::executor::AgentExecutor
+            ::execute(context, objective_c, budget, vec![]).await;
+        let finished_at = chrono::Utc::now();
+        if let Some(mut entry) = registry.get_mut(&execution_id) {
+            match result {
+                Ok(_)  => { entry.status = "completed".into(); entry.finished_at = Some(finished_at); }
+                Err(e) => { entry.status = "failed".into(); entry.error = Some(format!("{e:?}")); entry.finished_at = Some(finished_at); }
+            }
+        }
+    });
+
+    Ok(AgentStartResponse {
+        execution_id: execution_id.to_string(),
+        agent_id:     agent_id.to_string(),
+        status:       "running".into(),
+    })
+}
+
+/// Agent execution durumunu sorgula.
+pub fn get_agent_status(execution_id: String) -> Result<AgentStatusResponse, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    let uuid = uuid::Uuid::parse_str(&execution_id)
+        .map_err(|_| format!("Geçersiz execution_id: {execution_id}"))?;
+
+    rt.agent_registry.get(&uuid)
+        .map(|e| AgentStatusResponse {
+            execution_id: e.execution_id.to_string(),
+            agent_id:     e.agent_id.to_string(),
+            objective:    e.objective.clone(),
+            status:       e.status.clone(),
+            error:        e.error.clone(),
+            started_at:   e.started_at.timestamp_millis(),
+            finished_at:  e.finished_at.map(|t| t.timestamp_millis()),
+        })
+        .ok_or_else(|| format!("Agent bulunamadı: {execution_id}"))
+}
+
+/// Tüm agent execution'larını listele.
+pub fn list_agents(limit: usize) -> Result<Vec<AgentStatusResponse>, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    let mut list: Vec<AgentStatusResponse> = rt.agent_registry
+        .iter()
+        .take(limit)
+        .map(|e| AgentStatusResponse {
+            execution_id: e.execution_id.to_string(),
+            agent_id:     e.agent_id.to_string(),
+            objective:    e.objective.clone(),
+            status:       e.status.clone(),
+            error:        e.error.clone(),
+            started_at:   e.started_at.timestamp_millis(),
+            finished_at:  e.finished_at.map(|t| t.timestamp_millis()),
+        })
+        .collect();
+
+    // En yeni önce
+    list.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+    Ok(list)
+}
+
+// ── Workflow fonksiyonları (FRB) ──────────────────────────────
+
+/// Workflow başlat → workflow_id döner.
+pub async fn start_workflow(
+    name:  String,
+    steps: Vec<WorkflowStepRequest>,
+) -> Result<WorkflowStartResponse, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    let workflow_id = uuid::Uuid::new_v4();
+    let started_at  = chrono::Utc::now();
+    let name_c      = name.clone();
+
+    use crate::workflows::compiler::{WorkflowDsl, StepDsl};
+    let dsl_steps: Vec<StepDsl> = steps.into_iter().map(|s| StepDsl {
+        id:         s.id,
+        name:       s.name,
+        kind:       s.kind,
+        entrypoint: s.entrypoint,
+        depends_on: s.depends_on,
+        retryable:  s.retryable,
+        labels:     Default::default(),
+    }).collect();
+
+    let dsl = WorkflowDsl { name: name.clone(), version: Some(1), steps: dsl_steps };
+
+    rt.workflow_registry.insert(workflow_id, crate::bridge::agent::WorkflowEntry {
+        workflow_id,
+        name: name.clone(),
+        status: "running".into(),
+        error: None,
+        started_at,
+        finished_at: None,
+    });
+
+    let registry = rt.workflow_registry.clone();
+    let runtime  = rt.handle.clone();
+
+    tokio::spawn(async move {
+        let result      = crate::workflows::engine::WorkflowEngine::run_dsl(&dsl, runtime).await;
+        let finished_at = chrono::Utc::now();
+        if let Some(mut entry) = registry.get_mut(&workflow_id) {
+            match result {
+                Ok(_)  => { entry.status = "completed".into(); entry.finished_at = Some(finished_at); }
+                Err(e) => { entry.status = "failed".into(); entry.error = Some(format!("{e:?}")); entry.finished_at = Some(finished_at); }
+            }
+        }
+    });
+
+    Ok(WorkflowStartResponse {
+        workflow_id: workflow_id.to_string(),
+        name:        name_c,
+        status:      "running".into(),
+    })
+}
+
+/// Workflow durumu sorgula.
+pub fn get_workflow_status(workflow_id: String) -> Result<WorkflowStatusResponse, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    let uuid = uuid::Uuid::parse_str(&workflow_id)
+        .map_err(|_| format!("Geçersiz workflow_id: {workflow_id}"))?;
+
+    rt.workflow_registry.get(&uuid)
+        .map(|e| WorkflowStatusResponse {
+            workflow_id: e.workflow_id.to_string(),
+            name:        e.name.clone(),
+            status:      e.status.clone(),
+            error:       e.error.clone(),
+            started_at:  e.started_at.timestamp_millis(),
+            finished_at: e.finished_at.map(|t| t.timestamp_millis()),
+        })
+        .ok_or_else(|| format!("Workflow bulunamadı: {workflow_id}"))
+}
+
+/// Tüm workflow'ları listele.
+pub fn list_workflows(limit: usize) -> Result<Vec<WorkflowStatusResponse>, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    let mut list: Vec<WorkflowStatusResponse> = rt.workflow_registry
+        .iter()
+        .take(limit)
+        .map(|e| WorkflowStatusResponse {
+            workflow_id: e.workflow_id.to_string(),
+            name:        e.name.clone(),
+            status:      e.status.clone(),
+            error:       e.error.clone(),
+            started_at:  e.started_at.timestamp_millis(),
+            finished_at: e.finished_at.map(|t| t.timestamp_millis()),
+        })
+        .collect();
+
+    list.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+    Ok(list)
+}
+
+// ── Cluster fonksiyonları (FRB) ───────────────────────────────
+
+/// Cluster genel durumunu getir.
+pub fn get_cluster_status() -> Result<ClusterStatusResponse, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    let nodes: Vec<ClusterNodeResponse> = rt.cluster.nodes()
+        .into_iter()
+        .map(|n| {
+            let hb = rt.cluster.heartbeat(&n.node_id);
+            ClusterNodeResponse {
+                node_id:           n.node_id.to_string(),
+                address:           n.address.clone(),
+                healthy:           n.healthy,
+                capabilities:      n.capabilities.iter()
+                    .map(|c| format!("{:?}", c))
+                    .collect(),
+                cpu_percent:       hb.as_ref().map(|h| h.cpu_usage_percent).unwrap_or(0.0),
+                memory_mb:         hb.as_ref().map(|h| h.memory_usage_mb as u64).unwrap_or(0),
+                active_executions: hb.as_ref().map(|h| h.active_executions as u64).unwrap_or(0),
+            }
+        })
+        .collect();
+
+    Ok(ClusterStatusResponse {
+        health:     format!("{:?}", rt.cluster.health()),
+        total:      rt.cluster.size() as u64,
+        healthy:    rt.cluster.healthy_count() as u64,
+        has_quorum: rt.cluster.has_quorum(),
+        leader:     rt.cluster.leader().map(|u| u.to_string()),
+        nodes,
+    })
+}
+
+/// Cluster'a yeni node kaydet.
+pub fn register_node(
+    address:      String,
+    capabilities: Vec<String>,
+) -> Result<NodeRegistrationResponse, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    use crate::remote::node::{NodeCapability, RemoteNode};
+
+    let caps: Vec<NodeCapability> = capabilities.iter()
+        .map(|c| match c.to_lowercase().as_str() {
+            "wasm"     => NodeCapability::WasmExecution,
+            "workflow" => NodeCapability::WorkflowExecution,
+            "agent"    => NodeCapability::AgentExecution,
+            "ai"       => NodeCapability::AiInference,
+            "plugin"   => NodeCapability::PluginExecution,
+            _          => NodeCapability::WasmExecution,
+        })
+        .collect();
+
+    let node    = RemoteNode::new(address.clone(), caps);
+    let node_id = node.node_id.to_string();
+    rt.cluster.register(node);
+
+    Ok(NodeRegistrationResponse { node_id, address, status: "registered".into() })
 }

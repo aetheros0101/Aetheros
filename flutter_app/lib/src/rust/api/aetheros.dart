@@ -245,3 +245,272 @@ Future<List<LogRecord>> getTaskLogs({
           ))
       .toList();
 }
+
+// ── Agent tipleri ─────────────────────────────────────────────
+
+class AgentStartResponse {
+  final String executionId;
+  final String agentId;
+  final String status;
+
+  const AgentStartResponse({
+    required this.executionId,
+    required this.agentId,
+    required this.status,
+  });
+}
+
+class AgentStatusResponse {
+  final String executionId;
+  final String agentId;
+  final String objective;
+  final String status;       // running | completed | failed
+  final String? error;
+  final int startedAt;       // ms epoch
+  final int? finishedAt;
+
+  const AgentStatusResponse({
+    required this.executionId,
+    required this.agentId,
+    required this.objective,
+    required this.status,
+    this.error,
+    required this.startedAt,
+    this.finishedAt,
+  });
+}
+
+// ── Workflow tipleri ──────────────────────────────────────────
+
+class WorkflowStepRequest {
+  final String id;
+  final String name;
+  final String kind;
+  final String? entrypoint;
+  final List<String> dependsOn;
+  final bool retryable;
+
+  const WorkflowStepRequest({
+    required this.id,
+    required this.name,
+    required this.kind,
+    this.entrypoint,
+    this.dependsOn  = const [],
+    this.retryable  = false,
+  });
+}
+
+class WorkflowStartResponse {
+  final String workflowId;
+  final String name;
+  final String status;
+
+  const WorkflowStartResponse({
+    required this.workflowId,
+    required this.name,
+    required this.status,
+  });
+}
+
+class WorkflowStatusResponse {
+  final String workflowId;
+  final String name;
+  final String status;       // running | completed | failed
+  final String? error;
+  final int startedAt;
+  final int? finishedAt;
+
+  const WorkflowStatusResponse({
+    required this.workflowId,
+    required this.name,
+    required this.status,
+    this.error,
+    required this.startedAt,
+    this.finishedAt,
+  });
+}
+
+// ── Cluster tipleri ───────────────────────────────────────────
+
+class ClusterNode {
+  final String nodeId;
+  final String address;
+  final bool   healthy;
+  final List<String> capabilities;
+  final double cpuPercent;
+  final int    memoryMb;
+  final int    activeExecutions;
+
+  const ClusterNode({
+    required this.nodeId,
+    required this.address,
+    required this.healthy,
+    required this.capabilities,
+    required this.cpuPercent,
+    required this.memoryMb,
+    required this.activeExecutions,
+  });
+}
+
+class ClusterStatusResponse {
+  final String health;       // Healthy | Degraded | Critical
+  final int    total;
+  final int    healthy;
+  final bool   hasQuorum;
+  final String? leader;
+  final List<ClusterNode> nodes;
+
+  const ClusterStatusResponse({
+    required this.health,
+    required this.total,
+    required this.healthy,
+    required this.hasQuorum,
+    this.leader,
+    required this.nodes,
+  });
+}
+
+class NodeRegistrationResponse {
+  final String nodeId;
+  final String address;
+  final String status;
+
+  const NodeRegistrationResponse({
+    required this.nodeId,
+    required this.address,
+    required this.status,
+  });
+}
+
+// ── Agent fonksiyonları ───────────────────────────────────────
+
+Future<AgentStartResponse> startAgent({
+  required String objective,
+  required int maxSteps,
+  required int maxTokens,
+}) async {
+  final r = await _bridge.startAgent(
+    objective: objective,
+    maxSteps:  maxSteps,
+    maxTokens: maxTokens,
+  );
+  return AgentStartResponse(
+    executionId: r.executionId,
+    agentId:     r.agentId,
+    status:      r.status,
+  );
+}
+
+Future<AgentStatusResponse> getAgentStatus({
+  required String executionId,
+}) async {
+  final r = await _bridge.getAgentStatus(executionId: executionId);
+  return AgentStatusResponse(
+    executionId: r.executionId,
+    agentId:     r.agentId,
+    objective:   r.objective,
+    status:      r.status,
+    error:       r.error,
+    startedAt:   r.startedAt.toInt(),
+    finishedAt:  r.finishedAt?.toInt(),
+  );
+}
+
+Future<List<AgentStatusResponse>> listAgents({required int limit}) async {
+  final list = await _bridge.listAgents(limit: limit);
+  return list.map((r) => AgentStatusResponse(
+    executionId: r.executionId,
+    agentId:     r.agentId,
+    objective:   r.objective,
+    status:      r.status,
+    error:       r.error,
+    startedAt:   r.startedAt.toInt(),
+    finishedAt:  r.finishedAt?.toInt(),
+  )).toList();
+}
+
+// ── Workflow fonksiyonları ─────────────────────────────────────
+
+Future<WorkflowStartResponse> startWorkflow({
+  required String name,
+  required List<WorkflowStepRequest> steps,
+}) async {
+  final bridgeSteps = steps.map((s) => _bridge.WorkflowStepRequest(
+    id:         s.id,
+    name:       s.name,
+    kind:       s.kind,
+    entrypoint: s.entrypoint,
+    dependsOn:  s.dependsOn,
+    retryable:  s.retryable,
+  )).toList();
+
+  final r = await _bridge.startWorkflow(name: name, steps: bridgeSteps);
+  return WorkflowStartResponse(
+    workflowId: r.workflowId,
+    name:       r.name,
+    status:     r.status,
+  );
+}
+
+Future<WorkflowStatusResponse> getWorkflowStatus({
+  required String workflowId,
+}) async {
+  final r = await _bridge.getWorkflowStatus(workflowId: workflowId);
+  return WorkflowStatusResponse(
+    workflowId: r.workflowId,
+    name:       r.name,
+    status:     r.status,
+    error:      r.error,
+    startedAt:  r.startedAt.toInt(),
+    finishedAt: r.finishedAt?.toInt(),
+  );
+}
+
+Future<List<WorkflowStatusResponse>> listWorkflows({required int limit}) async {
+  final list = await _bridge.listWorkflows(limit: limit);
+  return list.map((r) => WorkflowStatusResponse(
+    workflowId: r.workflowId,
+    name:       r.name,
+    status:     r.status,
+    error:      r.error,
+    startedAt:  r.startedAt.toInt(),
+    finishedAt: r.finishedAt?.toInt(),
+  )).toList();
+}
+
+// ── Cluster fonksiyonları ─────────────────────────────────────
+
+Future<ClusterStatusResponse> getClusterStatus() async {
+  final r = await _bridge.getClusterStatus();
+  return ClusterStatusResponse(
+    health:    r.health,
+    total:     r.total.toInt(),
+    healthy:   r.healthy.toInt(),
+    hasQuorum: r.hasQuorum,
+    leader:    r.leader,
+    nodes:     r.nodes.map((n) => ClusterNode(
+      nodeId:           n.nodeId,
+      address:          n.address,
+      healthy:          n.healthy,
+      capabilities:     List<String>.from(n.capabilities),
+      cpuPercent:       n.cpuPercent,
+      memoryMb:         n.memoryMb.toInt(),
+      activeExecutions: n.activeExecutions.toInt(),
+    )).toList(),
+  );
+}
+
+Future<NodeRegistrationResponse> registerNode({
+  required String address,
+  required List<String> capabilities,
+}) async {
+  final r = await _bridge.registerNode(
+    address:      address,
+    capabilities: capabilities,
+  );
+  return NodeRegistrationResponse(
+    nodeId:  r.nodeId,
+    address: r.address,
+    status:  r.status,
+  );
+}

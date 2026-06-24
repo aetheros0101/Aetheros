@@ -1,6 +1,6 @@
 // ============================================================
 // flutter_app/lib/screens/home_screen.dart
-// Sprint 3 — WASM + Script navigasyonu eklendi
+// Faz-1 UI Tamamlama — Agent, Workflow, Log, Remote, Settings eklendi
 // ============================================================
 
 import 'dart:async';
@@ -14,15 +14,20 @@ import 'wasm_module_screen.dart';
 import 'script_editor_screen.dart';
 import 'ai_chat_screen.dart';
 import 'backup_screen.dart';
+import 'log_screen.dart';
+import 'agent_screen.dart';
+import 'workflow_screen.dart';
+import 'remote_screen.dart';
+import 'settings_screen.dart';
 
-// ── Provider ──────────────────────────────────────────────
+// ── Provider ──────────────────────────────────────────────────
 
 final metricsProvider = StreamProvider<rust.MetricsSnapshot>((ref) {
   return Stream.periodic(const Duration(seconds: 2), (_) => AetherApi.getMetrics())
       .asyncMap((f) => f);
 });
 
-// ── Ekran ─────────────────────────────────────────────────
+// ── Ekran ─────────────────────────────────────────────────────
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -47,6 +52,12 @@ class HomeScreen extends ConsumerWidget {
         ]),
         actions: [
           IconButton(
+            icon: const Icon(Icons.settings, color: Colors.white70),
+            tooltip: 'Ayarlar',
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen())),
+          ),
+          IconButton(
             icon: const Icon(Icons.list_alt, color: Colors.white70),
             tooltip: 'Task listesi',
             onPressed: () => Navigator.push(context,
@@ -59,11 +70,11 @@ class HomeScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Runtime durumu ─────────────────────────
+            // ── Runtime durumu ──────────────────────────
             const _RuntimeStatusCard(),
             const SizedBox(height: 16),
 
-            // ── Metrikler ──────────────────────────────
+            // ── Metrikler ────────────────────────────────
             const Text('Metrikler',
                 style: TextStyle(
                     color: Colors.white60,
@@ -71,35 +82,37 @@ class HomeScreen extends ConsumerWidget {
                     letterSpacing: 1.1)),
             const SizedBox(height: 8),
             metrics.when(
-              data: (snap) => _MetricsGrid(snapshot: snap),
-              loading: () => const _MetricsGrid(snapshot: null),
-              error: (e, _) => Text('Metrik hatası: $e',
+              data:    (snap) => _MetricsGrid(snapshot: snap),
+              loading: ()     => const _MetricsGrid(snapshot: null),
+              error:   (e, _) => Text('Metrik hatası: $e',
                   style: const TextStyle(color: Colors.redAccent)),
             ),
             const SizedBox(height: 20),
 
-            // ── Hızlı eylemler ─────────────────────────
+            // ── Hızlı eylemler ───────────────────────────
             const Text('Hızlı Eylemler',
                 style: TextStyle(
                     color: Colors.white60,
                     fontSize: 13,
                     letterSpacing: 1.1)),
             const SizedBox(height: 8),
-            _QuickActions(
-              onWasm:   () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const WasmModuleScreen())),
-              onScript: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const ScriptEditorScreen())),
-              onTasks:  () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const TaskListScreen())),
-              onAi:     () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const AiChatScreen())),
-              onBackup: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const BackupScreen())),
-            ),
-            const Spacer(),
 
-            // ── Task gönder butonu ─────────────────────
+            Expanded(
+              child: _QuickActions(
+                onWasm:     () => _go(context, const WasmModuleScreen()),
+                onScript:   () => _go(context, const ScriptEditorScreen()),
+                onTasks:    () => _go(context, const TaskListScreen()),
+                onAi:       () => _go(context, const AiChatScreen()),
+                onBackup:   () => _go(context, const BackupScreen()),
+                onAgent:    () => _go(context, const AgentScreen()),
+                onWorkflow: () => _go(context, const WorkflowScreen()),
+                onLogs:     () => _go(context, const LogScreen()),
+                onRemote:   () => _go(context, const RemoteScreen()),
+              ),
+            ),
+
+            // ── Task gönder butonu ────────────────────────
+            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -109,8 +122,7 @@ class HomeScreen extends ConsumerWidget {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),
-                onPressed: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const SubmitTaskScreen())),
+                onPressed: () => _go(context, const SubmitTaskScreen()),
                 icon: const Icon(Icons.rocket_launch),
                 label: const Text('Task Gönder',
                     style: TextStyle(
@@ -123,9 +135,12 @@ class HomeScreen extends ConsumerWidget {
       ),
     );
   }
+
+  void _go(BuildContext ctx, Widget screen) =>
+      Navigator.push(ctx, MaterialPageRoute(builder: (_) => screen));
 }
 
-// ── Hızlı Eylemler ────────────────────────────────────────
+// ── Hızlı Eylemler ────────────────────────────────────────────
 
 class _QuickActions extends StatelessWidget {
   final VoidCallback onWasm;
@@ -133,6 +148,10 @@ class _QuickActions extends StatelessWidget {
   final VoidCallback onTasks;
   final VoidCallback onAi;
   final VoidCallback onBackup;
+  final VoidCallback onAgent;
+  final VoidCallback onWorkflow;
+  final VoidCallback onLogs;
+  final VoidCallback onRemote;
 
   const _QuickActions({
     required this.onWasm,
@@ -140,78 +159,94 @@ class _QuickActions extends StatelessWidget {
     required this.onTasks,
     required this.onAi,
     required this.onBackup,
+    required this.onAgent,
+    required this.onWorkflow,
+    required this.onLogs,
+    required this.onRemote,
   });
 
   @override
-  Widget build(BuildContext context) => Column(children: [
-    Row(children: [
-      _ActionTile(
-        icon: Icons.memory,
-        label: 'WASM\nModüller',
-        color: const Color(0xFF4DB6AC),
-        onTap: onWasm,
-      ),
-      const SizedBox(width: 10),
-      _ActionTile(
-        icon: Icons.code,
-        label: 'Script\nEditör',
-        color: const Color(0xFFFFB74D),
-        onTap: onScript,
+  Widget build(BuildContext context) => SingleChildScrollView(
+    child: Column(children: [
+      // Satır 1: WASM + Script
+      Row(children: [
+        _Tile(icon: Icons.memory,     label: 'WASM\nModüller',
+            color: const Color(0xFF4DB6AC), onTap: onWasm),
+        const SizedBox(width: 10),
+        _Tile(icon: Icons.code,       label: 'Script\nEditör',
+            color: const Color(0xFFFFB74D), onTap: onScript),
+      ]),
+      const SizedBox(height: 10),
+
+      // Satır 2: Task + AI
+      Row(children: [
+        _Tile(icon: Icons.format_list_bulleted, label: 'Task\nListesi',
+            color: const Color(0xFF7E57C2), onTap: onTasks),
+        const SizedBox(width: 10),
+        _Tile(icon: Icons.auto_awesome,         label: 'AI\nAsistan',
+            color: const Color(0xFF6C63FF), onTap: onAi),
+      ]),
+      const SizedBox(height: 10),
+
+      // Satır 3: Agent + Workflow
+      Row(children: [
+        _Tile(icon: Icons.smart_toy,    label: 'Agent\nYönetimi',
+            color: const Color(0xFF26A69A), onTap: onAgent),
+        const SizedBox(width: 10),
+        _Tile(icon: Icons.account_tree, label: 'Workflow\nYönetimi',
+            color: const Color(0xFFE8A838), onTap: onWorkflow),
+      ]),
+      const SizedBox(height: 10),
+
+      // Satır 4: Log + Remote
+      Row(children: [
+        _Tile(icon: Icons.terminal,     label: 'Log\nİzle',
+            color: const Color(0xFF78909C), onTap: onLogs),
+        const SizedBox(width: 10),
+        _Tile(icon: Icons.hub,          label: 'Remote\nCluster',
+            color: const Color(0xFF42A5F5), onTap: onRemote),
+      ]),
+      const SizedBox(height: 10),
+
+      // Satır 5: Yedekleme — tam genişlik
+      GestureDetector(
+        onTap: onBackup,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF42A5F5).withOpacity(0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+                color: const Color(0xFF42A5F5).withOpacity(0.25)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.shield_outlined,
+                  color: const Color(0xFF42A5F5).withOpacity(0.85),
+                  size: 20),
+              const SizedBox(width: 8),
+              Text('Yedekleme / Geri Yükleme',
+                  style: TextStyle(
+                      color: const Color(0xFF42A5F5).withOpacity(0.85),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
       ),
     ]),
-    const SizedBox(height: 10),
-    Row(children: [
-      _ActionTile(
-        icon: Icons.format_list_bulleted,
-        label: 'Task\nListesi',
-        color: const Color(0xFF7E57C2),
-        onTap: onTasks,
-      ),
-      const SizedBox(width: 10),
-      _ActionTile(
-        icon: Icons.auto_awesome,
-        label: 'AI\nAsistan',
-        color: const Color(0xFF6C63FF),
-        onTap: onAi,
-      ),
-    ]),
-    const SizedBox(height: 10),
-    // ── Sprint 5: Yedekleme — tam genişlik ────────────
-    GestureDetector(
-      onTap: onBackup,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF42A5F5).withOpacity(0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF42A5F5).withOpacity(0.25)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.shield_outlined,
-                color: const Color(0xFF42A5F5).withOpacity(0.85), size: 20),
-            const SizedBox(width: 8),
-            Text('Yedekleme / Geri Yükleme',
-                style: TextStyle(
-                    color: const Color(0xFF42A5F5).withOpacity(0.85),
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ),
-    ),
-  ]);
+  );
 }
 
-class _ActionTile extends StatelessWidget {
+class _Tile extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color color;
   final VoidCallback onTap;
 
-  const _ActionTile({
+  const _Tile({
     required this.icon,
     required this.label,
     required this.color,
@@ -245,7 +280,7 @@ class _ActionTile extends StatelessWidget {
   );
 }
 
-// ── Runtime kartı ─────────────────────────────────────────
+// ── Runtime kartı ──────────────────────────────────────────────
 
 class _RuntimeStatusCard extends StatelessWidget {
   const _RuntimeStatusCard();
@@ -276,8 +311,9 @@ class _RuntimeStatusCard extends StatelessWidget {
                 shape: BoxShape.circle,
                 color: isRunning ? const Color(0xFF4CAF50) : Colors.red,
                 boxShadow: [BoxShadow(
-                  color: (isRunning ? const Color(0xFF4CAF50) : Colors.red)
-                      .withOpacity(0.6),
+                  color: (isRunning
+                      ? const Color(0xFF4CAF50)
+                      : Colors.red).withOpacity(0.6),
                   blurRadius: 6,
                 )],
               ),
@@ -285,18 +321,15 @@ class _RuntimeStatusCard extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(
-                isRunning ? 'Runtime Aktif' : 'Runtime Kapalı',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14),
-              ),
+              Text(isRunning ? 'Runtime Aktif' : 'Runtime Kapalı',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14)),
               if (info != null)
                 Text(
                   'v${info.version} · ${info.backend} · ${info.workerCount} worker',
-                  style: const TextStyle(
-                      color: Colors.white38, fontSize: 11),
+                  style: const TextStyle(color: Colors.white38, fontSize: 11),
                 ),
             ])),
           ]),
@@ -306,7 +339,7 @@ class _RuntimeStatusCard extends StatelessWidget {
   }
 }
 
-// ── Metrik grid ───────────────────────────────────────────
+// ── Metrik grid ────────────────────────────────────────────────
 
 class _MetricsGrid extends StatelessWidget {
   final rust.MetricsSnapshot? snapshot;
@@ -321,27 +354,27 @@ class _MetricsGrid extends StatelessWidget {
     childAspectRatio: 2.0,
     physics: const NeverScrollableScrollPhysics(),
     children: [
-      _MetricTile(label: 'Tamamlandı',    value: snapshot?.completedTasks,
+      _MetricTile(label: 'Tamamlandı',     value: snapshot?.completedTasks,
           color: const Color(0xFF4CAF50),  icon: Icons.check_circle_outline),
-      _MetricTile(label: 'Başarısız',     value: snapshot?.failedTasks,
+      _MetricTile(label: 'Başarısız',      value: snapshot?.failedTasks,
           color: const Color(0xFFEF5350),  icon: Icons.error_outline),
-      _MetricTile(label: 'Kuyrukta',      value: snapshot?.queuedTasks,
+      _MetricTile(label: 'Kuyrukta',       value: snapshot?.queuedTasks,
           color: const Color(0xFFFFB74D),  icon: Icons.hourglass_bottom),
-      _MetricTile(label: 'Yeniden Deneme',value: snapshot?.retriedTasks,
+      _MetricTile(label: 'Yeniden Deneme', value: snapshot?.retriedTasks,
           color: const Color(0xFF7E57C2),  icon: Icons.refresh),
     ],
   );
 }
 
 class _MetricTile extends StatelessWidget {
-  final String label;
-  final int?   value;
-  final Color  color;
+  final String   label;
+  final int?     value;
+  final Color    color;
   final IconData icon;
 
   const _MetricTile({
-    required this.label, required this.value,
-    required this.color, required this.icon,
+    required this.label,  required this.value,
+    required this.color,  required this.icon,
   });
 
   @override
@@ -369,7 +402,7 @@ class _MetricTile extends StatelessWidget {
   );
 }
 
-// ── Logo ──────────────────────────────────────────────────
+// ── Logo ──────────────────────────────────────────────────────
 
 class _AetherLogo extends StatelessWidget {
   const _AetherLogo();

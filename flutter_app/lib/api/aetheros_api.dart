@@ -135,9 +135,82 @@ class AetherApi {
     return rust.getTaskLogs(taskId: taskId, limit: limit);
   }
 
+
+  // ── Agent ──────────────────────────────────────────────
+
+  /// Agent başlat → execution_id döner.
+  static Future<rust.AgentStartResponse> startAgent({
+    required String objective,
+    int maxSteps  = 10,
+    int maxTokens = 4096,
+  }) async {
+    return rust.startAgent(
+      objective: objective,
+      maxSteps:  maxSteps,
+      maxTokens: maxTokens,
+    );
+  }
+
+  /// Agent execution durumunu sorgula.
+  static Future<rust.AgentStatusResponse> getAgentStatus(
+    String executionId,
+  ) async {
+    return rust.getAgentStatus(executionId: executionId);
+  }
+
+  /// Tüm agent execution'larını listele.
+  static Future<List<rust.AgentStatusResponse>> listAgents({
+    int limit = 50,
+  }) async {
+    return rust.listAgents(limit: limit);
+  }
+
+  // ── Workflow ────────────────────────────────────────────
+
+  /// Workflow gönder → workflow_id döner.
+  static Future<rust.WorkflowStartResponse> startWorkflow({
+    required String name,
+    List<rust.WorkflowStepRequest> steps = const [],
+  }) async {
+    return rust.startWorkflow(name: name, steps: steps);
+  }
+
+  /// Workflow execution durumunu sorgula.
+  static Future<rust.WorkflowStatusResponse> getWorkflowStatus(
+    String workflowId,
+  ) async {
+    return rust.getWorkflowStatus(workflowId: workflowId);
+  }
+
+  /// Tüm workflow execution'larını listele.
+  static Future<List<rust.WorkflowStatusResponse>> listWorkflows({
+    int limit = 50,
+  }) async {
+    return rust.listWorkflows(limit: limit);
+  }
+
+  // ── Cluster / Remote ─────────────────────────────────
+
+  /// Cluster node listesini getir.
+  static Future<rust.ClusterStatusResponse> getClusterStatus() async {
+    return rust.getClusterStatus();
+  }
+
+  /// Cluster'a yeni node kaydet.
+  static Future<rust.NodeRegistrationResponse> registerNode({
+    required String address,
+    List<String> capabilities = const ['wasm'],
+  }) async {
+    return rust.registerNode(
+      address:      address,
+      capabilities: capabilities,
+    );
+  }
+
   // ── Metrikler ──────────────────────────────────────────
 
   static Future<rust.MetricsSnapshot> getMetrics() async {
     return rust.getMetrics();
   }
 }
+

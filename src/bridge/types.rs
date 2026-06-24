@@ -112,3 +112,83 @@ pub struct LogRecord {
     /// "TaskStarted" | "TaskFailed" | ...
     pub event_type: String,
 }
+
+// ── Agent tipleri (FRB bridge) ────────────────────────────────
+
+#[frb(dart_metadata = ("freezed"))]
+pub struct AgentStartResponse {
+    pub execution_id: String,
+    pub agent_id:     String,
+    pub status:       String,
+}
+
+#[frb(dart_metadata = ("freezed"))]
+pub struct AgentStatusResponse {
+    pub execution_id: String,
+    pub agent_id:     String,
+    pub objective:    String,
+    pub status:       String,
+    pub error:        Option<String>,
+    /// Unix ms
+    pub started_at:   i64,
+    pub finished_at:  Option<i64>,
+}
+
+// ── Workflow tipleri (FRB bridge) ─────────────────────────────
+
+pub struct WorkflowStepRequest {
+    pub id:         String,
+    pub name:       String,
+    pub kind:       String,
+    pub entrypoint: Option<String>,
+    pub depends_on: Vec<String>,
+    pub retryable:  bool,
+}
+
+#[frb(dart_metadata = ("freezed"))]
+pub struct WorkflowStartResponse {
+    pub workflow_id: String,
+    pub name:        String,
+    pub status:      String,
+}
+
+#[frb(dart_metadata = ("freezed"))]
+pub struct WorkflowStatusResponse {
+    pub workflow_id: String,
+    pub name:        String,
+    pub status:      String,
+    pub error:       Option<String>,
+    /// Unix ms
+    pub started_at:  i64,
+    pub finished_at: Option<i64>,
+}
+
+// ── Cluster tipleri (FRB bridge) ──────────────────────────────
+
+#[frb(dart_metadata = ("freezed"))]
+pub struct ClusterNodeResponse {
+    pub node_id:           String,
+    pub address:           String,
+    pub healthy:           bool,
+    pub capabilities:      Vec<String>,
+    pub cpu_percent:       f32,
+    pub memory_mb:         u64,
+    pub active_executions: u64,
+}
+
+#[frb(dart_metadata = ("freezed"))]
+pub struct ClusterStatusResponse {
+    pub health:     String,
+    pub total:      u64,
+    pub healthy:    u64,
+    pub has_quorum: bool,
+    pub leader:     Option<String>,
+    pub nodes:      Vec<ClusterNodeResponse>,
+}
+
+#[frb(dart_metadata = ("freezed"))]
+pub struct NodeRegistrationResponse {
+    pub node_id: String,
+    pub address: String,
+    pub status:  String,
+}

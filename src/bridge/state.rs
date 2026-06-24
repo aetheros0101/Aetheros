@@ -24,6 +24,7 @@ use std::sync::{Arc, OnceLock};
 use tokio::runtime::Runtime as TokioRuntime;
 use tracing::info;
 
+use crate::bridge::agent::{AgentRegistry, WorkflowRegistry};
 use crate::events::bus::EventBus;
 use crate::logging::buffer::{LogBuffer, log_collector};
 use crate::metrics::runtime::RuntimeMetrics;
@@ -38,16 +39,21 @@ use crate::wasm::module_store::ModuleStore;
 static MOBILE_RUNTIME: OnceLock<MobileRuntime> = OnceLock::new();
 
 pub struct MobileRuntime {
-    pub handle:       RuntimeHandle,
-    pub events:       EventBus,
-    pub persistence:  Arc<PersistenceEngine>,
-    pub metrics:      Arc<RuntimeMetrics>,
-    pub module_store: Arc<ModuleStore>,
-    pub log_buffer:   LogBuffer,
+    pub handle:            RuntimeHandle,
+    pub events:            EventBus,
+    pub persistence:       Arc<PersistenceEngine>,
+    pub metrics:           Arc<RuntimeMetrics>,
+    pub module_store:      Arc<ModuleStore>,
+    pub log_buffer:        LogBuffer,
     /// WASM binary'lerinin kalıcı dizini: {docDir}/modules/
-    /// upload_wasm_module() buraya yazar, restart'ta restore edilir.
-    pub modules_dir:  String,
-    pub tokio:        TokioRuntime,
+    pub modules_dir:       String,
+    /// Agent execution kaydı (in-memory, Faz-2'de persist)
+    pub agent_registry:    AgentRegistry,
+    /// Workflow execution kaydı (in-memory, Faz-2'de persist)
+    pub workflow_registry: WorkflowRegistry,
+    /// Cluster state — local/remote dispatch
+    pub cluster:           Arc<crate::remote::cluster::ClusterState>,
+    pub tokio:             TokioRuntime,
 }
 
 // ── Public API ────────────────────────────────────────────
@@ -127,6 +133,9 @@ pub fn init_mobile_runtime(
         module_store,
         log_buffer,
         modules_dir,
+        agent_registry:    Arc::new(dashmap::DashMap::new()),
+        workflow_registry: Arc::new(dashmap::DashMap::new()),
+        cluster:           Arc::new(crate::remote::cluster::ClusterState::new()),
         tokio,
     };
 
