@@ -28,8 +28,8 @@ use crate::bridge::types::{
     NodeRegistrationResponse,
     RuntimeInfo, TaskRequest, TaskStatusResponse,
     WorkflowStartResponse, WorkflowStatusResponse,
-    WorkflowStepRequest,
 };
+use crate::api::rest::router::WorkflowStepRequest;
 use crate::task::priority::TaskPriority;
 use crate::task::retry::RetryPolicy;
 use crate::task::task::{TaskDefinition, TaskMetadata, TaskState};

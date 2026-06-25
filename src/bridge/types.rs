@@ -134,16 +134,7 @@ pub struct AgentStatusResponse {
     pub finished_at:  Option<i64>,
 }
 
-// ── Workflow tipleri (FRB bridge) ─────────────────────────────
-
-pub struct WorkflowStepRequest {
-    pub id:         String,
-    pub name:       String,
-    pub kind:       String,
-    pub entrypoint: Option<String>,
-    pub depends_on: Vec<String>,
-    pub retryable:  bool,
-}
+// ── Workflow tipleri (FRB bridge) ─────────────────────────────────────────────
 
 #[frb(dart_metadata = ("freezed"))]
 pub struct WorkflowStartResponse {

@@ -435,10 +435,12 @@ Future<WorkflowStartResponse> startWorkflow({
   required String name,
   required List<WorkflowStepRequest> steps,
 }) async {
+  // FRB codegen WorkflowStepRequest'i rest::router'dan aldığı için
+  // bridge'in beklediği tip zaten aynı — direkt map edilebilir
   final bridgeSteps = steps.map((s) => _bridge.WorkflowStepRequest(
     id:         s.id,
     name:       s.name,
-    kind:       s.kind,
+    type_:      s.kind,       // FRB 'type' keyword'ünü type_ olarak üretir
     entrypoint: s.entrypoint,
     dependsOn:  s.dependsOn,
     retryable:  s.retryable,
