@@ -3,8 +3,17 @@
 //
 // Flutter'ın doğrudan çağırdığı Rust fonksiyonları.
 //
-// flutter_rust_bridge_codegen bu dosyayı okur ve
-// flutter_app/lib/src/rust/api/aetheros.dart dosyasını üretir.
+// flutter_rust_bridge_codegen bu dosyayı okur ve crate yolunu
+// mirror'layarak flutter_app/lib/src/rust/bridge/api.dart dosyasını üretir
+// (rust_input: "crate::bridge::api" → flutter_rust_bridge.yaml).
+//
+// flutter_app/lib/src/rust/api/aetheros.dart AYRI, EL İLE YAZILMIŞ bir
+// adapter dosyasıdır — codegen ona DOKUNMAZ. bridge/api.dart'ı (ve bu
+// dosyadan import edilen tiplerin geldiği rest/router.dart gibi diğer
+// generated dosyaları) sarmalar. Alan adı uyuşmazlıklarını önlemek için:
+// generated Dart parametre adları her zaman gerçek Rust struct alan
+// adını yansıtır (örn. WorkflowStepRequest.kind), #[serde(rename = ...)]
+// SADECE JSON wire formatını etkiler, FRB binding'i etkilemez.
 //
 // KURALLAR:
 //   - pub async fn → Dart'ta Future<T> olur

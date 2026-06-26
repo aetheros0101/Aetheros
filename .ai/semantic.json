@@ -523,7 +523,7 @@
     },
     "api": {
       "purpose": null,
-      "layer": 0,
+      "layer": 1,
       "loc": 1731,
       "depends_on": [
         "agents",
@@ -541,6 +541,7 @@
         "workflows"
       ],
       "depended_by": [
+        "bridge",
         "tests"
       ],
       "api": [
@@ -694,16 +695,19 @@
     "bridge": {
       "purpose": null,
       "layer": 0,
-      "loc": 776,
+      "loc": 1260,
       "depends_on": [
+        "api",
         "events",
         "logging",
         "metrics",
         "persistence",
+        "remote",
         "runtime",
         "task",
         "types",
-        "wasm"
+        "wasm",
+        "workflows"
       ],
       "depended_by": [],
       "api": [
@@ -744,8 +748,13 @@
         },
         {
           "kind": "fn",
+          "signature": "pub async fn compile_wat_to_wasm(name : String, wat_source : String, entrypoint : String, _timeout_ms : u64) -> Result <ModuleUploadResponse , String>",
+          "doc": "WASM modülü yükle → hash döner. Flutter, dosyayı bytes olarak Rust'a verir. Rust, ModuleStore'a kaydeder ve SHA-256 hash döner. Sonraki task'larda bu hash kullanılır. Örnek (Dart): ```dart final bytes = await File(\"my_module.wasm\").readAsBytes(); final hash = await AetherApi.uploadWasmModule(bytes: bytes); ``` WAT (WebAssembly Text Format) kaynak kodunu WASM binary'ye derle ve ModuleStore'a kaydet. Flutter script editor'ün \"Derle & Yükle\" butonu bu fonksiyonu çağırır. Derleme Rust tarafında `wat::parse_str()` ile yapılır. Başarı: ModuleUploadResponse { hash, size } döner. Hata:  WAT sözdizimi hatası string olarak döner."
+        },
+        {
+          "kind": "fn",
           "signature": "pub async fn upload_wasm_module(bytes : Vec < u8 >) -> Result <ModuleUploadResponse , String>",
-          "doc": "WASM modülü yükle → hash döner. Flutter, dosyayı bytes olarak Rust'a verir. Rust, ModuleStore'a kaydeder ve SHA-256 hash döner. Sonraki task'larda bu hash kullanılır. Örnek (Dart): ```dart final bytes = await File(\"my_module.wasm\").readAsBytes(); final hash = await AetherApi.uploadWasmModule(bytes: bytes); ```"
+          "doc": null
         },
         {
           "kind": "fn",
@@ -771,6 +780,46 @@
           "kind": "fn",
           "signature": "pub async fn get_metrics() -> Result <MetricsSnapshot , String>",
           "doc": "Anlık metrik görüntüsü al."
+        },
+        {
+          "kind": "fn",
+          "signature": "pub async fn start_agent(objective : String, max_steps : usize, max_tokens : usize) -> Result <AgentStartResponse , String>",
+          "doc": "Agent başlat → execution_id döner."
+        },
+        {
+          "kind": "fn",
+          "signature": "pub fn get_agent_status(execution_id : String) -> Result <AgentStatusResponse , String>",
+          "doc": "Agent execution durumunu sorgula."
+        },
+        {
+          "kind": "fn",
+          "signature": "pub fn list_agents(limit : usize) -> Result <Vec <AgentStatusResponse> , String>",
+          "doc": "Tüm agent execution'larını listele."
+        },
+        {
+          "kind": "fn",
+          "signature": "pub async fn start_workflow(name : String, steps : Vec < WorkflowStepRequest >) -> Result <WorkflowStartResponse , String>",
+          "doc": "Workflow başlat → workflow_id döner."
+        },
+        {
+          "kind": "fn",
+          "signature": "pub fn get_workflow_status(workflow_id : String) -> Result <WorkflowStatusResponse , String>",
+          "doc": "Workflow durumu sorgula."
+        },
+        {
+          "kind": "fn",
+          "signature": "pub fn list_workflows(limit : usize) -> Result <Vec <WorkflowStatusResponse> , String>",
+          "doc": "Tüm workflow'ları listele."
+        },
+        {
+          "kind": "fn",
+          "signature": "pub fn get_cluster_status() -> Result <ClusterStatusResponse , String>",
+          "doc": "Cluster genel durumunu getir."
+        },
+        {
+          "kind": "fn",
+          "signature": "pub fn register_node(address : String, capabilities : Vec < String >) -> Result <NodeRegistrationResponse , String>",
+          "doc": "Cluster'a yeni node kaydet."
         },
         {
           "kind": "fn",
@@ -815,6 +864,51 @@
         {
           "kind": "struct",
           "signature": "pub struct LogRecord",
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "signature": "pub struct AgentStartResponse",
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "signature": "pub struct AgentStatusResponse",
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "signature": "pub struct WorkflowStartResponse",
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "signature": "pub struct WorkflowStatusResponse",
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "signature": "pub struct ClusterNodeResponse",
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "signature": "pub struct ClusterStatusResponse",
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "signature": "pub struct NodeRegistrationResponse",
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "signature": "pub struct AgentEntry",
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "signature": "pub struct WorkflowEntry",
           "doc": null
         }
       ]
@@ -1715,7 +1809,7 @@
     "persistence": {
       "purpose": null,
       "layer": 1,
-      "loc": 334,
+      "loc": 351,
       "depends_on": [
         "errors",
         "task",
@@ -2000,11 +2094,12 @@
     },
     "remote": {
       "purpose": null,
-      "layer": 0,
+      "layer": 1,
       "loc": 981,
       "depends_on": [],
       "depended_by": [
         "api",
+        "bridge",
         "orchestration",
         "tests"
       ],
@@ -3541,6 +3636,7 @@
       ],
       "depended_by": [
         "api",
+        "bridge",
         "logging",
         "orchestration",
         "tests"

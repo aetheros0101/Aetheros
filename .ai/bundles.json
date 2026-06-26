@@ -19,7 +19,7 @@
   },
   "api": {
     "files": 266,
-    "bytes": 442121,
+    "bytes": 442849,
     "includes": [
       "agents",
       "ai",
@@ -42,8 +42,8 @@
     ]
   },
   "bridge": {
-    "files": 285,
-    "bytes": 482629,
+    "files": 286,
+    "bytes": 500893,
     "includes": [
       "agents",
       "ai",
@@ -91,7 +91,7 @@
   },
   "logging": {
     "files": 281,
-    "bytes": 456024,
+    "bytes": 456752,
     "includes": [
       "agents",
       "ai",
@@ -125,7 +125,7 @@
   },
   "orchestration": {
     "files": 266,
-    "bytes": 442131,
+    "bytes": 442859,
     "includes": [
       "agents",
       "ai",
@@ -149,7 +149,7 @@
   },
   "persistence": {
     "files": 266,
-    "bytes": 442129,
+    "bytes": 442857,
     "includes": [
       "agents",
       "ai",
@@ -180,7 +180,7 @@
   },
   "registry": {
     "files": 270,
-    "bytes": 446232,
+    "bytes": 446960,
     "includes": [
       "agents",
       "ai",
@@ -212,7 +212,7 @@
   },
   "runtime": {
     "files": 266,
-    "bytes": 442125,
+    "bytes": 442853,
     "includes": [
       "agents",
       "ai",
@@ -236,7 +236,7 @@
   },
   "scripting": {
     "files": 266,
-    "bytes": 442127,
+    "bytes": 442855,
     "includes": [
       "agents",
       "ai",
@@ -274,7 +274,7 @@
   },
   "task": {
     "files": 266,
-    "bytes": 442122,
+    "bytes": 442850,
     "includes": [
       "agents",
       "ai",
@@ -298,7 +298,7 @@
   },
   "tests": {
     "files": 266,
-    "bytes": 442123,
+    "bytes": 442851,
     "includes": [
       "agents",
       "ai",
@@ -329,7 +329,7 @@
   },
   "wasm": {
     "files": 266,
-    "bytes": 442122,
+    "bytes": 442850,
     "includes": [
       "agents",
       "ai",
@@ -353,7 +353,7 @@
   },
   "worker": {
     "files": 266,
-    "bytes": 442124,
+    "bytes": 442852,
     "includes": [
       "agents",
       "ai",
@@ -377,7 +377,7 @@
   },
   "workflows": {
     "files": 266,
-    "bytes": 442127,
+    "bytes": 442855,
     "includes": [
       "agents",
       "ai",

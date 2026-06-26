@@ -1861,6 +1861,26 @@
       "impls": [],
       "crate_uses": []
     },
+    "src/bridge/agent.rs": {
+      "module_doc": null,
+      "pub_fns": [],
+      "pub_types": [
+        {
+          "kind": "struct",
+          "name": "AgentEntry",
+          "generics": [],
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "name": "WorkflowEntry",
+          "generics": [],
+          "doc": null
+        }
+      ],
+      "impls": [],
+      "crate_uses": []
+    },
     "src/bridge/api.rs": {
       "module_doc": null,
       "pub_fns": [
@@ -1930,6 +1950,19 @@
           "doc": "Tüm task'ları listele (son N tane)."
         },
         {
+          "name": "compile_wat_to_wasm",
+          "is_async": true,
+          "params": [
+            "name : String",
+            "wat_source : String",
+            "entrypoint : String",
+            "_timeout_ms : u64"
+          ],
+          "ret": "Result <ModuleUploadResponse , String>",
+          "is_method": false,
+          "doc": "WASM modülü yükle → hash döner. Flutter, dosyayı bytes olarak Rust'a verir. Rust, ModuleStore'a kaydeder ve SHA-256 hash döner. Sonraki task'larda bu hash kullanılır. Örnek (Dart): ```dart final bytes = await File(\"my_module.wasm\").readAsBytes(); final hash = await AetherApi.uploadWasmModule(bytes: bytes); ``` WAT (WebAssembly Text Format) kaynak kodunu WASM binary'ye derle ve ModuleStore'a kaydet. Flutter script editor'ün \"Derle & Yükle\" butonu bu fonksiyonu çağırır. Derleme Rust tarafında `wat::parse_str()` ile yapılır. Başarı: ModuleUploadResponse { hash, size } döner. Hata:  WAT sözdizimi hatası string olarak döner."
+        },
+        {
           "name": "upload_wasm_module",
           "is_async": true,
           "params": [
@@ -1937,7 +1970,7 @@
           ],
           "ret": "Result <ModuleUploadResponse , String>",
           "is_method": false,
-          "doc": "WASM modülü yükle → hash döner. Flutter, dosyayı bytes olarak Rust'a verir. Rust, ModuleStore'a kaydeder ve SHA-256 hash döner. Sonraki task'larda bu hash kullanılır. Örnek (Dart): ```dart final bytes = await File(\"my_module.wasm\").readAsBytes(); final hash = await AetherApi.uploadWasmModule(bytes: bytes); ```"
+          "doc": null
         },
         {
           "name": "check_module_exists",
@@ -1987,17 +2020,102 @@
           "ret": "Result <MetricsSnapshot , String>",
           "is_method": false,
           "doc": "Anlık metrik görüntüsü al."
+        },
+        {
+          "name": "start_agent",
+          "is_async": true,
+          "params": [
+            "objective : String",
+            "max_steps : usize",
+            "max_tokens : usize"
+          ],
+          "ret": "Result <AgentStartResponse , String>",
+          "is_method": false,
+          "doc": "Agent başlat → execution_id döner."
+        },
+        {
+          "name": "get_agent_status",
+          "is_async": false,
+          "params": [
+            "execution_id : String"
+          ],
+          "ret": "Result <AgentStatusResponse , String>",
+          "is_method": false,
+          "doc": "Agent execution durumunu sorgula."
+        },
+        {
+          "name": "list_agents",
+          "is_async": false,
+          "params": [
+            "limit : usize"
+          ],
+          "ret": "Result <Vec <AgentStatusResponse> , String>",
+          "is_method": false,
+          "doc": "Tüm agent execution'larını listele."
+        },
+        {
+          "name": "start_workflow",
+          "is_async": true,
+          "params": [
+            "name : String",
+            "steps : Vec < WorkflowStepRequest >"
+          ],
+          "ret": "Result <WorkflowStartResponse , String>",
+          "is_method": false,
+          "doc": "Workflow başlat → workflow_id döner."
+        },
+        {
+          "name": "get_workflow_status",
+          "is_async": false,
+          "params": [
+            "workflow_id : String"
+          ],
+          "ret": "Result <WorkflowStatusResponse , String>",
+          "is_method": false,
+          "doc": "Workflow durumu sorgula."
+        },
+        {
+          "name": "list_workflows",
+          "is_async": false,
+          "params": [
+            "limit : usize"
+          ],
+          "ret": "Result <Vec <WorkflowStatusResponse> , String>",
+          "is_method": false,
+          "doc": "Tüm workflow'ları listele."
+        },
+        {
+          "name": "get_cluster_status",
+          "is_async": false,
+          "params": [],
+          "ret": "Result <ClusterStatusResponse , String>",
+          "is_method": false,
+          "doc": "Cluster genel durumunu getir."
+        },
+        {
+          "name": "register_node",
+          "is_async": false,
+          "params": [
+            "address : String",
+            "capabilities : Vec < String >"
+          ],
+          "ret": "Result <NodeRegistrationResponse , String>",
+          "is_method": false,
+          "doc": "Cluster'a yeni node kaydet."
         }
       ],
       "pub_types": [],
       "impls": [],
       "crate_uses": [
         "use crate:: bridge::state::{ get_runtime , init_mobile_runtime } ",
-        "use crate:: bridge::types::{ LogRecord , MetricsSnapshot , ModuleUploadResponse , RuntimeInfo , TaskRequest , TaskStatusResponse , } ",
+        "use crate:: bridge::types::{ AgentStartResponse , AgentStatusResponse , ClusterNodeResponse , ClusterStatusResponse , LogRecord , MetricsSnapshot , ModuleUploadResponse , NodeRegistrationResponse , RuntimeInfo , TaskRequest , TaskStatusResponse , WorkflowStartResponse , WorkflowStatusResponse , } ",
+        "use crate:: api::rest::router::WorkflowStepRequest ",
         "use crate:: task::priority::TaskPriority ",
         "use crate:: task::retry::RetryPolicy ",
         "use crate:: task::task::{ TaskDefinition , TaskMetadata , TaskState } ",
-        "use crate:: types::ids::TaskId "
+        "use crate:: types::ids::TaskId ",
+        "use crate:: workflows::compiler::{ WorkflowDsl , StepDsl } ",
+        "use crate:: remote::node::{ NodeCapability , RemoteNode } "
       ]
     },
     "src/bridge/mod.rs": {
@@ -2050,6 +2168,7 @@
       ],
       "impls": [],
       "crate_uses": [
+        "use crate:: bridge::agent::{ AgentRegistry , WorkflowRegistry } ",
         "use crate:: events::bus::EventBus ",
         "use crate:: logging::buffer::{ LogBuffer , log_collector } ",
         "use crate:: metrics::runtime::RuntimeMetrics ",
@@ -2091,6 +2210,48 @@
         {
           "kind": "struct",
           "name": "LogRecord",
+          "generics": [],
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "name": "AgentStartResponse",
+          "generics": [],
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "name": "AgentStatusResponse",
+          "generics": [],
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "name": "WorkflowStartResponse",
+          "generics": [],
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "name": "WorkflowStatusResponse",
+          "generics": [],
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "name": "ClusterNodeResponse",
+          "generics": [],
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "name": "ClusterStatusResponse",
+          "generics": [],
+          "doc": null
+        },
+        {
+          "kind": "struct",
+          "name": "NodeRegistrationResponse",
           "generics": [],
           "doc": null
         }
@@ -9657,5 +9818,5 @@
       ]
     }
   },
-  "total_pub_items": 362
+  "total_pub_items": 380
 }

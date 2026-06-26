@@ -23,14 +23,17 @@
     "workflows"
   ],
   "bridge": [
+    "api",
     "events",
     "logging",
     "metrics",
     "persistence",
+    "remote",
     "runtime",
     "task",
     "types",
-    "wasm"
+    "wasm",
+    "workflows"
   ],
   "events": [
     "types"

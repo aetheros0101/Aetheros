@@ -3,7 +3,7 @@
     "api": {
       "purpose": null,
       "layer": 2,
-      "loc": 121,
+      "loc": 216,
       "depends_on": [
         "src"
       ],
@@ -38,7 +38,7 @@
     "screens": {
       "purpose": null,
       "layer": 1,
-      "loc": 3709,
+      "loc": 5856,
       "depends_on": [
         "api",
         "services",
@@ -97,6 +97,26 @@
           "kind": "class",
           "signature": "class SubmitTaskScreen extends StatefulWidget",
           "doc": null
+        },
+        {
+          "kind": "class",
+          "signature": "class RemoteScreen extends StatefulWidget",
+          "doc": null
+        },
+        {
+          "kind": "class",
+          "signature": "class AgentScreen extends StatefulWidget",
+          "doc": null
+        },
+        {
+          "kind": "class",
+          "signature": "class WorkflowScreen extends StatefulWidget",
+          "doc": null
+        },
+        {
+          "kind": "class",
+          "signature": "class SettingsScreen extends StatefulWidget",
+          "doc": null
         }
       ]
     },
@@ -134,7 +154,7 @@
     "src": {
       "purpose": "Flutter'ın task göndermek için kullandığı tip.  wasm_module_hash: 64 karakter hex string (SHA-256) Boş string → modülsüz task (test için)",
       "layer": 3,
-      "loc": 2410,
+      "loc": 2704,
       "depends_on": [],
       "depended_by": [
         "api",
@@ -185,6 +205,46 @@
         {
           "kind": "class",
           "signature": "class LogRecord",
+          "doc": null
+        },
+        {
+          "kind": "class",
+          "signature": "class AgentStartResponse",
+          "doc": null
+        },
+        {
+          "kind": "class",
+          "signature": "class AgentStatusResponse",
+          "doc": null
+        },
+        {
+          "kind": "class",
+          "signature": "class WorkflowStepRequest",
+          "doc": null
+        },
+        {
+          "kind": "class",
+          "signature": "class WorkflowStartResponse",
+          "doc": null
+        },
+        {
+          "kind": "class",
+          "signature": "class WorkflowStatusResponse",
+          "doc": null
+        },
+        {
+          "kind": "class",
+          "signature": "class ClusterNode",
+          "doc": null
+        },
+        {
+          "kind": "class",
+          "signature": "class ClusterStatusResponse",
+          "doc": null
+        },
+        {
+          "kind": "class",
+          "signature": "class NodeRegistrationResponse",
           "doc": null
         },
         {

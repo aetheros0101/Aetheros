@@ -13,7 +13,7 @@
   },
   "bridge": {
     "path": "/home/dev/project/aetheros/src/bridge",
-    "files": 4
+    "files": 5
   },
   "config": {
     "path": "/home/dev/project/aetheros/src/config",

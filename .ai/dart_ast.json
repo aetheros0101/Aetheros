@@ -31,6 +31,74 @@
         }
       ]
     },
+    "flutter_app/lib/screens/agent_screen.dart": {
+      "module_doc": null,
+      "types": [
+        {
+          "kind": "class",
+          "name": "AgentScreen",
+          "signature": "class AgentScreen extends StatefulWidget",
+          "doc": null,
+          "is_public": true
+        },
+        {
+          "kind": "class",
+          "name": "_AgentScreenState",
+          "signature": "class _AgentScreenState extends State<AgentScreen>",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_NewAgentSheet",
+          "signature": "class _NewAgentSheet extends StatefulWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_NewAgentSheetState",
+          "signature": "class _NewAgentSheetState extends State<_NewAgentSheet>",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_AgentCard",
+          "signature": "class _AgentCard extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_AgentDetailSheet",
+          "signature": "class _AgentDetailSheet extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_EmptyState",
+          "signature": "class _EmptyState extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_StepChip",
+          "signature": "class _StepChip extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_DetailRow",
+          "signature": "class _DetailRow extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        }
+      ]
+    },
     "flutter_app/lib/screens/ai_chat_screen.dart": {
       "module_doc": null,
       "types": [
@@ -149,8 +217,8 @@
         },
         {
           "kind": "class",
-          "name": "_ActionTile",
-          "signature": "class _ActionTile extends StatelessWidget",
+          "name": "_Tile",
+          "signature": "class _Tile extends StatelessWidget",
           "doc": null,
           "is_public": false
         },
@@ -224,6 +292,74 @@
         }
       ]
     },
+    "flutter_app/lib/screens/remote_screen.dart": {
+      "module_doc": null,
+      "types": [
+        {
+          "kind": "class",
+          "name": "RemoteScreen",
+          "signature": "class RemoteScreen extends StatefulWidget",
+          "doc": null,
+          "is_public": true
+        },
+        {
+          "kind": "class",
+          "name": "_RemoteScreenState",
+          "signature": "class _RemoteScreenState extends State<RemoteScreen>",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_NodeCard",
+          "signature": "class _NodeCard extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_RegisterNodeSheet",
+          "signature": "class _RegisterNodeSheet extends StatefulWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_RegisterNodeSheetState",
+          "signature": "class _RegisterNodeSheetState extends State<_RegisterNodeSheet>",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_EmptyNodes",
+          "signature": "class _EmptyNodes extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_StatPill",
+          "signature": "class _StatPill extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_CapChip",
+          "signature": "class _CapChip extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_Metric",
+          "signature": "class _Metric extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        }
+      ]
+    },
     "flutter_app/lib/screens/script_editor_screen.dart": {
       "module_doc": null,
       "types": [
@@ -280,6 +416,53 @@
           "kind": "class",
           "name": "_CompilerNotice",
           "signature": "class _CompilerNotice extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        }
+      ]
+    },
+    "flutter_app/lib/screens/settings_screen.dart": {
+      "module_doc": null,
+      "types": [
+        {
+          "kind": "class",
+          "name": "SettingsScreen",
+          "signature": "class SettingsScreen extends StatefulWidget",
+          "doc": null,
+          "is_public": true
+        },
+        {
+          "kind": "class",
+          "name": "_SettingsScreenState",
+          "signature": "class _SettingsScreenState extends State<SettingsScreen>",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_SectionHeader",
+          "signature": "class _SectionHeader extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_RuntimeCard",
+          "signature": "class _RuntimeCard extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_InfoChip",
+          "signature": "class _InfoChip extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_ApiKeyField",
+          "signature": "class _ApiKeyField extends StatelessWidget",
           "doc": null,
           "is_public": false
         }
@@ -461,6 +644,88 @@
         }
       ]
     },
+    "flutter_app/lib/screens/workflow_screen.dart": {
+      "module_doc": null,
+      "types": [
+        {
+          "kind": "class",
+          "name": "WorkflowScreen",
+          "signature": "class WorkflowScreen extends StatefulWidget",
+          "doc": null,
+          "is_public": true
+        },
+        {
+          "kind": "class",
+          "name": "_WorkflowScreenState",
+          "signature": "class _WorkflowScreenState extends State<WorkflowScreen>",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_WorkflowStep",
+          "signature": "class _WorkflowStep",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_WorkflowBuilderSheet",
+          "signature": "class _WorkflowBuilderSheet extends StatefulWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_WorkflowBuilderSheetState",
+          "signature": "class _WorkflowBuilderSheetState extends State<_WorkflowBuilderSheet>",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_StepCard",
+          "signature": "class _StepCard extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_WorkflowCard",
+          "signature": "class _WorkflowCard extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_WorkflowDetailSheet",
+          "signature": "class _WorkflowDetailSheet extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_EmptyState",
+          "signature": "class _EmptyState extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_KindChip",
+          "signature": "class _KindChip extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        },
+        {
+          "kind": "class",
+          "name": "_Row",
+          "signature": "class _Row extends StatelessWidget",
+          "doc": null,
+          "is_public": false
+        }
+      ]
+    },
     "flutter_app/lib/services/gemini_service.dart": {
       "module_doc": null,
       "types": [
@@ -536,6 +801,62 @@
           "kind": "class",
           "name": "LogRecord",
           "signature": "class LogRecord",
+          "doc": null,
+          "is_public": true
+        },
+        {
+          "kind": "class",
+          "name": "AgentStartResponse",
+          "signature": "class AgentStartResponse",
+          "doc": null,
+          "is_public": true
+        },
+        {
+          "kind": "class",
+          "name": "AgentStatusResponse",
+          "signature": "class AgentStatusResponse",
+          "doc": null,
+          "is_public": true
+        },
+        {
+          "kind": "class",
+          "name": "WorkflowStepRequest",
+          "signature": "class WorkflowStepRequest",
+          "doc": null,
+          "is_public": true
+        },
+        {
+          "kind": "class",
+          "name": "WorkflowStartResponse",
+          "signature": "class WorkflowStartResponse",
+          "doc": null,
+          "is_public": true
+        },
+        {
+          "kind": "class",
+          "name": "WorkflowStatusResponse",
+          "signature": "class WorkflowStatusResponse",
+          "doc": null,
+          "is_public": true
+        },
+        {
+          "kind": "class",
+          "name": "ClusterNode",
+          "signature": "class ClusterNode",
+          "doc": null,
+          "is_public": true
+        },
+        {
+          "kind": "class",
+          "name": "ClusterStatusResponse",
+          "signature": "class ClusterStatusResponse",
+          "doc": null,
+          "is_public": true
+        },
+        {
+          "kind": "class",
+          "name": "NodeRegistrationResponse",
+          "signature": "class NodeRegistrationResponse",
           "doc": null,
           "is_public": true
         }
@@ -789,5 +1110,5 @@
       ]
     }
   },
-  "total_types": 97
+  "total_types": 140
 }

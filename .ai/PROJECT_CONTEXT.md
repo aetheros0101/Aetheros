@@ -11,21 +11,21 @@
 | 0 | errors | 163 | 10 | 0 |
 | 2 | events | 139 | 7 | 1 |
 | 1 | wasm | 896 | 7 | 2 |
-| 1 | persistence | 334 | 5 | 3 |
+| 1 | persistence | 351 | 5 | 3 |
 | 1 | runtime | 759 | 5 | 6 |
+| 2 | workflows | 1650 | 5 | 7 |
 | 2 | orchestration | 1933 | 4 | 6 |
-| 2 | workflows | 1650 | 4 | 7 |
+| 1 | remote | 981 | 4 | 0 |
 | 0 | agents | 917 | 3 | 3 |
 | 1 | metrics | 236 | 3 | 1 |
-| 0 | remote | 981 | 3 | 0 |
 | 0 | ai | 1302 | 2 | 1 |
+| 1 | api | 1731 | 2 | 13 |
 | 0 | scripting | 403 | 2 | 5 |
 | 0 | security | 670 | 2 | 0 |
 | 1 | worker | 773 | 2 | 6 |
-| 0 | api | 1731 | 1 | 13 |
 | 1 | logging | 622 | 1 | 3 |
 | 0 | tests | 3231 | 1 | 14 |
-| 0 | bridge | 776 | 0 | 8 |
+| 0 | bridge | 1260 | 0 | 11 |
 | 0 | config | 8 | 0 | 0 |
 | 0 | plugins | 206 | 0 | 0 |
 | 0 | registry | 178 | 0 | 3 |
@@ -162,11 +162,11 @@
 - `pub enum AiError`
 - `pub trait StructuredOutput`
 
-### `api` (katman 0, 1731 LOC)
+### `api` (katman 1, 1731 LOC)
 
 **Bağımlı olduğu:** agents, events, metrics, orchestration, persistence, remote, runtime, scripting, security, task, types, wasm, workflows
 
-**Kendisine bağımlı olanlar:** tests
+**Kendisine bağımlı olanlar:** bridge, tests
 
 **Public API:**
 
@@ -200,9 +200,9 @@
 - `pub struct AgentDescriptor`
 - `pub async fn dashboard_handler() -> impl IntoResponse` — GET /dashboard → HTML dashboard
 
-### `bridge` (katman 0, 776 LOC)
+### `bridge` (katman 0, 1260 LOC)
 
-**Bağımlı olduğu:** events, logging, metrics, persistence, runtime, task, types, wasm
+**Bağımlı olduğu:** api, events, logging, metrics, persistence, remote, runtime, task, types, wasm, workflows
 
 **Public API:**
 
@@ -213,12 +213,21 @@
 - `pub async fn submit_task(request : TaskRequest) -> Result <String , String>` — Task gönder → task_id döner. WASM modülü yoksa (wasm_module_hash == "") task yine kabul edilir; runtime Failed olarak işaretler. Örnek (Dart): ```dart final taskId = await AetherApi.submitTask(TaskRequest( wasmModuleHash: hash, entrypoint: "run", priority: "normal", timeoutMs: 30000, maxRetries: 3, )); ```
 - `pub async fn get_task_status(task_id : String) -> Result <TaskStatusResponse , String>` — Task durumunu sorgula.
 - `pub async fn list_tasks(limit : u32) -> Result <Vec <TaskStatusResponse> , String>` — Tüm task'ları listele (son N tane).
-- `pub async fn upload_wasm_module(bytes : Vec < u8 >) -> Result <ModuleUploadResponse , String>` — WASM modülü yükle → hash döner. Flutter, dosyayı bytes olarak Rust'a verir. Rust, ModuleStore'a kaydeder ve SHA-256 hash döner. Sonraki task'larda bu hash kullanılır. Örnek (Dart): ```dart final bytes = await File("my_module.wasm").readAsBytes(); final hash = await AetherApi.uploadWasmModule(bytes: bytes); ```
+- `pub async fn compile_wat_to_wasm(name : String, wat_source : String, entrypoint : String, _timeout_ms : u64) -> Result <ModuleUploadResponse , String>` — WASM modülü yükle → hash döner. Flutter, dosyayı bytes olarak Rust'a verir. Rust, ModuleStore'a kaydeder ve SHA-256 hash döner. Sonraki task'larda bu hash kullanılır. Örnek (Dart): ```dart final bytes = await File("my_module.wasm").readAsBytes(); final hash = await AetherApi.uploadWasmModule(bytes: bytes); ``` WAT (WebAssembly Text Format) kaynak kodunu WASM binary'ye derle ve ModuleStore'a kaydet. Flutter script editor'ün "Derle & Yükle" butonu bu fonksiyonu çağırır. Derleme Rust tarafında `wat::parse_str()` ile yapılır. Başarı: ModuleUploadResponse { hash, size } döner. Hata:  WAT sözdizimi hatası string olarak döner.
+- `pub async fn upload_wasm_module(bytes : Vec < u8 >) -> Result <ModuleUploadResponse , String>`
 - `pub fn check_module_exists(hash_hex : String) -> Result <bool , String>` — Belirtilen hash'e sahip modül runtime'da kayıtlı mı? WasmModuleScreen açılışında, eski oturumdan kalan meta-data'yı doğrulamak için her modül için çağrılır.
 - `pub async fn resubmit_task(task_id : String) -> Result <String , String>` — Mevcut bir task'ı orijinal ayarlarıyla (hash, entrypoint, priority, retry policy) yeni bir UUID altında yeniden kuyruğa ekler. "Yeniden Dene" butonu için — sadece id ve zaman damgaları yenilenir, deadline sıfırlanır.
 - `pub fn get_recent_logs(limit : u32) -> Result <Vec <LogRecord> , String>` — Son `limit` kadar log entry döndür (yeniden eskiye sıralı). LogScreen 2 saniyede bir bu fonksiyonu polling ile çeker. limit: 0 → varsayılan 100.
 - `pub fn get_task_logs(task_id : String, limit : u32) -> Result <Vec <LogRecord> , String>` — Belirli bir task'a ait log entry'leri döndür. Task detay modalındaki "Loglar" sekmesi için. limit: 0 → varsayılan 50.
 - `pub async fn get_metrics() -> Result <MetricsSnapshot , String>` — Anlık metrik görüntüsü al.
+- `pub async fn start_agent(objective : String, max_steps : usize, max_tokens : usize) -> Result <AgentStartResponse , String>` — Agent başlat → execution_id döner.
+- `pub fn get_agent_status(execution_id : String) -> Result <AgentStatusResponse , String>` — Agent execution durumunu sorgula.
+- `pub fn list_agents(limit : usize) -> Result <Vec <AgentStatusResponse> , String>` — Tüm agent execution'larını listele.
+- `pub async fn start_workflow(name : String, steps : Vec < WorkflowStepRequest >) -> Result <WorkflowStartResponse , String>` — Workflow başlat → workflow_id döner.
+- `pub fn get_workflow_status(workflow_id : String) -> Result <WorkflowStatusResponse , String>` — Workflow durumu sorgula.
+- `pub fn list_workflows(limit : usize) -> Result <Vec <WorkflowStatusResponse> , String>` — Tüm workflow'ları listele.
+- `pub fn get_cluster_status() -> Result <ClusterStatusResponse , String>` — Cluster genel durumunu getir.
+- `pub fn register_node(address : String, capabilities : Vec < String >) -> Result <NodeRegistrationResponse , String>` — Cluster'a yeni node kaydet.
 - `pub fn init_mobile_runtime(db_path : String, worker_count : usize) -> Result <() , String>` — Runtime'ı başlat. Flutter tarafından uygulama açılışında bir kez çağrılır. İkinci çağrı AlreadyInitialized hatası döner.
 - `pub fn get_runtime() -> Option <& 'static MobileRuntime>` — Global runtime'ı al. init_mobile_runtime() çağrılmadan önce kullanılırsa None döner. Bridge fonksiyonları bu durumda "RuntimeNotInitialized" hatası verir.
 - `pub fn block_on(fut : F) -> T` — Tokio runtime üzerinden async blok çalıştır. FRB zaten tokio context içinde çağırır; bu fonksiyon doğrudan `await` kullanamayan yerlerde (sync context) işe yarar.
@@ -228,6 +237,15 @@
 - `pub struct RuntimeInfo`
 - `pub struct ModuleUploadResponse`
 - `pub struct LogRecord`
+- `pub struct AgentStartResponse`
+- `pub struct AgentStatusResponse`
+- `pub struct WorkflowStartResponse`
+- `pub struct WorkflowStatusResponse`
+- `pub struct ClusterNodeResponse`
+- `pub struct ClusterStatusResponse`
+- `pub struct NodeRegistrationResponse`
+- `pub struct AgentEntry`
+- `pub struct WorkflowEntry`
 
 ### `config` (katman 0, 8 LOC)
 
@@ -435,7 +453,7 @@ _Public API yok._
 - `pub struct ExecutionPolicy`
 - `pub struct RuntimeSnapshot`
 
-### `persistence` (katman 1, 334 LOC)
+### `persistence` (katman 1, 351 LOC)
 
 **Bağımlı olduğu:** errors, task, types
 
@@ -505,9 +523,9 @@ _Public API yok._
 - `impl RuntimeRegistry :: fn list(& self) -> Vec <RegistryEntry>`
 - `impl RuntimeRegistry :: fn count(& self) -> usize`
 
-### `remote` (katman 0, 981 LOC)
+### `remote` (katman 1, 981 LOC)
 
-**Kendisine bağımlı olanlar:** api, orchestration, tests
+**Kendisine bağımlı olanlar:** api, bridge, orchestration, tests
 
 **Public API:**
 
@@ -857,7 +875,7 @@ _Public API yok._
 
 **Bağımlı olduğu:** agents, ai, errors, orchestration, runtime, task, types
 
-**Kendisine bağımlı olanlar:** api, logging, orchestration, tests
+**Kendisine bağımlı olanlar:** api, bridge, logging, orchestration, tests
 
 **Public API:**
 
@@ -927,16 +945,16 @@ _Public API yok._
 
 | Katman | Modül | LOC | Fan-in | Fan-out |
 |---|---|---|---|---|
-| 3 | src | 2410 | 3 | 0 |
-| 2 | api | 121 | 1 | 1 |
-| 1 | screens | 3709 | 1 | 3 |
+| 3 | src | 2704 | 3 | 0 |
+| 2 | api | 216 | 1 | 1 |
+| 1 | screens | 5856 | 1 | 3 |
 | 2 | services | 204 | 1 | 0 |
 | 0 | root | 116 | 0 | 2 |
 | 0 | widgets | 0 | 0 | 0 |
 
 ## Modüller
 
-### `api` (katman 2, 121 LOC)
+### `api` (katman 2, 216 LOC)
 
 **Bağımlı olduğu:** src
 
@@ -954,7 +972,7 @@ _Public API yok._
 
 - `class AetherOSApp extends StatelessWidget` — Normal uygulama
 
-### `screens` (katman 1, 3709 LOC)
+### `screens` (katman 1, 5856 LOC)
 
 **Bağımlı olduğu:** api, services, src
 
@@ -972,6 +990,10 @@ _Public API yok._
 - `class AiChatScreen extends StatefulWidget`
 - `class BackupScreen extends StatefulWidget`
 - `class SubmitTaskScreen extends StatefulWidget`
+- `class RemoteScreen extends StatefulWidget`
+- `class AgentScreen extends StatefulWidget`
+- `class WorkflowScreen extends StatefulWidget`
+- `class SettingsScreen extends StatefulWidget`
 
 ### `services` (katman 2, 204 LOC)
 
@@ -984,7 +1006,7 @@ _Public API yok._
 - `class GeminiService`
 - `class GeminiException implements Exception`
 
-### `src` (katman 3, 2410 LOC)
+### `src` (katman 3, 2704 LOC)
 
 **Amaç:** Flutter'ın task göndermek için kullandığı tip.  wasm_module_hash: 64 karakter hex string (SHA-256) Boş string → modülsüz task (test için)
 
@@ -1001,6 +1023,14 @@ _Public API yok._
 - `class RuntimeInfo`
 - `class ModuleUploadResponse`
 - `class LogRecord`
+- `class AgentStartResponse`
+- `class AgentStatusResponse`
+- `class WorkflowStepRequest`
+- `class WorkflowStartResponse`
+- `class WorkflowStatusResponse`
+- `class ClusterNode`
+- `class ClusterStatusResponse`
+- `class NodeRegistrationResponse`
 - `abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire>`
 - `class RustLibWire implements BaseWire`
 - `abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire>`
