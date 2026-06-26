@@ -14,6 +14,7 @@ import 'dart:async';
 
 import '../frb_generated.dart';
 import '../bridge/api.dart' as _bridge;
+import 'rest/router.dart' as rest_router;
 import '../bridge/types.dart' as _bt;
 import '../metrics/runtime.dart' as _bm;
 
@@ -391,8 +392,8 @@ Future<AgentStartResponse> startAgent({
 }) async {
   final r = await _bridge.startAgent(
     objective: objective,
-    maxSteps:  maxSteps,
-    maxTokens: maxTokens,
+    maxSteps:  BigInt.from(maxSteps),    // usize → BigInt
+    maxTokens: BigInt.from(maxTokens),   // usize → BigInt
   );
   return AgentStartResponse(
     executionId: r.executionId,
@@ -417,7 +418,7 @@ Future<AgentStatusResponse> getAgentStatus({
 }
 
 Future<List<AgentStatusResponse>> listAgents({required int limit}) async {
-  final list = await _bridge.listAgents(limit: limit);
+  final list = await _bridge.listAgents(limit: BigInt.from(limit));
   return list.map((r) => AgentStatusResponse(
     executionId: r.executionId,
     agentId:     r.agentId,
@@ -437,10 +438,11 @@ Future<WorkflowStartResponse> startWorkflow({
 }) async {
   // FRB codegen WorkflowStepRequest'i rest::router'dan aldığı için
   // bridge'in beklediği tip zaten aynı — direkt map edilebilir
-  final bridgeSteps = steps.map((s) => _bridge.WorkflowStepRequest(
+  // rest_router.WorkflowStepRequest = FRB'nin codegen'den ürettiği tip
+  final bridgeSteps = steps.map((s) => rest_router.WorkflowStepRequest(
     id:         s.id,
     name:       s.name,
-    type_:      s.kind,       // FRB 'type' keyword'ünü type_ olarak üretir
+    type_:      s.kind,    // Dart'ta 'type' reserved keyword → FRB type_ üretir
     entrypoint: s.entrypoint,
     dependsOn:  s.dependsOn,
     retryable:  s.retryable,
@@ -469,7 +471,7 @@ Future<WorkflowStatusResponse> getWorkflowStatus({
 }
 
 Future<List<WorkflowStatusResponse>> listWorkflows({required int limit}) async {
-  final list = await _bridge.listWorkflows(limit: limit);
+  final list = await _bridge.listWorkflows(limit: BigInt.from(limit));
   return list.map((r) => WorkflowStatusResponse(
     workflowId: r.workflowId,
     name:       r.name,
