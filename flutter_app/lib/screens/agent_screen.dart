@@ -145,6 +145,7 @@ class _NewAgentSheetState extends State<_NewAgentSheet> {
         ));
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() { _submitting = false; _error = e.toString(); });
     }
   }

@@ -121,9 +121,13 @@ class _WorkflowStep {
     required this.name,
     this.kind       = 'wasm',
     this.entrypoint = 'run',
-    this.dependsOn  = const [],
+    List<String>? dependsOn,
     this.retryable  = false,
-  });
+  }) : dependsOn = dependsOn ?? <String>[];
+  // NOT: `const []` kullanılmadı — _StepCard, step.dependsOn üzerinde
+  // doğrudan .add()/.remove() çağırıyor; const liste immutable olduğu
+  // için ilk bağımlılık eklemede UnsupportedError fırlatıp ekranı
+  // çökertirdi.
 }
 
 class _WorkflowBuilderSheet extends StatefulWidget {
@@ -179,6 +183,7 @@ class _WorkflowBuilderSheetState extends State<_WorkflowBuilderSheet> {
         ));
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() { _submitting = false; _error = e.toString(); });
     }
   }
