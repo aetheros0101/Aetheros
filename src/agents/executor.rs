@@ -27,7 +27,7 @@ impl AgentExecutor {
         budget: AgentExecutionBudget,
         tools: Vec<Arc<dyn AgentTool>>,
         ai_provider: Option<Arc<dyn ModelProvider>>,
-    ) -> Result<Uuid, RuntimeError> {
+    ) -> Result<(Uuid, Vec<String>), RuntimeError> {
         AgentRuntime::execute(
             context,
             objective,

@@ -645,6 +645,7 @@ pub async fn start_agent(
         error:       None,
         started_at,
         finished_at: None,
+        planned_steps: vec![],
     });
 
     let registry = rt.agent_registry.clone();
@@ -664,7 +665,11 @@ pub async fn start_agent(
         let finished_at = chrono::Utc::now();
         if let Some(mut entry) = registry.get_mut(&execution_id) {
             match result {
-                Ok(_)  => { entry.status = "completed".into(); entry.finished_at = Some(finished_at); }
+                Ok((_, steps)) => {
+                    entry.status = "completed".into();
+                    entry.finished_at = Some(finished_at);
+                    entry.planned_steps = steps;
+                }
                 Err(e) => { entry.status = "failed".into(); entry.error = Some(format!("{e:?}")); entry.finished_at = Some(finished_at); }
             }
         }
@@ -694,6 +699,7 @@ pub fn get_agent_status(execution_id: String) -> Result<AgentStatusResponse, Str
             error:        e.error.clone(),
             started_at:   e.started_at.timestamp_millis(),
             finished_at:  e.finished_at.map(|t| t.timestamp_millis()),
+            planned_steps: e.planned_steps.clone(),
         })
         .ok_or_else(|| format!("Agent bulunamadı: {execution_id}"))
 }
@@ -714,6 +720,7 @@ pub fn list_agents(limit: usize) -> Result<Vec<AgentStatusResponse>, String> {
             error:        e.error.clone(),
             started_at:   e.started_at.timestamp_millis(),
             finished_at:  e.finished_at.map(|t| t.timestamp_millis()),
+            planned_steps: e.planned_steps.clone(),
         })
         .collect();
 

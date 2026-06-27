@@ -288,6 +288,10 @@ class AgentStatusResponse {
   final String? error;
   final int startedAt;       // ms epoch
   final int? finishedAt;
+  /// Planner'ın ürettiği adım isimleri. Gemini/Anthropic gerçekten
+  /// çalıştıysa objective'e özel adlar; çalışmadıysa hep aynı 3
+  /// generic ad (initialize/execute: .../finalize — fallback_plan).
+  final List<String> plannedSteps;
 
   const AgentStatusResponse({
     required this.executionId,
@@ -297,6 +301,7 @@ class AgentStatusResponse {
     this.error,
     required this.startedAt,
     this.finishedAt,
+    this.plannedSteps = const [],
   });
 }
 
@@ -433,6 +438,7 @@ Future<AgentStatusResponse> getAgentStatus({
     error:       r.error,
     startedAt:   r.startedAt.toInt(),
     finishedAt:  r.finishedAt?.toInt(),
+    plannedSteps: r.plannedSteps,
   );
 }
 
@@ -446,6 +452,7 @@ Future<List<AgentStatusResponse>> listAgents({required int limit}) async {
     error:       r.error,
     startedAt:   r.startedAt.toInt(),
     finishedAt:  r.finishedAt?.toInt(),
+    plannedSteps: r.plannedSteps,
   )).toList();
 }
 

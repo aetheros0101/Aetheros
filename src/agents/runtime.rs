@@ -63,14 +63,14 @@ impl AgentRuntime {
 
     /// Agent execution döngüsü.
     ///
-    /// objective → plan → adım adım çalıştır → execution_id
+    /// objective → plan → adım adım çalıştır → (execution_id, plan adım isimleri)
     pub async fn execute(
         context: AgentContext,
         objective: String,
         budget: AgentExecutionBudget,
         tools: Vec<Arc<dyn AgentTool>>,
         ai_provider: Option<Arc<dyn ModelProvider>>,
-    ) -> Result<Uuid, RuntimeError> {
+    ) -> Result<(Uuid, Vec<String>), RuntimeError> {
         info!(
             agent_id = %context.agent_id,
             execution_id = %context.execution_id,
@@ -86,11 +86,14 @@ impl AgentRuntime {
         &mut self,
         context: AgentContext,
         objective: String,
-    ) -> Result<Uuid, RuntimeError> {
+    ) -> Result<(Uuid, Vec<String>), RuntimeError> {
         // ── 1. Plan ───────────────────────────────────────────
         // AI destekli plan; API yoksa otomatik fallback.
         let plan =
             AgentPlanner::plan(objective.clone(), self.ai_provider.clone()).await;
+
+        let step_names: Vec<String> =
+            plan.planned_steps.iter().map(|s| s.name.clone()).collect();
 
         info!(
             plan_id = %plan.id,
@@ -199,7 +202,7 @@ impl AgentRuntime {
             "Agent execution complete"
         );
 
-        Ok(context.execution_id)
+        Ok((context.execution_id, step_names))
     }
 
     /// Adım ismiyle eşleşen tool'u bul ve çağır.
