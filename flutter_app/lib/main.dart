@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -7,8 +9,33 @@ import 'src/rust/api/aetheros.dart' as aether;
 import 'screens/home_screen.dart';
 import 'screens/ai_settings_screen.dart' show loadAiSettings;
 
+/// Bazı operatörlerde cihaz IPv6 adresi alır ama gerçek yönlendirme
+/// yoktur → "SocketException: Network is unreachable, errno = 101".
+/// dart:io tabanlı her HTTP isteği (package:http / GeminiService dahil)
+/// önce IPv6'yı deneyip burada patlayabilir. Bu override DNS'ten
+/// SADECE IPv4 adresi isteyip ona bağlanarak sorunu komple atlatır.
+class _ForceIPv4HttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    final client = super.createHttpClient(context);
+    client.connectionFactory =
+        (Uri uri, String? proxyHost, int? proxyPort) async {
+      final addresses = await InternetAddress.lookup(
+        uri.host,
+        type: InternetAddressType.IPv4,
+      );
+      if (addresses.isEmpty) {
+        throw SocketException('IPv4 adresi bulunamadı: ${uri.host}');
+      }
+      return Socket.startConnect(addresses.first, uri.port);
+    };
+    return client;
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  HttpOverrides.global = _ForceIPv4HttpOverrides();
 
   String? initError;
 

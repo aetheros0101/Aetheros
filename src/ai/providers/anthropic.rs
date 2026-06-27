@@ -92,7 +92,7 @@ impl AnthropicProvider {
         Ok(Self {
             api_key,
             model: "claude-sonnet-4-5".to_string(),
-            client: reqwest::Client::new(),
+            client: super::http_client(),
         })
     }
 
@@ -102,7 +102,7 @@ impl AnthropicProvider {
         Self {
             api_key: api_key.into(),
             model: "claude-sonnet-4-5".to_string(),
-            client: reqwest::Client::new(),
+            client: super::http_client(),
         }
     }
 

@@ -104,7 +104,7 @@ impl GeminiProvider {
         Self {
             api_key: api_key.into(),
             model:   "gemini-2.0-flash".to_string(),
-            client:  reqwest::Client::new(),
+            client:  super::http_client(),
         }
     }
 
