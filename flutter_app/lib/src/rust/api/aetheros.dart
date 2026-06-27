@@ -439,10 +439,17 @@ Future<WorkflowStartResponse> startWorkflow({
   // FRB codegen WorkflowStepRequest'i rest::router'dan aldığı için
   // bridge'in beklediği tip zaten aynı — direkt map edilebilir
   // rest_router.WorkflowStepRequest = FRB'nin codegen'den ürettiği tip
+  //
+  // NOT: Rust tarafında alan adı `kind` (src/api/rest/router.rs).
+  // `#[serde(rename = "type")]` SADECE JSON (REST) serileştirmesini
+  // etkiler; Rust struct alanının kendi adını değiştirmez. FRB codegen
+  // de Dart tarafına struct alanını birebir `kind` olarak aktarır — yani
+  // burada 'type' Dart'ta reserved keyword olduğu için 'type_' üretildiği
+  // varsayımı yanlıştı. Üretilen sınıfta 'type_' diye bir parametre yok.
   final bridgeSteps = steps.map((s) => rest_router.WorkflowStepRequest(
     id:         s.id,
     name:       s.name,
-    type_:      s.kind,    // Dart'ta 'type' reserved keyword → FRB type_ üretir
+    kind:       s.kind,
     entrypoint: s.entrypoint,
     dependsOn:  s.dependsOn,
     retryable:  s.retryable,
