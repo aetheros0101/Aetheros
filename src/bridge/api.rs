@@ -26,10 +26,16 @@
 //   init_runtime() çağrılmadan diğerleri RuntimeNotInitialized döner.
 // ============================================================
 
+use std::sync::Arc;
+
 use flutter_rust_bridge::frb;
 use tracing::info;
 
+use crate::ai::providers::anthropic::AnthropicProvider;
+use crate::ai::providers::gemini::GeminiProvider;
+use crate::ai::providers::provider::ModelProvider;
 use crate::bridge::state::{get_runtime, init_mobile_runtime};
+use crate::bridge::state::MobileRuntime;
 use crate::bridge::types::{
     AgentStartResponse, AgentStatusResponse,
     ClusterNodeResponse, ClusterStatusResponse,
@@ -552,6 +558,69 @@ fn parse_hash(hex_str: &str) -> Result<[u8; 32], String> {
 }
 
 
+// ── AI Provider yapılandırma (FRB) ────────────────────────────
+//
+// Faz: Anthropic ana model olacak (production), Ollama local için,
+// ücretsiz Gemini test/free-tier için. Mobilde env var set edilemediği
+// için (ANTHROPIC_API_KEY) provider + key Flutter'dan bridge ile geçirilir.
+//
+// configure_ai_provider() hiç çağrılmazsa davranış DEĞİŞMEZ: Agent/
+// Workflow eski env-var tabanlı AnthropicProvider'a düşmeye devam eder.
+
+/// Runtime'da o an aktif olan sağlayıcıyı (varsa) döner.
+fn resolve_ai_provider(rt: &MobileRuntime) -> Option<Arc<dyn ModelProvider>> {
+    let active = rt.active_ai_provider.read().ok()?.clone();
+    if active.is_empty() {
+        return None;
+    }
+    rt.ai_router.provider(&active)
+}
+
+/// AI sağlayıcısını yapılandır ve aktif et.
+///
+/// provider_id: "gemini" | "anthropic" (ollama henüz gerçek bir
+/// implementasyona sahip değil — şimdilik desteklenmiyor, echo-stub
+/// olduğu için kasıtlı olarak burada reddediliyor).
+pub fn configure_ai_provider(
+    provider_id: String,
+    api_key: String,
+) -> Result<(), String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    if api_key.trim().is_empty() {
+        return Err("API key boş olamaz".to_string());
+    }
+
+    let provider: Arc<dyn ModelProvider> = match provider_id.as_str() {
+        "gemini"    => Arc::new(GeminiProvider::new(api_key)),
+        "anthropic" => Arc::new(AnthropicProvider::with_api_key(api_key)),
+        other => {
+            return Err(format!(
+                "Desteklenmeyen provider: '{other}' (şu an: gemini, anthropic)"
+            ));
+        }
+    };
+
+    rt.ai_router.register(provider);
+
+    *rt.active_ai_provider
+        .write()
+        .map_err(|_| "Lock hatası".to_string())? = provider_id;
+
+    info!("AI provider yapılandırıldı");
+    Ok(())
+}
+
+/// Şu an aktif olan AI provider id'sini döner.
+/// Hiç yapılandırılmadıysa boş string ("") — bu, Agent/Workflow'un
+/// eski env-var fallback'ine düştüğü anlamına gelir.
+pub fn get_active_ai_provider() -> String {
+    get_runtime()
+        .and_then(|rt| rt.active_ai_provider.read().ok().map(|g| g.clone()))
+        .unwrap_or_default()
+}
+
 // ── Agent fonksiyonları (FRB) ─────────────────────────────────
 
 /// Agent başlat → execution_id döner.
@@ -587,10 +656,11 @@ pub async fn start_agent(
         max_steps,
         max_runtime_seconds: 300,
     };
+    let ai_provider = resolve_ai_provider(rt);
 
     tokio::spawn(async move {
         let result      = crate::agents::executor::AgentExecutor
-            ::execute(context, objective_c, budget, vec![]).await;
+            ::execute(context, objective_c, budget, vec![], ai_provider).await;
         let finished_at = chrono::Utc::now();
         if let Some(mut entry) = registry.get_mut(&execution_id) {
             match result {
@@ -690,9 +760,10 @@ pub async fn start_workflow(
 
     let registry = rt.workflow_registry.clone();
     let runtime  = rt.handle.clone();
+    let ai_provider = resolve_ai_provider(rt);
 
     tokio::spawn(async move {
-        let result      = crate::workflows::engine::WorkflowEngine::run_dsl(&dsl, runtime).await;
+        let result      = crate::workflows::engine::WorkflowEngine::run_dsl(&dsl, runtime, ai_provider).await;
         let finished_at = chrono::Utc::now();
         if let Some(mut entry) = registry.get_mut(&workflow_id) {
             match result {

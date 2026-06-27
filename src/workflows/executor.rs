@@ -17,6 +17,8 @@
 // WorkflowExecutor artık RuntimeHandle alıyor:
 //   runtime'a doğrudan task submit edebiliyor.
 // ============================================================
+use std::sync::Arc;
+
 use tracing::{
     info,
     warn,
@@ -46,13 +48,21 @@ use crate::workflows::execution_graph::WorkflowExecutionGraph;
 pub struct WorkflowExecutor {
     coordinator: ExecutionCoordinator,
     runtime: RuntimeHandle,
+    /// Faz 6: configure_ai_provider ile ayarlanmış sağlayıcı.
+    /// None ise AiInference/Agent node'ları eski env-var
+    /// davranışına (AnthropicProvider::new()) düşer.
+    ai_provider: Option<Arc<dyn ModelProvider>>,
 }
 
 impl WorkflowExecutor {
-    pub fn new(runtime: RuntimeHandle) -> Self {
+    pub fn new(
+        runtime: RuntimeHandle,
+        ai_provider: Option<Arc<dyn ModelProvider>>,
+    ) -> Self {
         Self {
             coordinator: ExecutionCoordinator::new(),
             runtime,
+            ai_provider,
         }
     }
 
@@ -162,16 +172,26 @@ impl WorkflowExecutor {
                     name.to_string(),
                     budget,
                     vec![],
+                    self.ai_provider.clone(),
                 )
                 .await?;
 
                 info!(node_id = %node_id, "Agent node complete");
             }
 
-            // ── AI Inference: AnthropicProvider ─────────────
+            // ── AI Inference: configure_ai_provider ile ayarlanan
+            //    sağlayıcı (yoksa eski env-var Anthropic fallback) ──
             ExecutionNodeKind::AiInference => {
-                match AnthropicProvider::new() {
-                    Ok(provider) => {
+                let resolved: Option<Arc<dyn ModelProvider>> =
+                    match &self.ai_provider {
+                        Some(p) => Some(p.clone()),
+                        None => AnthropicProvider::new()
+                            .ok()
+                            .map(|p| Arc::new(p) as Arc<dyn ModelProvider>),
+                    };
+
+                match resolved {
+                    Some(provider) => {
                         let request =
                             InferenceRequest::new(
                                 name,
@@ -198,10 +218,10 @@ impl WorkflowExecutor {
                             }
                         }
                     }
-                    Err(_) => {
+                    None => {
                         warn!(
                             node_id = %node_id,
-                            "AnthropicProvider unavailable, \
+                            "No AI provider configured, \
                              skipping AiInference node"
                         );
                     }

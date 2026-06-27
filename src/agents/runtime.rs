@@ -35,23 +35,29 @@ use crate::agents::memory::AgentMemory;
 use crate::agents::planner::AgentPlanner;
 use crate::agents::reasoning::ReasoningTrace;
 use crate::agents::tools::AgentTool;
+use crate::ai::providers::provider::ModelProvider;
 use crate::errors::runtime::RuntimeError;
 
 pub struct AgentRuntime {
     memory: AgentMemory,
     tools: Vec<Arc<dyn AgentTool>>,
     budget: AgentExecutionBudget,
+    /// Faz 6: configure_ai_provider ile ayarlanmış sağlayıcı.
+    /// None ise AgentPlanner eski env-var davranışına düşer.
+    ai_provider: Option<Arc<dyn ModelProvider>>,
 }
 
 impl AgentRuntime {
     pub fn new(
         budget: AgentExecutionBudget,
         tools: Vec<Arc<dyn AgentTool>>,
+        ai_provider: Option<Arc<dyn ModelProvider>>,
     ) -> Self {
         Self {
             memory: AgentMemory::new(),
             tools,
             budget,
+            ai_provider,
         }
     }
 
@@ -63,6 +69,7 @@ impl AgentRuntime {
         objective: String,
         budget: AgentExecutionBudget,
         tools: Vec<Arc<dyn AgentTool>>,
+        ai_provider: Option<Arc<dyn ModelProvider>>,
     ) -> Result<Uuid, RuntimeError> {
         info!(
             agent_id = %context.agent_id,
@@ -71,7 +78,7 @@ impl AgentRuntime {
             "Agent execution started"
         );
 
-        let mut runtime = Self::new(budget, tools);
+        let mut runtime = Self::new(budget, tools, ai_provider);
         runtime.run(context, objective).await
     }
 
@@ -83,7 +90,7 @@ impl AgentRuntime {
         // ── 1. Plan ───────────────────────────────────────────
         // AI destekli plan; API yoksa otomatik fallback.
         let plan =
-            AgentPlanner::plan(objective.clone()).await;
+            AgentPlanner::plan(objective.clone(), self.ai_provider.clone()).await;
 
         info!(
             plan_id = %plan.id,

@@ -247,6 +247,25 @@ Future<List<LogRecord>> getTaskLogs({
       .toList();
 }
 
+// ── AI Provider yapılandırma ───────────────────────────────
+//
+// Mobilde ANTHROPIC_API_KEY env var set edilemediği için, Agent/
+// Workflow'un hangi AI sağlayıcısını kullanacağı buradan ayarlanır.
+// Hiç çağrılmazsa Agent/Workflow eski (her zaman başarısız olan)
+// env-var fallback'ine düşer — yani bu çağrılmadan AI özellikleri
+// telefonda çalışmaz.
+
+/// AI sağlayıcısını yapılandır ve aktif et.
+/// providerId: 'gemini' | 'anthropic' (ollama henüz desteklenmiyor).
+Future<void> configureAiProvider({
+  required String providerId,
+  required String apiKey,
+}) =>
+    _bridge.configureAiProvider(providerId: providerId, apiKey: apiKey);
+
+/// Şu an aktif olan provider id'si ('' = hiç yapılandırılmadı).
+Future<String> getActiveAiProvider() => _bridge.getActiveAiProvider();
+
 // ── Agent tipleri ─────────────────────────────────────────────
 
 class AgentStartResponse {

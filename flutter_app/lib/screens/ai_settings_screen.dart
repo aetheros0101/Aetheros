@@ -5,6 +5,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../api/aetheros_api.dart';
 import '../services/gemini_service.dart';
 
 const _keyApiKey = 'gemini_api_key';
@@ -54,15 +55,35 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
   }
 
   Future<void> _save() async {
-    final p = await SharedPreferences.getInstance();
-    await p.setString(_keyApiKey, _keyCtrl.text.trim());
+    final p   = await SharedPreferences.getInstance();
+    final key = _keyCtrl.text.trim();
+    await p.setString(_keyApiKey, key);
     await p.setString(_keyModel,  _model);
+
+    // Bu key artık sadece AI Chat'i değil, Agent/Workflow'un
+    // "AI destek" özelliğini de besliyor — anında aktive et.
+    String? activationError;
+    if (key.isNotEmpty) {
+      try {
+        await AetherApi.configureAiProvider(
+          providerId: 'gemini',
+          apiKey: key,
+        );
+      } catch (e) {
+        activationError = e.toString();
+      }
+    }
+
     setState(() => _saved = true);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('✅ Ayarlar kaydedildi'),
-        backgroundColor: Color(0xFF4CAF50),
-        duration: Duration(seconds: 2),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(activationError == null
+            ? '✅ Ayarlar kaydedildi — Agent/Workflow AI artık bu key\'i kullanıyor'
+            : '⚠️ Kaydedildi ama Agent/Workflow\'a aktive edilemedi: $activationError'),
+        backgroundColor: activationError == null
+            ? const Color(0xFF4CAF50)
+            : const Color(0xFFEF5350),
+        duration: const Duration(seconds: 3),
       ));
     }
     await Future.delayed(const Duration(seconds: 2));

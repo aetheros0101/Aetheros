@@ -53,6 +53,13 @@ pub struct MobileRuntime {
     pub workflow_registry: WorkflowRegistry,
     /// Cluster state — local/remote dispatch
     pub cluster:           Arc<crate::remote::cluster::ClusterState>,
+    /// AI sağlayıcı kayıt defteri (gemini/anthropic/...).
+    /// Flutter, configure_ai_provider() ile burada register eder.
+    pub ai_router:         Arc<crate::ai::routing::router::ProviderRouter>,
+    /// Şu an aktif sağlayıcı id'si ("gemini" | "anthropic" | ...).
+    /// Yapılandırılmadan önce boş — bu durumda Agent/Workflow
+    /// eski davranışa (env var tabanlı AnthropicProvider) düşer.
+    pub active_ai_provider: std::sync::RwLock<String>,
     pub tokio:             TokioRuntime,
 }
 
@@ -136,6 +143,8 @@ pub fn init_mobile_runtime(
         agent_registry:    Arc::new(dashmap::DashMap::new()),
         workflow_registry: Arc::new(dashmap::DashMap::new()),
         cluster:           Arc::new(crate::remote::cluster::ClusterState::new()),
+        ai_router:         Arc::new(crate::ai::routing::router::ProviderRouter::new()),
+        active_ai_provider: std::sync::RwLock::new(String::new()),
         tokio,
     };
 

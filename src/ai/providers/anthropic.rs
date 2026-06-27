@@ -96,6 +96,16 @@ impl AnthropicProvider {
         })
     }
 
+    /// Ortam değişkeni yerine API key'i doğrudan parametre olarak alır.
+    /// Mobil bridge (FRB) için — Android/iOS'ta env var set edilemiyor.
+    pub fn with_api_key(api_key: impl Into<String>) -> Self {
+        Self {
+            api_key: api_key.into(),
+            model: "claude-sonnet-4-5".to_string(),
+            client: reqwest::Client::new(),
+        }
+    }
+
     /// Farklı bir model ile oluştur.
     pub fn with_model(
         mut self,
