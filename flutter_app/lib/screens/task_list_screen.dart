@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../api/aetheros_api.dart';
 import '../src/rust/api/aetheros.dart' as rust;
+import 'submit_task_screen.dart';
 
 enum _Filter { all, active, failed, completed }
 
@@ -132,29 +133,16 @@ class _TaskListScreenState extends State<TaskListScreen> {
     );
   }
 
-  /// Task'ı orijinal ayarlarıyla (hash, entrypoint, priority) yeni bir
-  /// id altında yeniden kuyruğa ekler — backend'deki resubmitTask
-  /// tam olarak bunun için var, boş bir form açıp kullanıcıya
-  /// her şeyi yeniden yazdırmaya gerek yok.
   Future<void> _retry(rust.TaskStatusResponse task) async {
     if (!mounted) return;
-    try {
-      final newTaskId = await AetherApi.resubmitTask(task.taskId);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            'Yeniden kuyruğa eklendi: ${newTaskId.substring(0, 8).toUpperCase()}'),
-        backgroundColor: const Color(0xFF4CAF50),
-        duration: const Duration(seconds: 2),
-      ));
-      _load();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Yeniden gönderilemedi: $e'),
-        backgroundColor: const Color(0xFFEF5350),
-      ));
-    }
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Task Gönder ekranı açılıyor...'),
+      backgroundColor: Color(0xFF6C63FF),
+      duration: Duration(seconds: 2),
+    ));
+    await Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const SubmitTaskScreen()));
+    _load();
   }
 }
 

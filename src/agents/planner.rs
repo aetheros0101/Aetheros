@@ -6,8 +6,6 @@
 // fallback_plan() devreye girer → runtime hiç donmaz.
 // ============================================================
 
-use std::sync::Arc;
-
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 use uuid::Uuid;
@@ -34,30 +32,18 @@ pub struct AgentPlanner;
 impl AgentPlanner {
     /// Objective'den plan üret.
     ///
-    /// `provider` verilmişse (mobil: configure_ai_provider ile
-    /// register edilmiş Gemini/Anthropic) o kullanılır.
-    /// `None` ise eski davranış: ANTHROPIC_API_KEY env var'ı dener.
-    /// İkisi de başarısız olursa (API key yok, rate-limit, parse
-    /// hatası) fallback_plan devreye girer.
-    pub async fn plan(
-        objective: String,
-        provider: Option<Arc<dyn ModelProvider>>,
-    ) -> AgentPlan {
-        match Self::ai_plan(objective.clone(), provider).await {
+    /// AnthropicProvider mevcutsa AI destekli plan (ai_plan).
+    /// Değilse (API key yok, rate-limit, parse hatası) fallback_plan.
+    pub async fn plan(objective: String) -> AgentPlan {
+        match Self::ai_plan(objective.clone()).await {
             Some(plan) => plan,
             None => Self::fallback_plan(objective),
         }
     }
 
-    /// Verilen (veya env var'dan kurulan) provider ile objective → structured plan.
-    async fn ai_plan(
-        objective: String,
-        provider: Option<Arc<dyn ModelProvider>>,
-    ) -> Option<AgentPlan> {
-        let provider: Arc<dyn ModelProvider> = match provider {
-            Some(p) => p,
-            None => Arc::new(AnthropicProvider::new().ok()?),
-        };
+    /// AnthropicProvider ile objective → structured plan.
+    async fn ai_plan(objective: String) -> Option<AgentPlan> {
+        let provider = AnthropicProvider::new().ok()?;
 
         let system = r#"You are an AetherOS agent planner.
 Given an objective, output a JSON plan with this exact structure:

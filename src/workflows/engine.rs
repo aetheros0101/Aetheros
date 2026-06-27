@@ -128,11 +128,10 @@ impl WorkflowEngine {
     pub async fn run_dsl(
         dsl: &WorkflowDsl,
         runtime: RuntimeHandle,
-        ai_provider: Option<std::sync::Arc<dyn crate::ai::providers::provider::ModelProvider>>,
     ) -> Result<WorkflowState, WorkflowEngineError> {
         let graph = Self::compile_dsl(dsl)?;
 
-        let mut executor = WorkflowExecutor::new(runtime, ai_provider);
+        let mut executor = WorkflowExecutor::new(runtime);
 
         executor
             .execute(graph)
@@ -146,13 +145,12 @@ impl WorkflowEngine {
     pub async fn run_json(
         json: &str,
         runtime: RuntimeHandle,
-        ai_provider: Option<std::sync::Arc<dyn crate::ai::providers::provider::ModelProvider>>,
     ) -> Result<WorkflowState, WorkflowEngineError> {
         let dsl: WorkflowDsl = serde_json::from_str(json)
             .map_err(|e| {
                 WorkflowEngineError::JsonParse(e.to_string())
             })?;
 
-        Self::run_dsl(&dsl, runtime, ai_provider).await
+        Self::run_dsl(&dsl, runtime).await
     }
 }

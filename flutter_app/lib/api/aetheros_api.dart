@@ -136,22 +136,6 @@ class AetherApi {
   }
 
 
-  // ── AI Provider ──────────────────────────────────────
-
-  /// Agent/Workflow'un kullanacağı AI sağlayıcısını ayarla.
-  /// providerId: 'gemini' | 'anthropic'.
-  static Future<void> configureAiProvider({
-    required String providerId,
-    required String apiKey,
-  }) async {
-    return rust.configureAiProvider(providerId: providerId, apiKey: apiKey);
-  }
-
-  /// Şu an aktif sağlayıcı id'si ('' = hiç yapılandırılmadı).
-  static Future<String> getActiveAiProvider() async {
-    return rust.getActiveAiProvider();
-  }
-
   // ── Agent ──────────────────────────────────────────────
 
   /// Agent başlat → execution_id döner.

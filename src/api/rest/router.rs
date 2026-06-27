@@ -300,7 +300,7 @@ async fn start_agent_handler(
     };
 
     tokio::spawn(async move {
-        let result      = AgentExecutor::execute(context, objective, budget, vec![], None).await;
+        let result      = AgentExecutor::execute(context, objective, budget, vec![]).await;
         let finished_at = Utc::now();
         if let Some(mut entry) = registry.get_mut(&execution_id) {
             match result {
@@ -367,7 +367,7 @@ async fn submit_workflow_handler(
     let runtime     = state.runtime.clone();
 
     tokio::spawn(async move {
-        let result      = WorkflowEngine::run_dsl(&dsl, runtime, None).await;
+        let result      = WorkflowEngine::run_dsl(&dsl, runtime).await;
         let finished_at = Utc::now();
         if let Some(mut entry) = registry.get_mut(&workflow_id) {
             match result {

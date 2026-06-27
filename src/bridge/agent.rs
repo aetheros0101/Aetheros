@@ -22,10 +22,6 @@ pub struct AgentEntry {
     pub error:        Option<String>,
     pub started_at:   DateTime<Utc>,
     pub finished_at:  Option<DateTime<Utc>>,
-    /// Planner'ın ürettiği adım isimleri. AI gerçekten çalıştıysa
-    /// objective'e özel adlar (Gemini); çalışmadıysa hep aynı 3
-    /// generic ad (initialize/execute/finalize — fallback_plan).
-    pub planned_steps: Vec<String>,
 }
 
 pub type AgentRegistry = Arc<DashMap<Uuid, AgentEntry>>;

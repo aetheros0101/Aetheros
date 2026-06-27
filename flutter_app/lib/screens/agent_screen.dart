@@ -145,7 +145,6 @@ class _NewAgentSheetState extends State<_NewAgentSheet> {
         ));
       }
     } catch (e) {
-      if (!mounted) return;
       setState(() { _submitting = false; _error = e.toString(); });
     }
   }
@@ -329,38 +328,6 @@ class _AgentCard extends StatelessWidget {
 
 // ── Agent detay modal ─────────────────────────────────────────
 
-/// fallback_plan() her zaman tam olarak şu 3 adımı üretir:
-/// "initialize" → "execute: <hedefin ilk 40 karakteri>" → "finalize".
-/// Bu imza görülürse AI hiç çalışmamış demektir (key yok/yanlış/
-/// rate-limit). Başka herhangi bir adım deseni gerçek AI planıdır.
-class _PlanSourceBadge extends StatelessWidget {
-  final List<String> steps;
-  const _PlanSourceBadge({required this.steps});
-
-  bool get _looksLikeFallback =>
-      steps.length == 3 &&
-      steps[0] == 'initialize' &&
-      steps[2] == 'finalize' &&
-      steps[1].startsWith('execute:');
-
-  @override
-  Widget build(BuildContext context) {
-    final fallback = _looksLikeFallback;
-    final color = fallback ? const Color(0xFFFFA726) : const Color(0xFF4CAF50);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        fallback ? 'FALLBACK — AI çalışmadı' : 'AI destekli plan',
-        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
-      ),
-    );
-  }
-}
-
 class _AgentDetailSheet extends StatelessWidget {
   final rust.AgentStatusResponse agent;
   const _AgentDetailSheet({required this.agent});
@@ -390,40 +357,6 @@ class _AgentDetailSheet extends StatelessWidget {
           _DetailRow('Hedef',        agent.objective),
           if (agent.error != null)
             _DetailRow('Hata', agent.error!, valueColor: const Color(0xFFFF5252)),
-
-          if (agent.plannedSteps.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Row(children: [
-              const Text('Plan Adımları',
-                  style: TextStyle(color: Colors.white70, fontSize: 13,
-                      fontWeight: FontWeight.w600)),
-              const SizedBox(width: 8),
-              _PlanSourceBadge(steps: agent.plannedSteps),
-            ]),
-            const SizedBox(height: 8),
-            ...agent.plannedSteps.asMap().entries.map((e) => Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Container(
-                  width: 20, height: 20, alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF6C63FF).withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Text('${e.key + 1}',
-                      style: const TextStyle(color: Color(0xFF6C63FF), fontSize: 11)),
-                ),
-                const SizedBox(width: 8),
-                Expanded(child: Text(e.value,
-                    style: const TextStyle(color: Colors.white, fontSize: 13))),
-              ]),
-            )),
-          ] else if (agent.status == 'running') ...[
-            const SizedBox(height: 16),
-            const Text('Plan henüz oluşturuluyor...',
-                style: TextStyle(color: Colors.white38, fontSize: 13,
-                    fontStyle: FontStyle.italic)),
-          ],
           const SizedBox(height: 16),
 
           // Kopyala butonu

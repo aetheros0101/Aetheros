@@ -132,8 +132,6 @@ pub struct AgentStatusResponse {
     /// Unix ms
     pub started_at:   i64,
     pub finished_at:  Option<i64>,
-    /// Planner'ın ürettiği adım isimleri (boş = henüz plan yok / running).
-    pub planned_steps: Vec<String>,
 }
 
 // ── Workflow tipleri (FRB bridge) ─────────────────────────────────────────────
