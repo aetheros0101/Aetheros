@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'src/rust/frb_generated.dart';
 import 'src/rust/api/aetheros.dart' as aether;
 import 'screens/home_screen.dart';
+import 'services/ai_provider_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +25,10 @@ Future<void> main() async {
       dbPath: dbPath,
       workerCount: 2,
     );
+
+    // 4. Ayarlar'da kayıtlı AI provider'ları Rust router'a yeniden yükle.
+    //    ProviderRouter in-memory'dir — her runtime başlangıcında boştur.
+    await AiProviderService.rehydrateFromStorage();
   } catch (e, stack) {
     // Hata yakalandı — siyah ekran yerine hata göster
     initError = '$e\n\n$stack';

@@ -1,13 +1,43 @@
 // ============================================================
 // flutter_app/lib/screens/ai_chat_screen.dart
-// Sprint 4 — Gemini AI Chat ekranı
+// Haziran 2026 — Genel AI Sohbet ekranı
+//
+// ÖNCE (Sprint 4): doğrudan GeminiService ile Gemini'ye bağlanıyordu.
+//
+// SONRA: kullanıcının Ayarlar'da AKTİF ettiği provider'ı kullanır
+// (Anthropic/OpenAI/Gemini/Ollama) — aether.aiChat() üzerinden Rust
+// ProviderRouter'a gider. Hangi model yanıt verir, kullanıcının
+// seçimine bağlıdır.
 // ============================================================
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../services/gemini_service.dart';
+import '../services/ai_provider_service.dart';
 import 'ai_settings_screen.dart';
 import 'script_editor_screen.dart' show ScriptEditorScreen;
+
+// ── Sohbet mesaj modeli (provider'dan bağımsız) ─────────────
+
+enum MessageRole { user, model }
+
+class ChatMessage {
+  final MessageRole role;
+  final String text;
+  final DateTime timestamp;
+
+  const ChatMessage({
+    required this.role,
+    required this.text,
+    required this.timestamp,
+  });
+}
+
+const _kSystemPrompt =
+    'Sen AetherOS\'un yapay zeka asistanısın. '
+    'AetherOS, WASM tabanlı bir mobil otomasyon runtime platformudur. '
+    'WASM modülleri, WebAssembly Text (WAT) formatı, workflow JSON tanımları, '
+    'görev yönetimi ve otomasyon pipeline\'ları konularında uzman yardım sağla. '
+    'Yanıtlarını Türkçe ver. Kod örneklerinde WAT veya JSON formatını kullan.';
 
 class AiChatScreen extends StatefulWidget {
   const AiChatScreen({super.key});
@@ -20,15 +50,14 @@ class _AiChatScreenState extends State<AiChatScreen> {
   final _scrollCtrl = ScrollController();
   final List<ChatMessage> _messages = [];
 
-  String _apiKey = '';
-  String _model  = 'gemini-2.0-flash';
-  bool   _loading = false;
-  bool   _checkedKey = false;
+  String? _activeProviderId;
+  bool    _loading = false;
+  bool    _checked = false;
 
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    _loadActiveProvider();
   }
 
   @override
@@ -38,23 +67,45 @@ class _AiChatScreenState extends State<AiChatScreen> {
     super.dispose();
   }
 
-  Future<void> _loadSettings() async {
-    final s = await loadAiSettings();
+  Future<void> _loadActiveProvider() async {
+    final id = await AiProviderService.getActiveProviderId();
+    if (!mounted) return;
     setState(() {
-      _apiKey = s.apiKey;
-      _model  = s.model;
-      _checkedKey = true;
+      _activeProviderId = id;
+      _checked = true;
     });
+  }
+
+  /// Önceki mesajları (son kullanıcı mesajı hariç) okunabilir bir
+  /// metne çevirir. aiChat() tek seferlik bir prompt aldığı için
+  /// (sağlayıcılar arası ortak bir "messages" arayüzü yok), geçmişi
+  /// prompt'un içine gömüyoruz — son 8 mesajla sınırlı.
+  String _buildPromptWithHistory(String latestUserText) {
+    final history = _messages.length > 16
+        ? _messages.sublist(_messages.length - 16)
+        : _messages;
+
+    if (history.isEmpty) return latestUserText;
+
+    final buffer = StringBuffer();
+    for (final m in history) {
+      final speaker = m.role == MessageRole.user ? 'Kullanıcı' : 'Asistan';
+      buffer.writeln('$speaker: ${m.text}');
+    }
+    buffer.write('Kullanıcı: $latestUserText');
+    return buffer.toString();
   }
 
   Future<void> _send([String? quickPrompt]) async {
     final text = (quickPrompt ?? _inputCtrl.text).trim();
     if (text.isEmpty || _loading) return;
 
-    if (_apiKey.isEmpty) {
+    if (_activeProviderId == null) {
       _goToSettings();
       return;
     }
+
+    final promptWithHistory = _buildPromptWithHistory(text);
 
     final userMsg = ChatMessage(
         role: MessageRole.user, text: text, timestamp: DateTime.now());
@@ -67,25 +118,15 @@ class _AiChatScreenState extends State<AiChatScreen> {
     _scrollToBottom();
 
     try {
-      final reply = await GeminiService.chat(
-        prompt:  text,
-        apiKey:  _apiKey,
-        model:   _model,
-        history: _messages
-            .where((m) => m != userMsg)
-            .toList(), // önceki mesajlar (son hariç)
+      final reply = await AiProviderService.chat(
+        prompt: promptWithHistory,
+        systemPrompt: _kSystemPrompt,
+        maxTokens: 2048,
       );
 
       setState(() {
         _messages.add(ChatMessage(
             role: MessageRole.model, text: reply, timestamp: DateTime.now()));
-      });
-    } on GeminiException catch (e) {
-      setState(() {
-        _messages.add(ChatMessage(
-            role: MessageRole.model,
-            text: '⚠️ ${e.message}',
-            timestamp: DateTime.now()));
       });
     } catch (e) {
       setState(() {
@@ -115,7 +156,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
   Future<void> _goToSettings() async {
     await Navigator.push(context,
         MaterialPageRoute(builder: (_) => const AiSettingsScreen()));
-    _loadSettings();
+    _loadActiveProvider();
   }
 
   void _clearChat() {
@@ -135,13 +176,22 @@ class _AiChatScreenState extends State<AiChatScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
-              color: const Color(0xFF4CAF50).withOpacity(0.15),
+              color: (_activeProviderId == null
+                      ? const Color(0xFFFFB74D)
+                      : const Color(0xFF4CAF50))
+                  .withOpacity(0.15),
               borderRadius: BorderRadius.circular(4),
             ),
-            child: const Text('Gemini',
-                style: TextStyle(
-                    color: Color(0xFF4CAF50),
-                    fontSize: 10, fontWeight: FontWeight.bold)),
+            child: Text(
+              _activeProviderId == null
+                  ? 'Model yok'
+                  : aiProviderById(_activeProviderId!).displayName,
+              style: TextStyle(
+                  color: _activeProviderId == null
+                      ? const Color(0xFFFFB74D)
+                      : const Color(0xFF4CAF50),
+                  fontSize: 10, fontWeight: FontWeight.bold),
+            ),
           ),
         ]),
         iconTheme: const IconThemeData(color: Colors.white70),
@@ -159,8 +209,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
         ],
       ),
       body: Column(children: [
-        // ── API key uyarısı ─────────────────────────
-        if (_checkedKey && _apiKey.isEmpty)
+        // ── Aktif model uyarısı ──────────────────────
+        if (_checked && _activeProviderId == null)
           _ApiKeyWarning(onSetup: _goToSettings),
 
         // ── Mesaj listesi ───────────────────────────
@@ -204,7 +254,7 @@ class _ApiKeyWarning extends StatelessWidget {
       const Icon(Icons.warning_amber, color: Color(0xFFFFB74D), size: 18),
       const SizedBox(width: 8),
       const Expanded(child: Text(
-        'Gemini API anahtarı ayarlanmadı',
+        'Hiçbir AI modeli aktif değil',
         style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
       )),
       TextButton(

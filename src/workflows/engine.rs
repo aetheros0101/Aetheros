@@ -12,11 +12,14 @@
 //   - state izleme   → WorkflowState güncellemeleri
 // ============================================================
 
+use std::sync::Arc;
+
 use tracing::{
     info,
     warn,
 };
 
+use crate::ai::routing::router::ProviderRouter;
 use crate::errors::runtime::RuntimeError;
 use crate::runtime::api::RuntimeHandle;
 use crate::workflows::compiler::{
@@ -128,10 +131,11 @@ impl WorkflowEngine {
     pub async fn run_dsl(
         dsl: &WorkflowDsl,
         runtime: RuntimeHandle,
+        ai_router: Arc<ProviderRouter>,
     ) -> Result<WorkflowState, WorkflowEngineError> {
         let graph = Self::compile_dsl(dsl)?;
 
-        let mut executor = WorkflowExecutor::new(runtime);
+        let mut executor = WorkflowExecutor::new(runtime, ai_router);
 
         executor
             .execute(graph)
@@ -145,12 +149,13 @@ impl WorkflowEngine {
     pub async fn run_json(
         json: &str,
         runtime: RuntimeHandle,
+        ai_router: Arc<ProviderRouter>,
     ) -> Result<WorkflowState, WorkflowEngineError> {
         let dsl: WorkflowDsl = serde_json::from_str(json)
             .map_err(|e| {
                 WorkflowEngineError::JsonParse(e.to_string())
             })?;
 
-        Self::run_dsl(&dsl, runtime).await
+        Self::run_dsl(&dsl, runtime, ai_router).await
     }
 }

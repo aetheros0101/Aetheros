@@ -15,9 +15,11 @@
 //      d. Sonucu memory'e kaydet
 //   3. Tüm adımlar bitti → execution_id döndür
 //
-// AI entegrasyonu (Faz 6'da tamamlanacak):
-//   Şu an: planner sabit plan üretiyor
-//   Faz 6: AnthropicProvider.infer() ile dynamic planning
+// AI entegrasyonu (Haziran 2026 itibarıyla tamamlandı):
+//   AgentPlanner artık ProviderRouter üzerinden kullanıcının
+//   Ayarlar'da aktif ettiği provider'ı kullanır (Anthropic/OpenAI/
+//   Gemini/Ollama). Router yoksa veya aktif provider yoksa
+//   fallback_plan'a düşer.
 // ============================================================
 
 use std::sync::Arc;
@@ -35,34 +37,43 @@ use crate::agents::memory::AgentMemory;
 use crate::agents::planner::AgentPlanner;
 use crate::agents::reasoning::ReasoningTrace;
 use crate::agents::tools::AgentTool;
+use crate::ai::routing::router::ProviderRouter;
 use crate::errors::runtime::RuntimeError;
 
 pub struct AgentRuntime {
     memory: AgentMemory,
     tools: Vec<Arc<dyn AgentTool>>,
     budget: AgentExecutionBudget,
+    ai_router: Option<Arc<ProviderRouter>>,
 }
 
 impl AgentRuntime {
     pub fn new(
         budget: AgentExecutionBudget,
         tools: Vec<Arc<dyn AgentTool>>,
+        ai_router: Option<Arc<ProviderRouter>>,
     ) -> Self {
         Self {
             memory: AgentMemory::new(),
             tools,
             budget,
+            ai_router,
         }
     }
 
     /// Agent execution döngüsü.
     ///
     /// objective → plan → adım adım çalıştır → execution_id
+    ///
+    /// `ai_router`: kullanıcının Ayarlar'da aktif ettiği AI provider'a
+    /// erişim sağlar (None ise plan üretimi fallback_plan'a düşer —
+    /// runtime hiç donmaz).
     pub async fn execute(
         context: AgentContext,
         objective: String,
         budget: AgentExecutionBudget,
         tools: Vec<Arc<dyn AgentTool>>,
+        ai_router: Option<Arc<ProviderRouter>>,
     ) -> Result<Uuid, RuntimeError> {
         info!(
             agent_id = %context.agent_id,
@@ -71,7 +82,7 @@ impl AgentRuntime {
             "Agent execution started"
         );
 
-        let mut runtime = Self::new(budget, tools);
+        let mut runtime = Self::new(budget, tools, ai_router);
         runtime.run(context, objective).await
     }
 
@@ -81,9 +92,9 @@ impl AgentRuntime {
         objective: String,
     ) -> Result<Uuid, RuntimeError> {
         // ── 1. Plan ───────────────────────────────────────────
-        // AI destekli plan; API yoksa otomatik fallback.
+        // AI destekli plan; aktif provider yoksa otomatik fallback.
         let plan =
-            AgentPlanner::plan(objective.clone()).await;
+            AgentPlanner::plan(objective.clone(), self.ai_router.clone()).await;
 
         info!(
             plan_id = %plan.id,
@@ -123,8 +134,10 @@ impl AgentRuntime {
             );
 
             // ── Reasoning trace ──────────────────────────────
-            // Faz 6: Bu noktada AnthropicProvider'dan
-            // "bu adımda ne yapmalıyım?" sorusu sorulacak.
+            // NOT: Adım bazlı "bu adımda ne yapmalıyım?" sorgusu
+            // henüz yok — şu an plan tek seferde AgentPlanner.plan()
+            // ile (aktif ProviderRouter üzerinden) üretiliyor.
+            // Adım-bazlı dinamik reasoning gelecek bir fazda eklenebilir.
             let _trace = ReasoningTrace {
                 agent_id: context.agent_id.to_string(),
                 decision: format!(

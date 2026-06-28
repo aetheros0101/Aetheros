@@ -24,6 +24,7 @@ use std::sync::{Arc, OnceLock};
 use tokio::runtime::Runtime as TokioRuntime;
 use tracing::info;
 
+use crate::ai::routing::router::ProviderRouter;
 use crate::bridge::agent::{AgentRegistry, WorkflowRegistry};
 use crate::events::bus::EventBus;
 use crate::logging::buffer::{LogBuffer, log_collector};
@@ -53,6 +54,11 @@ pub struct MobileRuntime {
     pub workflow_registry: WorkflowRegistry,
     /// Cluster state — local/remote dispatch
     pub cluster:           Arc<crate::remote::cluster::ClusterState>,
+    /// AI provider registry + aktif provider seçimi.
+    /// Boş başlar — Flutter, Ayarlar'da kayıtlı provider'ları
+    /// initialize_runtime() sonrası configure_ai_provider() ile
+    /// tek tek bu router'a kaydeder.
+    pub ai_router:         Arc<ProviderRouter>,
     pub tokio:             TokioRuntime,
 }
 
@@ -136,6 +142,7 @@ pub fn init_mobile_runtime(
         agent_registry:    Arc::new(dashmap::DashMap::new()),
         workflow_registry: Arc::new(dashmap::DashMap::new()),
         cluster:           Arc::new(crate::remote::cluster::ClusterState::new()),
+        ai_router:         Arc::new(ProviderRouter::new()),
         tokio,
     };
 

@@ -1,8 +1,8 @@
 // ============================================================
-// src/ai/providers/gemini.rs — Sprint 4
+// src/ai/providers/gemini.rs
 //
 // Google Gemini API provider (ücretsiz tier)
-// Model: gemini-2.0-flash
+// Model: gemini-flash-latest (otomatik güncel alias — Haziran 2026)
 // Endpoint: POST /v1beta/models/{model}:generateContent?key={key}
 // ============================================================
 
@@ -99,11 +99,16 @@ pub struct GeminiProvider {
 }
 
 impl GeminiProvider {
-    /// Varsayılan model: gemini-2.0-flash (ücretsiz)
+    /// Varsayılan model: gemini-flash-latest (ücretsiz tier).
+    ///
+    /// NOT: gemini-2.0-flash 1 Haziran 2026'da kapatıldı (sabit sürüm
+    /// isimleri zamanla kullanımdan kaldırılıyor). "latest" alias'ları
+    /// Google tarafından otomatik güncel modele yönlendirilir — şu an
+    /// gemini-flash-latest → Gemini 3.5 Flash (GA, Mayıs 2026).
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
             api_key: api_key.into(),
-            model:   "gemini-2.0-flash".to_string(),
+            model:   "gemini-flash-latest".to_string(),
             client:  reqwest::Client::new(),
         }
     }

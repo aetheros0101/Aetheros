@@ -23,6 +23,7 @@ use uuid::Uuid;
 use crate::agents::budget::AgentExecutionBudget;
 use crate::agents::context::AgentContext;
 use crate::agents::executor::AgentExecutor;
+use crate::ai::routing::router::ProviderRouter;
 use crate::api::dashboard::dashboard_handler;
 use crate::events::bus::EventBus;
 use crate::metrics::runtime::RuntimeMetrics;
@@ -94,6 +95,10 @@ pub struct AppState {
     pub script_registry:   Arc<ScriptRegistry>,
     /// Adım B: Cluster state (local/remote dispatch)
     pub cluster:           Arc<ClusterState>,
+    /// AI provider registry + aktif provider seçimi.
+    /// Sunucu/server dağıtımında ortam değişkenlerinden (ANTHROPIC_API_KEY
+    /// vb.) doldurulur — bkz. ApiServer::new() (src/api/mod.rs).
+    pub ai_router:         Arc<ProviderRouter>,
 }
 
 // ── Router ────────────────────────────────────────────────
@@ -298,9 +303,10 @@ async fn start_agent_handler(
         max_steps:           req.max_steps,
         max_runtime_seconds: 300,
     };
+    let ai_router = state.ai_router.clone();
 
     tokio::spawn(async move {
-        let result      = AgentExecutor::execute(context, objective, budget, vec![]).await;
+        let result      = AgentExecutor::execute(context, objective, budget, vec![], Some(ai_router)).await;
         let finished_at = Utc::now();
         if let Some(mut entry) = registry.get_mut(&execution_id) {
             match result {
@@ -365,9 +371,10 @@ async fn submit_workflow_handler(
 
     let registry    = state.workflow_registry.clone();
     let runtime     = state.runtime.clone();
+    let ai_router   = state.ai_router.clone();
 
     tokio::spawn(async move {
-        let result      = WorkflowEngine::run_dsl(&dsl, runtime).await;
+        let result      = WorkflowEngine::run_dsl(&dsl, runtime, ai_router).await;
         let finished_at = Utc::now();
         if let Some(mut entry) = registry.get_mut(&workflow_id) {
             match result {

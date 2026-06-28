@@ -1,14 +1,22 @@
 // ============================================================
 // flutter_app/lib/screens/ai_settings_screen.dart
-// Sprint 4 — Gemini API ayarları
+// Haziran 2026 — Çoklu AI provider Ayarları
+//
+// Kullanıcı her provider için ayrı ayrı API key (Anthropic/OpenAI/
+// Gemini) ya da host (Ollama) girip aktif eder. Birden fazla
+// provider yapılandırılmışsa hangisinin kullanılacağı ("Aktif
+// Model") kullanıcı tarafından seçilir — otomatik fallback yok.
 // ============================================================
 
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../services/gemini_service.dart';
 
-const _keyApiKey = 'gemini_api_key';
-const _keyModel  = 'gemini_model';
+import '../services/ai_provider_service.dart';
+
+const _bg = Color(0xFF0F0F1A);
+const _card = Color(0xFF1A1A2E);
+const _accent = Color(0xFF6C63FF);
+const _green = Color(0xFF4CAF50);
+const _red = Color(0xFFEF5350);
 
 class AiSettingsScreen extends StatefulWidget {
   const AiSettingsScreen({super.key});
@@ -17,147 +25,398 @@ class AiSettingsScreen extends StatefulWidget {
 }
 
 class _AiSettingsScreenState extends State<AiSettingsScreen> {
-  final _keyCtrl   = TextEditingController();
-  bool  _obscure   = true;
-  String _model    = 'gemini-flash-latest';
-  bool  _testing   = false;
-  bool? _testOk;
-  String _testMsg  = '';
-  bool  _saved     = false;
-
-  // Google'ın "latest" alias'ları her zaman o anki en güncel
-  // modele yönlenir — model isimleri değişse de kod bozulmaz.
-  // Sabit sürüm isimleri (örn. gemini-2.0-flash) zamanla
-  // kullanımdan kaldırılabilir; alias'lar tercih edilmeli.
-  static const _models = [
-    ('gemini-flash-latest',   'Gemini Flash (En Güncel — Ücretsiz)'),
-    ('gemini-pro-latest',     'Gemini Pro (En Güncel — Sınırlı Ücretsiz)'),
-    ('gemini-2.0-flash',      'Gemini 2.0 Flash (Sabit Sürüm)'),
-    ('gemini-2.5-flash',      'Gemini 2.5 Flash (Sabit Sürüm)'),
-  ];
+  List<String> _enabledIds = [];
+  String? _activeId;
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _refresh();
   }
 
-  @override
-  void dispose() { _keyCtrl.dispose(); super.dispose(); }
-
-  Future<void> _load() async {
-    final p = await SharedPreferences.getInstance();
+  Future<void> _refresh() async {
+    final ids = await AiProviderService.enabledProviderIds();
+    final active = await AiProviderService.getActiveProviderId();
+    if (!mounted) return;
     setState(() {
-      _keyCtrl.text = p.getString(_keyApiKey) ?? '';
-      _model        = p.getString(_keyModel)  ?? 'gemini-flash-latest';
-    });
-  }
-
-  Future<void> _save() async {
-    final p = await SharedPreferences.getInstance();
-    await p.setString(_keyApiKey, _keyCtrl.text.trim());
-    await p.setString(_keyModel,  _model);
-    setState(() => _saved = true);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('✅ Ayarlar kaydedildi'),
-        backgroundColor: Color(0xFF4CAF50),
-        duration: Duration(seconds: 2),
-      ));
-    }
-    await Future.delayed(const Duration(seconds: 2));
-    if (mounted) setState(() => _saved = false);
-  }
-
-  Future<void> _test() async {
-    final key = _keyCtrl.text.trim();
-    if (key.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('API anahtarı gir'),
-        backgroundColor: Color(0xFFEF5350),
-      ));
-      return;
-    }
-    setState(() { _testing = true; _testOk = null; _testMsg = ''; });
-    final result = await GeminiService.testApiKey(key, model: _model);
-    setState(() {
-      _testing = false;
-      _testOk  = result.ok;
-      _testMsg = result.message;
+      _enabledIds = ids;
+      _activeId = active;
+      _loading = false;
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F1A),
+      backgroundColor: _bg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F0F1A),
+        backgroundColor: _bg,
         title: const Text('AI Ayarları', style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white70),
-        actions: [
-          IconButton(
-            icon: Icon(_saved ? Icons.check : Icons.save,
-                color: _saved ? const Color(0xFF4CAF50) : Colors.white70),
-            onPressed: _save,
+      ),
+      body: _loading
+          ? const Center(
+              child: CircularProgressIndicator(color: _accent),
+            )
+          : ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                const Text(
+                  'Bir modeli aktif etmek için API anahtarını gir (Gemini '
+                  'ücretsiz) ya da kendi cihazında/ağında çalışan bir '
+                  'Ollama sunucusuna bağlan. Birden fazla model '
+                  'bağlarsan hangisinin kullanılacağını sen seçersin.',
+                  style: TextStyle(color: Colors.white60, fontSize: 12, height: 1.5),
+                ),
+                const SizedBox(height: 20),
+                if (_enabledIds.length > 1) ...[
+                  _ActiveModelSelector(
+                    enabledIds: _enabledIds,
+                    activeId: _activeId,
+                    onChanged: _refresh,
+                  ),
+                  const SizedBox(height: 20),
+                ],
+                ...aiProviders.map((info) => Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: _ProviderCard(
+                        info: info,
+                        isEnabled: _enabledIds.contains(info.id),
+                        isActive: _activeId == info.id,
+                        onChanged: _refresh,
+                      ),
+                    )),
+              ],
+            ),
+    );
+  }
+}
+
+// ── Aktif Model seçici (2+ provider yapılandırılmışsa görünür) ──
+
+class _ActiveModelSelector extends StatelessWidget {
+  final List<String> enabledIds;
+  final String? activeId;
+  final VoidCallback onChanged;
+
+  const _ActiveModelSelector({
+    required this.enabledIds,
+    required this.activeId,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _accent.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _accent.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(children: [
+            Icon(Icons.bolt, color: _accent, size: 16),
+            SizedBox(width: 8),
+            Text('Aktif Model',
+                style: TextStyle(
+                    color: _accent, fontWeight: FontWeight.bold, fontSize: 13)),
+          ]),
+          const SizedBox(height: 6),
+          const Text(
+            'Birden fazla model bağladın — hangisinin kullanılacağını seç.',
+            style: TextStyle(color: Colors.white60, fontSize: 12),
           ),
+          ...enabledIds.map((id) {
+            final info = aiProviderById(id);
+            return RadioListTile<String>(
+              value: id,
+              groupValue: activeId,
+              activeColor: _accent,
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(info.displayName,
+                  style: const TextStyle(color: Colors.white, fontSize: 13)),
+              onChanged: (v) async {
+                if (v == null) return;
+                await AiProviderService.setActive(v);
+                onChanged();
+              },
+            );
+          }),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          // ── Bilgi kartı ──────────────────────────────
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFF6C63FF).withOpacity(0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: const Color(0xFF6C63FF).withOpacity(0.25)),
-            ),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Row(children: [
-                Icon(Icons.info_outline,
-                    color: Color(0xFF6C63FF), size: 16),
-                SizedBox(width: 8),
-                Text('Gemini API Kurulumu',
-                    style: TextStyle(
-                        color: Color(0xFF6C63FF),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13)),
-              ]),
-              const SizedBox(height: 8),
-              const Text(
-                '1. aistudio.google.com adresine git\n'
-                '2. "Get API Key" → "Create API Key"\n'
-                '3. Ücretsiz tier: dakikada 15 istek, günde 1500 istek',
-                style: TextStyle(
-                    color: Colors.white60, fontSize: 12, height: 1.6),
-              ),
-            ]),
-          ),
-          const SizedBox(height: 24),
+    );
+  }
+}
 
-          // ── API Key ──────────────────────────────────
-          _label('Google Gemini API Anahtarı'),
+// ── Tek bir provider kartı ───────────────────────────────────
+
+class _ProviderCard extends StatefulWidget {
+  final AiProviderInfo info;
+  final bool isEnabled;
+  final bool isActive;
+  final VoidCallback onChanged;
+
+  const _ProviderCard({
+    required this.info,
+    required this.isEnabled,
+    required this.isActive,
+    required this.onChanged,
+  });
+
+  @override
+  State<_ProviderCard> createState() => _ProviderCardState();
+}
+
+class _ProviderCardState extends State<_ProviderCard> {
+  final _keyCtrl = TextEditingController();
+  final _baseUrlCtrl = TextEditingController();
+  final _modelCtrl = TextEditingController();
+
+  bool _obscure = true;
+  late String _model;
+  List<AiModelOption> _modelOptions = const [];
+
+  bool _expanded = false;
+  bool _saving = false;
+  bool _fetchingModels = false;
+
+  bool _testing = false;
+  bool? _testOk;
+  String _testMsg = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _model = widget.info.defaultModel;
+    _modelOptions = widget.info.modelOptions;
+    _modelCtrl.text = _model;
+    _baseUrlCtrl.text = widget.info.defaultBaseUrl;
+    _expanded = !widget.isEnabled; // henüz kurulmamışsa açık başlasın
+    _loadExisting();
+  }
+
+  @override
+  void dispose() {
+    _keyCtrl.dispose();
+    _baseUrlCtrl.dispose();
+    _modelCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadExisting() async {
+    final cfg = await AiProviderService.loadConfig(widget.info.id);
+    if (!mounted) return;
+    if (cfg != null) {
+      setState(() {
+        _keyCtrl.text = cfg.apiKey ?? '';
+        _baseUrlCtrl.text = cfg.baseUrl ?? widget.info.defaultBaseUrl;
+        _model = cfg.model;
+        _modelCtrl.text = cfg.model;
+      });
+    }
+    if (widget.info.id == 'ollama') {
+      _fetchOllamaModels(silent: true);
+    }
+  }
+
+  Future<void> _fetchOllamaModels({bool silent = false}) async {
+    final host = _baseUrlCtrl.text.trim();
+    if (host.isEmpty) return;
+    setState(() => _fetchingModels = true);
+    try {
+      final models = await AiProviderService.listOllamaModels(host);
+      if (!mounted) return;
+      setState(() {
+        _modelOptions = models
+            .map((m) => AiModelOption(m, m))
+            .toList(growable: false);
+        if (models.isNotEmpty && !models.contains(_model)) {
+          _model = models.first;
+        }
+        _fetchingModels = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _fetchingModels = false);
+      if (!silent) {
+        _showSnack('Ollama sunucusuna ulaşılamadı: $host', isError: true);
+      }
+    }
+  }
+
+  Future<void> _save() async {
+    final info = widget.info;
+    if (info.needsApiKey && _keyCtrl.text.trim().isEmpty) {
+      _showSnack('API anahtarı gir', isError: true);
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      await AiProviderService.save(
+        providerId: info.id,
+        apiKey: info.needsApiKey ? _keyCtrl.text.trim() : null,
+        baseUrl: info.needsBaseUrl ? _baseUrlCtrl.text.trim() : null,
+        model: _model,
+      );
+      if (!mounted) return;
+      _showSnack('✅ ${info.displayName} kaydedildi');
+      widget.onChanged();
+      setState(() => _expanded = false);
+    } catch (e) {
+      _showSnack('Kaydedilemedi: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _remove() async {
+    await AiProviderService.remove(widget.info.id);
+    if (!mounted) return;
+    setState(() {
+      _keyCtrl.clear();
+      _testOk = null;
+      _testMsg = '';
+      _expanded = true;
+    });
+    widget.onChanged();
+  }
+
+  Future<void> _test() async {
+    setState(() {
+      _testing = true;
+      _testOk = null;
+      _testMsg = '';
+    });
+    try {
+      final result = await AiProviderService.testProvider(widget.info.id);
+      setState(() {
+        _testing = false;
+        _testOk = true;
+        _testMsg = result.substring(0, result.length.clamp(0, 80));
+      });
+    } catch (e) {
+      setState(() {
+        _testing = false;
+        _testOk = false;
+        _testMsg = e.toString();
+      });
+    }
+  }
+
+  void _showSnack(String text, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(text),
+      backgroundColor: isError ? _red : _green,
+      duration: const Duration(seconds: 2),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final info = widget.info;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: widget.isActive ? _accent.withOpacity(0.5) : Colors.white12,
+        ),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Row(children: [
+                      Text(info.displayName,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14)),
+                      if (widget.isActive) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: _accent.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text('AKTİF',
+                              style: TextStyle(
+                                  color: _accent,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold)),
+                        ),
+                      ] else if (widget.isEnabled) ...[
+                        const SizedBox(width: 8),
+                        const Icon(Icons.check_circle,
+                            color: _green, size: 14),
+                      ],
+                    ]),
+                  ),
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    color: Colors.white38,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: _buildForm(info),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildForm(AiProviderInfo info) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(color: Colors.white12, height: 1),
+        const SizedBox(height: 14),
+
+        // ── Yardım kartı ─────────────────────────────────
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            info.helpText,
+            style: const TextStyle(color: Colors.white54, fontSize: 11.5, height: 1.5),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // ── API key (cloud) ya da Host (Ollama) ──────────
+        if (info.needsApiKey) ...[
+          _label('API Anahtarı'),
           const SizedBox(height: 6),
           TextField(
             controller: _keyCtrl,
             obscureText: _obscure,
             style: const TextStyle(
                 color: Colors.white, fontFamily: 'monospace', fontSize: 13),
-            decoration: InputDecoration(
-              hintText: 'AIza...',
-              hintStyle: const TextStyle(color: Colors.white24),
-              filled: true,
-              fillColor: const Color(0xFF1A1A2E),
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none),
-              focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFF6C63FF))),
+            decoration: _inputDecoration(
+              hint: 'sk-... / AIza...',
               suffixIcon: IconButton(
                 icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility,
                     color: Colors.white38, size: 18),
@@ -165,80 +424,143 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 20),
-
-          // ── Model seçimi ─────────────────────────────
-          _label('Model'),
+          const SizedBox(height: 16),
+        ],
+        if (info.needsBaseUrl) ...[
+          _label('Sunucu Adresi'),
           const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1A1A2E),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.white12),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _model,
-                dropdownColor: const Color(0xFF1A1A2E),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _baseUrlCtrl,
                 style: const TextStyle(color: Colors.white, fontSize: 13),
-                isExpanded: true,
-                items: _models.map((m) => DropdownMenuItem(
-                  value: m.$1,
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(m.$2,
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 13)),
-                  ]),
-                )).toList(),
-                onChanged: (v) { if (v != null) setState(() => _model = v); },
+                decoration: _inputDecoration(hint: 'http://127.0.0.1:11434'),
               ),
             ),
-          ),
-          const SizedBox(height: 24),
-
-          // ── Test butonu ──────────────────────────────
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF6C63FF),
-                side: const BorderSide(color: Color(0xFF6C63FF)),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: _testing ? null : _test,
-              icon: _testing
-                  ? const SizedBox(width: 16, height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Color(0xFF6C63FF)))
-                  : const Icon(Icons.wifi_tethering, size: 16),
-              label: Text(_testing ? 'Test ediliyor...' : 'Bağlantıyı Test Et'),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: 'Modelleri listele',
+              onPressed: _fetchingModels ? null : () => _fetchOllamaModels(),
+              icon: _fetchingModels
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: _accent),
+                    )
+                  : const Icon(Icons.refresh, color: _accent, size: 20),
             ),
-          ),
+          ]),
+          const SizedBox(height: 16),
+        ],
 
-          // ── Test sonucu ──────────────────────────────
-          if (_testOk != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: (_testOk! ? const Color(0xFF4CAF50) : const Color(0xFFEF5350))
-                    .withOpacity(0.08),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: (_testOk! ? const Color(0xFF4CAF50) : const Color(0xFFEF5350))
-                      .withOpacity(0.3),
+        // ── Model seçimi ──────────────────────────────────
+        _label('Model'),
+        const SizedBox(height: 6),
+        _modelOptions.isEmpty
+            ? TextField(
+                controller: _modelCtrl,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                decoration: _inputDecoration(hint: widget.info.defaultModel),
+                onChanged: (v) =>
+                    _model = v.trim().isEmpty ? widget.info.defaultModel : v.trim(),
+              )
+            : Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F0F1A),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _modelOptions.any((m) => m.value == _model)
+                        ? _model
+                        : _modelOptions.first.value,
+                    dropdownColor: _card,
+                    isExpanded: true,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    items: _modelOptions
+                        .map((m) => DropdownMenuItem(
+                              value: m.value,
+                              child: Text(m.label,
+                                  style: const TextStyle(color: Colors.white, fontSize: 13)),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _model = v);
+                    },
+                  ),
                 ),
               ),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const SizedBox(height: 18),
+
+        // ── Aksiyon butonları ─────────────────────────────
+        Row(children: [
+          Expanded(
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: _accent,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: _saving ? null : _save,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.save, size: 15),
+              label: Text(_saving ? 'Kaydediliyor...' : 'Kaydet'),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _accent,
+                side: const BorderSide(color: _accent),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: (widget.isEnabled && !_testing) ? _test : null,
+              icon: _testing
+                  ? const SizedBox(
+                      width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: _accent))
+                  : const Icon(Icons.wifi_tethering, size: 15),
+              label: const Text('Test Et'),
+            ),
+          ),
+        ]),
+
+        if (widget.isEnabled) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: TextButton.icon(
+              onPressed: _remove,
+              style: TextButton.styleFrom(foregroundColor: _red),
+              icon: const Icon(Icons.delete_outline, size: 16),
+              label: const Text('Kaldır'),
+            ),
+          ),
+        ],
+
+        if (_testOk != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: (_testOk! ? _green : _red).withOpacity(0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: (_testOk! ? _green : _red).withOpacity(0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text(
                   _testOk! ? '✅ Bağlantı başarılı!' : '❌ Bağlantı başarısız',
                   style: TextStyle(
-                    color: _testOk! ? const Color(0xFF4CAF50) : const Color(0xFFEF5350),
+                    color: _testOk! ? _green : _red,
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -246,46 +568,31 @@ class _AiSettingsScreenState extends State<AiSettingsScreen> {
                 if (_testMsg.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(_testMsg,
-                      style: const TextStyle(
-                          color: Colors.white60, fontSize: 11)),
+                      style: const TextStyle(color: Colors.white60, fontSize: 11)),
                 ],
-              ]),
-            ),
-          ],
-          const SizedBox(height: 24),
-
-          // ── Kaydet ───────────────────────────────────
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF6C63FF),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: _save,
-              icon: const Icon(Icons.save, size: 16),
-              label: const Text('Kaydet',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              ],
             ),
           ),
         ],
-      ),
+      ],
     );
   }
 
   Widget _label(String t) => Text(t,
-      style: const TextStyle(
-          color: Colors.white54, fontSize: 12, letterSpacing: 0.8));
-}
+      style: const TextStyle(color: Colors.white54, fontSize: 12, letterSpacing: 0.8));
 
-// ── Yardımcı: API anahtarını oku ─────────────────────────
-
-Future<({String apiKey, String model})> loadAiSettings() async {
-  final p = await SharedPreferences.getInstance();
-  return (
-    apiKey: p.getString(_keyApiKey) ?? '',
-    model:  p.getString(_keyModel)  ?? 'gemini-flash-latest',
-  );
+  InputDecoration _inputDecoration({required String hint, Widget? suffixIcon}) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(color: Colors.white24),
+      filled: true,
+      fillColor: const Color(0xFF0F0F1A),
+      border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+      focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _accent)),
+      suffixIcon: suffixIcon,
+    );
+  }
 }

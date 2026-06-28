@@ -9,7 +9,7 @@
 //   Wasm       → RuntimeHandle.submit(TaskDefinition)
 //   Task       → RuntimeHandle.submit(TaskDefinition)
 //   Agent      → AgentExecutor::execute()
-//   AiInference→ AnthropicProvider::infer()
+//   AiInference→ ProviderRouter.infer_active() (kullanıcının aktif ettiği provider)
 //   RemoteTask → RuntimeHandle.submit (remote flag ile)
 //   Plugin     → RuntimeHandle.submit (plugin entrypoint)
 //   Workflow   → nested WorkflowExecutor::execute()
@@ -17,6 +17,8 @@
 // WorkflowExecutor artık RuntimeHandle alıyor:
 //   runtime'a doğrudan task submit edebiliyor.
 // ============================================================
+use std::sync::Arc;
+
 use tracing::{
     info,
     warn,
@@ -27,8 +29,7 @@ use crate::agents::budget::AgentExecutionBudget;
 use crate::agents::context::AgentContext;
 use crate::agents::executor::AgentExecutor;
 use crate::ai::inference::request::InferenceRequest;
-use crate::ai::providers::anthropic::AnthropicProvider;
-use crate::ai::providers::provider::ModelProvider;
+use crate::ai::routing::router::ProviderRouter;
 use crate::errors::runtime::RuntimeError;
 use crate::orchestration::graph::ExecutionNodeKind;
 use crate::runtime::api::RuntimeHandle;
@@ -46,13 +47,15 @@ use crate::workflows::execution_graph::WorkflowExecutionGraph;
 pub struct WorkflowExecutor {
     coordinator: ExecutionCoordinator,
     runtime: RuntimeHandle,
+    ai_router: Arc<ProviderRouter>,
 }
 
 impl WorkflowExecutor {
-    pub fn new(runtime: RuntimeHandle) -> Self {
+    pub fn new(runtime: RuntimeHandle, ai_router: Arc<ProviderRouter>) -> Self {
         Self {
             coordinator: ExecutionCoordinator::new(),
             runtime,
+            ai_router,
         }
     }
 
@@ -162,47 +165,32 @@ impl WorkflowExecutor {
                     name.to_string(),
                     budget,
                     vec![],
+                    Some(self.ai_router.clone()),
                 )
                 .await?;
 
                 info!(node_id = %node_id, "Agent node complete");
             }
 
-            // ── AI Inference: AnthropicProvider ─────────────
+            // ── AI Inference: aktif provider üzerinden ──────
             ExecutionNodeKind::AiInference => {
-                match AnthropicProvider::new() {
-                    Ok(provider) => {
-                        let request =
-                            InferenceRequest::new(
-                                name,
-                                1024,
-                            )
-                            .with_system(
-                                "You are an AetherOS workflow assistant.",
-                            );
+                let request = InferenceRequest::new(name, 1024)
+                    .with_system("You are an AetherOS workflow assistant.");
 
-                        match provider.infer(request).await {
-                            Ok(response) => {
-                                info!(
-                                    node_id = %node_id,
-                                    tokens = response.tokens_used,
-                                    "AiInference node complete"
-                                );
-                            }
-                            Err(e) => {
-                                warn!(
-                                    node_id = %node_id,
-                                    error = ?e,
-                                    "AiInference failed"
-                                );
-                            }
-                        }
+                match self.ai_router.infer_active(request).await {
+                    Ok(response) => {
+                        info!(
+                            node_id = %node_id,
+                            tokens = response.tokens_used,
+                            "AiInference node complete"
+                        );
                     }
-                    Err(_) => {
+                    Err(e) => {
                         warn!(
                             node_id = %node_id,
-                            "AnthropicProvider unavailable, \
-                             skipping AiInference node"
+                            error = ?e,
+                            "AiInference failed (aktif provider yok veya \
+                             çağrı başarısız), node atlanıyor"
                         );
                     }
                 }

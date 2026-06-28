@@ -525,3 +525,79 @@ Future<NodeRegistrationResponse> registerNode({
     status:  r.status,
   );
 }
+
+// ── AI Provider fonksiyonları ──────────────────────────────────
+//
+// Kullanıcı Ayarlar ekranında bir provider için API key (Anthropic/
+// OpenAI/Gemini) ya da host (Ollama) girip kaydettiğinde çağrılır.
+// Birden fazla provider yapılandırılmışsa hangisinin kullanılacağına
+// setActiveAiProvider ile kullanıcı karar verir — otomatik fallback yok.
+
+/// Bir AI provider'ı yapılandır ve aktif provider listesine ekle.
+///
+/// providerId: 'anthropic' | 'openai' | 'gemini' | 'ollama'
+/// apiKey:     Anthropic/OpenAI/Gemini için zorunlu, Ollama'da kullanılmaz
+/// baseUrl:    sadece Ollama için (örn. 'http://127.0.0.1:11434')
+/// model:      opsiyonel — verilmezse provider'ın varsayılan modeli kullanılır
+Future<void> configureAiProvider({
+  required String providerId,
+  String? apiKey,
+  String? baseUrl,
+  String? model,
+}) async {
+  await _bridge.configureAiProvider(
+    providerId: providerId,
+    apiKey:     apiKey,
+    baseUrl:    baseUrl,
+    model:      model,
+  );
+}
+
+/// Kayıtlı bir provider'ı kaldır (kullanıcı key'i sildiğinde).
+Future<void> removeAiProvider({required String providerId}) async {
+  await _bridge.removeAiProvider(providerId: providerId);
+}
+
+/// Birden fazla provider yapılandırılmışsa kullanılacak olanı seç.
+Future<void> setActiveAiProvider({required String providerId}) async {
+  await _bridge.setActiveAiProvider(providerId: providerId);
+}
+
+/// Şu an aktif olan provider id'si (hiçbiri aktif değilse null).
+Future<String?> getActiveAiProvider() async {
+  return _bridge.getActiveAiProvider();
+}
+
+/// Yapılandırılmış (kayıtlı) tüm provider id'leri.
+Future<List<String>> listAiProviders() async {
+  final list = await _bridge.listAiProviders();
+  return List<String>.from(list);
+}
+
+/// Verilen Ollama sunucusunda yüklü (pull edilmiş) modelleri listele.
+/// Ayarlar ekranındaki model dropdown'ını doldurmak için kullanılır.
+Future<List<String>> listOllamaModels({required String baseUrl}) async {
+  final list = await _bridge.listOllamaModels(baseUrl: baseUrl);
+  return List<String>.from(list);
+}
+
+/// Kayıtlı bir provider'a küçük bir test isteği gönder, kısa bir
+/// çıktı döner. Hata fırlatırsa key/host geçersiz demektir.
+Future<String> testAiProvider({required String providerId}) async {
+  return _bridge.testAiProvider(providerId: providerId);
+}
+
+/// Genel amaçlı, tek seferlik AI sohbet isteği — AKTİF provider üzerinden
+/// çalışır. Hangi provider'ın yanıt vereceği kullanıcının Ayarlar'da
+/// seçtiği aktif modele bağlıdır.
+Future<String> aiChat({
+  required String prompt,
+  String? systemPrompt,
+  int maxTokens = 1024,
+}) async {
+  return _bridge.aiChat(
+    prompt: prompt,
+    systemPrompt: systemPrompt,
+    maxTokens: BigInt.from(maxTokens), // usize → BigInt
+  );
+}

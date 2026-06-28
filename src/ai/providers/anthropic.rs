@@ -81,7 +81,7 @@ pub struct AnthropicProvider {
 }
 
 impl AnthropicProvider {
-    /// Varsayılan model: claude-sonnet-4-5
+    /// Varsayılan model: claude-sonnet-4-6 (Haziran 2026 itibarıyla güncel).
     pub fn new() -> Result<Self, AiError> {
         let api_key = std::env::var("ANTHROPIC_API_KEY")
             .map_err(|_| {
@@ -89,11 +89,18 @@ impl AnthropicProvider {
                 AiError::ProviderUnavailable
             })?;
 
-        Ok(Self {
-            api_key,
-            model: "claude-sonnet-4-5".to_string(),
+        Ok(Self::from_key(api_key))
+    }
+
+    /// Kullanıcının uygulama içinde girdiği API key ile oluştur.
+    /// Mobil tarafta env var yok — Flutter Settings ekranından
+    /// gelen key doğrudan buraya geçirilir (bkz. configure_ai_provider).
+    pub fn from_key(api_key: impl Into<String>) -> Self {
+        Self {
+            api_key: api_key.into(),
+            model: "claude-sonnet-4-6".to_string(),
             client: reqwest::Client::new(),
-        })
+        }
     }
 
     /// Farklı bir model ile oluştur.

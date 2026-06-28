@@ -1,10 +1,20 @@
 // ============================================================
-// src/agents/planner.rs  (v3)
+// src/agents/planner.rs  (v4 — Haziran 2026)
 //
-// plan() artık async. ai_plan() önce denenir;
-// API key yoksa, rate-limit varsa veya parse başarısızsa
-// fallback_plan() devreye girer → runtime hiç donmaz.
+// plan() artık async ve ortak ProviderRouter'ı parametre olarak alır.
+// ai_plan() önce denenir; router yoksa, aktif provider yoksa,
+// rate-limit varsa veya parse başarısızsa fallback_plan() devreye
+// girer → runtime hiç donmaz.
+//
+// ÖNCE (v3): AnthropicProvider::new() doğrudan burada inşa
+// ediliyordu (env var'a bağımlıydı, kullanıcının Ayarlar'dan
+// seçtiği provider'ı yok sayıyordu).
+//
+// SONRA: hangi provider'ın aktif olduğuna ProviderRouter karar
+// verir — kullanıcı Ayarlar'da hangi modeli aktif ettiyse o kullanılır.
 // ============================================================
+
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -12,10 +22,9 @@ use uuid::Uuid;
 
 use crate::agents::plans::{AgentPlan, AgentPlanStep};
 use crate::ai::inference::request::InferenceRequest;
-use crate::ai::providers::anthropic::AnthropicProvider;
-use crate::ai::providers::provider::ModelProvider;
+use crate::ai::routing::router::ProviderRouter;
 
-/// Anthropic'ten beklenen JSON çıktı yapısı.
+/// Aktif provider'dan beklenen JSON çıktı yapısı.
 #[derive(Debug, Deserialize, Serialize)]
 struct PlanResponse {
     steps: Vec<PlanStepResponse>,
@@ -32,19 +41,26 @@ pub struct AgentPlanner;
 impl AgentPlanner {
     /// Objective'den plan üret.
     ///
-    /// AnthropicProvider mevcutsa AI destekli plan (ai_plan).
-    /// Değilse (API key yok, rate-limit, parse hatası) fallback_plan.
-    pub async fn plan(objective: String) -> AgentPlan {
-        match Self::ai_plan(objective.clone()).await {
-            Some(plan) => plan,
-            None => Self::fallback_plan(objective),
+    /// Aktif bir AI provider varsa AI destekli plan (ai_plan).
+    /// Yoksa (router yok, hiç provider aktif değil, rate-limit,
+    /// parse hatası) fallback_plan.
+    pub async fn plan(
+        objective: String,
+        router: Option<Arc<ProviderRouter>>,
+    ) -> AgentPlan {
+        if let Some(router) = router {
+            if let Some(plan) = Self::ai_plan(objective.clone(), &router).await {
+                return plan;
+            }
         }
+        Self::fallback_plan(objective)
     }
 
-    /// AnthropicProvider ile objective → structured plan.
-    async fn ai_plan(objective: String) -> Option<AgentPlan> {
-        let provider = AnthropicProvider::new().ok()?;
-
+    /// Aktif provider ile objective → structured plan.
+    async fn ai_plan(
+        objective: String,
+        router: &Arc<ProviderRouter>,
+    ) -> Option<AgentPlan> {
         let system = r#"You are an AetherOS agent planner.
 Given an objective, output a JSON plan with this exact structure:
 {"steps": [{"name": "step_name", "retryable": true}]}
@@ -58,7 +74,7 @@ Output ONLY valid JSON, no explanation."#;
             .with_system(system)
             .with_temperature(0.3); // Düşük temperature → tutarlı JSON
 
-        let response = provider.infer(request).await.ok()?;
+        let response = router.infer_active(request).await.ok()?;
 
         debug!(tokens = response.tokens_used, "AI plan response received");
 

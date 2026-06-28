@@ -1,61 +1,18 @@
-pub mod policy;
+// ============================================================
+// src/ai/routing/mod.rs
+//
+// Haziran 2026 temizliği:
+//   1) Bu dosyada daha önce `routing::router::ProviderRouter` ile
+//      isim çakışan, kullanılmayan ikinci bir `ProviderRouter` +
+//      `AiProvider` trait çifti vardı (hiçbir somut provider bu
+//      trait'i implemente etmiyordu). Kaldırıldı.
+//   2) `routing::policy::RoutingPolicy` de tamamen kullanılmıyordu
+//      (ayrıca `ai::policies::RoutingPolicy` ile aynı isimde başka
+//      bir kopyası daha vardı — o da kaldırıldı). Provider seçimi
+//      artık otomatik policy değil, kullanıcının Ayarlar'daki
+//      seçimi (bkz. ProviderRouter::set_active).
+//
+// Tek geçerli router: routing::router::ProviderRouter.
+// ============================================================
+
 pub mod router;
-
-use std::sync::Arc;
-
-use crate::ai::errors::AiError;
-
-use crate::ai::inference::request::InferenceRequest;
-
-use crate::ai::inference::response::InferenceResponse;
-
-use crate::ai::inference::traits::AiProvider;
-
-pub struct ProviderRouter {
-    providers:
-        Vec<
-            Arc<
-                dyn AiProvider,
-            >,
-        >,
-}
-
-impl ProviderRouter {
-    pub fn new() -> Self {
-        Self {
-            providers:
-                Vec::new(),
-        }
-    }
-
-    pub fn register(
-        &mut self,
-        provider:
-            Arc<
-                dyn AiProvider,
-            >,
-    ) {
-        self.providers
-            .push(provider);
-    }
-
-    pub async fn infer(
-        &self,
-        request:
-            InferenceRequest,
-    ) -> Result<
-        InferenceResponse,
-        AiError,
-    > {
-        let provider =
-            self.providers
-                .first()
-                .ok_or(
-                    AiError::ProviderUnavailable,
-                )?;
-
-        provider
-            .infer(request)
-            .await
-    }
-}
