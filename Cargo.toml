@@ -81,7 +81,7 @@ semver      = { version = "1.0.28", features = ["serde"] }
 hex         = "0.4.3"
 # default-features = false → native-tls (OpenSSL) devre dışı
 # rustls-tls → saf Rust TLS, Android cross-compile'da OpenSSL gerekmez
-reqwest     = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest     = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "hickory-dns"] }
 wat         = "1"
 rmp-serde   = "1.3"
 
