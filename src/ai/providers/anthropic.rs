@@ -4,7 +4,7 @@
 // Anthropic Claude API provider.
 //
 // ModelProvider trait implementasyonu:
-//   - claude-sonnet-4-5 varsayılan model
+//   - claude-sonnet-4-6 varsayılan model
 //   - Messages API (/v1/messages)
 //   - Streaming destekleniyor (supports_streaming: true)
 //   - Token budget takibi (AgentExecutionBudget ile uyumlu)
@@ -153,8 +153,16 @@ impl ModelProvider for AnthropicProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| AiError::ProviderFailure {
-                message: e.to_string(),
+            .map_err(|e| {
+                if e.is_connect() || e.is_timeout() {
+                    warn!("Anthropic'e bağlanılamadı (ağ sorunu)");
+                    AiError::ProviderFailure {
+                        message: "Bağlantı kurulamadı — internet bağlantını \
+                                  kontrol et ve tekrar dene.".to_string(),
+                    }
+                } else {
+                    AiError::ProviderFailure { message: e.to_string() }
+                }
             })?;
 
         let status = response.status();

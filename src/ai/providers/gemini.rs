@@ -176,8 +176,18 @@ impl ModelProvider for GeminiProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| AiError::ProviderFailure {
-                message: format!("HTTP hatası: {e}"),
+            .map_err(|e| {
+                if e.is_connect() || e.is_timeout() {
+                    warn!("Gemini'ye bağlanılamadı (ağ sorunu)");
+                    AiError::ProviderFailure {
+                        message: "Bağlantı kurulamadı — internet bağlantını \
+                                  kontrol et ve tekrar dene.".to_string(),
+                    }
+                } else {
+                    AiError::ProviderFailure {
+                        message: format!("HTTP hatası: {e}"),
+                    }
+                }
             })?;
 
         let status = response.status();
