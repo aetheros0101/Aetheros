@@ -1,6 +1,8 @@
-use wasmtime::{Caller, Linker};
+use wasmtime::{Caller, Linker, StoreLimits};
 
-pub struct HostContext;
+pub struct HostContext {
+    pub limits: StoreLimits,
+}
 
 pub fn register_host_functions(linker: &mut Linker<HostContext>) -> Result<(), wasmtime::Error> {
     linker.func_wrap(

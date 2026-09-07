@@ -102,12 +102,37 @@ pub struct AppState {
 }
 
 // ── Router ────────────────────────────────────────────────
-
+//
+// GÜVENLİK NOTU (bkz. SECURITY_HARDENING.md):
+// Önceki sürümde tüm bu route'lar tek bir Router'da, hiçbir auth
+// katmanı olmadan tanımlıydı — auth_middleware/api_key_middleware
+// yazılmış olsa da hiçbir yere bağlanmamıştı. Artık üç ayrı grup var:
+//
+//   public_routes    → kimlik doğrulama gerektirmez (health, token issuance)
+//   protected_routes → geçerli X-Api-Key veya Bearer JWT gerektirir
+//   admin_routes     → yukarıdakine ek olarak Role::Admin gerektirir
+//                      (cluster yönetimi, uzak komut, modül yükleme)
+//
+// /ws ayrı tutulur çünkü tarayıcı WebSocket API'si custom header
+// gönderemez; auth query string üzerinden (?token=... / ?api_key=...)
+// ws_upgrade_handler içinde yapılır.
 pub fn build_router() -> Router<AppState> {
-    Router::new()
+    use axum::middleware;
+    use crate::api::middleware::{issue_token_handler, require_admin, require_auth};
+
+    let public_routes = Router::new()
+        .route("/health", get(health_handler))
+        .route("/auth/token", post(issue_token_handler));
+
+    let admin_routes = Router::new()
+        .route("/cluster/nodes", post(register_node_handler))
+        .route("/remote/command", post(remote_command_handler))
+        .route("/modules", post(upload_module_handler))
+        .route_layer(middleware::from_fn(require_admin));
+
+    let protected_routes = Router::new()
         .route("/dashboard", get(dashboard_handler))
         .route("/metrics",   get(metrics_handler))
-        .route("/health",              get(health_handler))
         // Tasks
         .route("/tasks",               post(submit_task_handler))
         .route("/tasks/{id}",          get(task_state_handler))
@@ -118,20 +143,24 @@ pub fn build_router() -> Router<AppState> {
         // Workflows
         .route("/workflows",           post(submit_workflow_handler))
         .route("/workflows/{id}",      get(get_workflow_handler))
-        // Cluster / Remote
-        .route("/cluster/nodes",    post(register_node_handler))
+        // Cluster / Remote (salt okunur uçlar — yazma admin_routes'ta)
         .route("/cluster/nodes",    get(list_nodes_handler))
         .route("/cluster/health",   get(cluster_health_handler))
-        .route("/remote/command",   post(remote_command_handler))
-        // Modules
-        .route("/modules",       post(upload_module_handler))
+        // Modules (salt okunur uçlar — yükleme admin_routes'ta)
         .route("/modules",       get(list_modules_handler))
         .route("/modules/{hash}", get(get_module_handler))
         // Scripts
         .route("/scripts",      post(run_script_handler))
         .route("/scripts",      get(list_scripts_handler))
-        // WebSocket
-        .route("/ws", get(crate::api::websocket::ws_upgrade_handler))
+        .route_layer(middleware::from_fn(require_auth));
+
+    let ws_routes = Router::new()
+        .route("/ws", get(crate::api::websocket::ws_upgrade_handler));
+
+    public_routes
+        .merge(admin_routes)
+        .merge(protected_routes)
+        .merge(ws_routes)
 }
 
 // ── Handlers ──────────────────────────────────────────────
@@ -166,6 +195,19 @@ async fn submit_task_handler(
     State(state): State<AppState>,
     Json(req): Json<TaskSubmitRequest>,
 ) -> impl IntoResponse {
+    if req.wasm_module_hex.len() > MAX_WASM_HEX_BYTES
+        || req.timeout_ms == 0
+        || req.timeout_ms > MAX_TASK_TIMEOUT_MS
+        || req.max_attempts == 0
+        || req.max_attempts > MAX_TASK_ATTEMPTS
+        || req.entrypoint.len() > 256
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "invalid task limits or request size" })),
+        ).into_response();
+    }
+
     let task_id = TaskId(Uuid::new_v4());
 
     // Hex decode
@@ -281,6 +323,19 @@ async fn start_agent_handler(
     State(state): State<AppState>,
     Json(req): Json<AgentStartRequest>,
 ) -> impl IntoResponse {
+    if req.objective.trim().is_empty()
+        || req.objective.len() > MAX_AGENT_OBJECTIVE_BYTES
+        || req.max_steps == 0
+        || req.max_steps > MAX_AGENT_STEPS
+        || req.max_tokens == 0
+        || req.max_tokens > MAX_AGENT_TOKENS
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "invalid agent limits or objective" })),
+        ).into_response();
+    }
+
     let execution_id = Uuid::new_v4();
     let agent_id     = Uuid::new_v4();
     let started_at   = Utc::now();
@@ -328,7 +383,13 @@ async fn get_agent_handler(
     Path(id): Path<Uuid>,
 ) -> impl IntoResponse {
     match state.agent_registry.get(&id) {
-        Some(e) => (StatusCode::OK, Json(serde_json::to_value(e.value()).unwrap())).into_response(),
+        Some(e) => match serde_json::to_value(e.value()) {
+            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+            Err(err) => {
+                tracing::error!(error = %err, "agent serialize edilemedi");
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": "serialization failed" }))).into_response()
+            }
+        },
         None    => (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "agent not found" }))).into_response(),
     }
 }
@@ -339,6 +400,16 @@ async fn submit_workflow_handler(
     State(state): State<AppState>,
     Json(req): Json<WorkflowSubmitRequest>,
 ) -> impl IntoResponse {
+    if req.name.trim().is_empty()
+        || req.name.len() > MAX_WORKFLOW_NAME_BYTES
+        || req.steps.len() > MAX_WORKFLOW_STEPS
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "invalid workflow size/name" })),
+        ).into_response();
+    }
+
     let workflow_id = Uuid::new_v4();
     let started_at  = Utc::now();
     let name        = req.name.clone();
@@ -396,7 +467,13 @@ async fn get_workflow_handler(
     Path(id): Path<Uuid>,
 ) -> impl IntoResponse {
     match state.workflow_registry.get(&id) {
-        Some(e) => (StatusCode::OK, Json(serde_json::to_value(e.value()).unwrap())).into_response(),
+        Some(e) => match serde_json::to_value(e.value()) {
+            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+            Err(err) => {
+                tracing::error!(error = %err, "workflow serialize edilemedi");
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": "serialization failed" }))).into_response()
+            }
+        },
         None    => (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "workflow not found" }))).into_response(),
     }
 }
@@ -540,6 +617,12 @@ async fn upload_module_handler(
     State(state): State<AppState>,
     Json(req): Json<ModuleUploadRequest>,
 ) -> impl IntoResponse {
+    if req.wasm_hex.len() > MAX_WASM_HEX_BYTES {
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(serde_json::json!({ "error": "wasm_hex exceeds size limit" })),
+        ).into_response();
+    }
     let bytes = match hex::decode(&req.wasm_hex) {
         Ok(b) => b,
         Err(_) => return (
@@ -612,6 +695,15 @@ async fn run_script_handler(
     Json(req): Json<ScriptRunRequest>,
 ) -> impl IntoResponse {
     // hex → binary
+    if req.wasm_hex.len() > MAX_WASM_HEX_BYTES
+        || req.timeout_ms == 0
+        || req.timeout_ms > MAX_TASK_TIMEOUT_MS
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "invalid script limits or request size" })),
+        ).into_response();
+    }
     let wasm_binary = match hex::decode(&req.wasm_hex) {
         Ok(b) => b,
         Err(_) => return (
@@ -699,6 +791,17 @@ async fn list_scripts_handler(
         "scripts": scripts,
     }))).into_response()
 }
+
+// ── API resource limits ──────────────────────────────────
+const MAX_WASM_BYTES: usize = 64 * 1024 * 1024;
+const MAX_WASM_HEX_BYTES: usize = MAX_WASM_BYTES * 2;
+const MAX_TASK_TIMEOUT_MS: u64 = 5 * 60 * 1000;
+const MAX_TASK_ATTEMPTS: u32 = 10;
+const MAX_AGENT_OBJECTIVE_BYTES: usize = 16 * 1024;
+const MAX_AGENT_STEPS: usize = 100;
+const MAX_AGENT_TOKENS: usize = 128 * 1024;
+const MAX_WORKFLOW_NAME_BYTES: usize = 256;
+const MAX_WORKFLOW_STEPS: usize = 256;
 
 // ── Request Modelleri ─────────────────────────────────────
 

@@ -13,4 +13,7 @@ pub enum PersistenceError {
 
     #[error("serialization failure")]
     SerializationFailure,
+
+    #[error("cryptographic failure")]
+    CryptoFailure,
 }

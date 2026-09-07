@@ -30,6 +30,7 @@ use wasmtime::{
     Linker,
     Module,
     Store,
+    StoreLimitsBuilder,
 };
 
 use async_trait::async_trait;
@@ -165,8 +166,18 @@ impl WasmEngine {
                 message: e.to_string(),
             })?;
 
-        let mut store =
-            Store::new(&self.engine, HostContext);
+        let store_limits = StoreLimitsBuilder::new()
+            .memory_size(self.limits.memory_limit_bytes)
+            .instances(1)
+            .memories(4)
+            .tables(16)
+            .build();
+
+        let mut store = Store::new(
+            &self.engine,
+            HostContext { limits: store_limits },
+        );
+        store.limiter(|state| &mut state.limits);
 
         store
             .set_fuel(self.limits.fuel_limit)

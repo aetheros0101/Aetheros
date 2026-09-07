@@ -34,6 +34,15 @@ pub struct HttpTransport {
     client: reqwest::Client,
 }
 
+/// Node-to-node çağrılara eklenecek paylaşımlı sır. Ayarlanmamışsa
+/// (dev/tek-node ortamlar) header hiç eklenmez ve karşı taraf
+/// AETHEROS_CLUSTER_TOKEN'ı da ayarlamamışsa istek reddedilmeden geçer;
+/// üretimde her iki tarafta da aynı değerin ayarlanması ZORUNLUDUR,
+/// aksi halde /remote/command tamamen açık kalır.
+fn cluster_token_header() -> Option<String> {
+    std::env::var("AETHEROS_CLUSTER_TOKEN").ok().filter(|s| !s.is_empty())
+}
+
 impl HttpTransport {
     pub fn new(cluster: Arc<ClusterState>) -> Self {
         Self {
@@ -54,10 +63,12 @@ impl HttpTransport {
         let url =
             format!("http://{}/remote/command", address);
 
-        match self
-            .client
-            .post(&url)
-            .json(command)
+        let mut request = self.client.post(&url).json(command);
+        if let Some(token) = cluster_token_header() {
+            request = request.header("X-Cluster-Token", token);
+        }
+
+        match request
             .send()
             .await
         {
@@ -138,10 +149,15 @@ impl RemoteTransport for HttpTransport {
             let addr = node.address.clone();
             let c = client.clone();
 
+            let token = cluster_token_header();
             handles.push(tokio::spawn(async move {
                 let url =
                     format!("http://{}/remote/command", addr);
-                let _ = c.post(&url).json(&cmd).send().await;
+                let mut req = c.post(&url).json(&cmd);
+                if let Some(t) = token {
+                    req = req.header("X-Cluster-Token", t);
+                }
+                let _ = req.send().await;
             }));
         }
 

@@ -75,20 +75,21 @@ echo ""
 
 cd "$PROJECT_ROOT"
 
+SO_ARM64="$JNI_LIBS/arm64-v8a/libaetheros.so"
+SO_ARM="$JNI_LIBS/armeabi-v7a/libaetheros.so"
+rm -f "$SO_ARM64" "$SO_ARM"
+
 cargo ndk \
     --target aarch64-linux-android \
     --target armeabi-v7a \
     --output-dir "$JNI_LIBS" \
     build --release \
     --no-default-features \
-    --features backend-wasmi \
-    2>&1 | grep -E "Compiling|Finished|error|warning\[" || true
+    --features backend-wasmi
 
 echo ""
 
 # .so varlık kontrolü
-SO_ARM64="$JNI_LIBS/arm64-v8a/libaetheros.so"
-SO_ARM="$JNI_LIBS/armeabi-v7a/libaetheros.so"
 
 if [ -f "$SO_ARM64" ]; then
     SIZE=$(du -sh "$SO_ARM64" | cut -f1)
@@ -123,8 +124,7 @@ log "APK derleniyor (release)..."
 echo ""
 
 flutter build apk --release \
-    --split-per-abi \
-    2>&1 | grep -E "Built|Error|✓" || true
+    --split-per-abi
 
 echo ""
 

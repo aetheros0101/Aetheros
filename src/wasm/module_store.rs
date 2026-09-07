@@ -24,7 +24,7 @@
 //            → get_or_compile(binary) → Module cache hit
 // ============================================================
 
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 
 use dashmap::DashMap;
 use sha2::{
@@ -42,6 +42,8 @@ pub type ModuleHash = [u8; 32];
 pub enum ModuleStoreError {
     NotFound(ModuleHash),
     InvalidBinary,
+    SizeLimitExceeded,
+    StoreLimitExceeded,
 }
 
 impl std::fmt::Display for ModuleStoreError {
@@ -53,9 +55,9 @@ impl std::fmt::Display for ModuleStoreError {
             Self::NotFound(h) => {
                 write!(f, "Module not found: {}", hex::encode(h))
             }
-            Self::InvalidBinary => {
-                write!(f, "Invalid WASM binary")
-            }
+            Self::InvalidBinary => write!(f, "Invalid WASM binary"),
+            Self::SizeLimitExceeded => write!(f, "WASM module exceeds configured size limit"),
+            Self::StoreLimitExceeded => write!(f, "WASM module store resource limit exceeded"),
         }
     }
 }
@@ -66,12 +68,20 @@ pub struct ModuleStore {
     /// Arc: binary birden fazla engine thread'inde
     /// paylaşılabilir — kopya yok.
     modules: DashMap<ModuleHash, Arc<Vec<u8>>>,
+    total_bytes: AtomicUsize,
+    max_module_bytes: usize,
+    max_modules: usize,
+    max_total_bytes: usize,
 }
 
 impl ModuleStore {
     pub fn new() -> Self {
         Self {
             modules: DashMap::new(),
+            total_bytes: AtomicUsize::new(0),
+            max_module_bytes: env_limit("AETHEROS_MAX_MODULE_SIZE_BYTES", 64 * 1024 * 1024),
+            max_modules: env_limit("AETHEROS_MAX_MODULE_COUNT", 256),
+            max_total_bytes: env_limit("AETHEROS_MAX_MODULE_TOTAL_BYTES", 512 * 1024 * 1024),
         }
     }
 
@@ -86,14 +96,40 @@ impl ModuleStore {
         if binary.is_empty() {
             return Err(ModuleStoreError::InvalidBinary);
         }
+        if binary.len() > self.max_module_bytes {
+            return Err(ModuleStoreError::SizeLimitExceeded);
+        }
 
-        let hash: ModuleHash =
-            Sha256::digest(&binary).into();
+        let hash: ModuleHash = Sha256::digest(&binary).into();
+        if self.modules.contains_key(&hash) {
+            return Ok(hash);
+        }
+        if self.modules.len() >= self.max_modules {
+            return Err(ModuleStoreError::StoreLimitExceeded);
+        }
 
-        // Zaten varsa overwrite etme
-        self.modules
-            .entry(hash)
-            .or_insert_with(|| Arc::new(binary));
+        let size = binary.len();
+        loop {
+            let current = self.total_bytes.load(Ordering::Acquire);
+            let new_total = current.saturating_add(size);
+            if new_total > self.max_total_bytes {
+                return Err(ModuleStoreError::StoreLimitExceeded);
+            }
+            if self.total_bytes.compare_exchange(
+                current, new_total, Ordering::AcqRel, Ordering::Acquire
+            ).is_ok() {
+                break;
+            }
+        }
+
+        match self.modules.entry(hash) {
+            dashmap::mapref::entry::Entry::Vacant(entry) => {
+                entry.insert(Arc::new(binary));
+            }
+            dashmap::mapref::entry::Entry::Occupied(_) => {
+                self.total_bytes.fetch_sub(size, Ordering::AcqRel);
+            }
+        }
 
         debug!(
             hash = %hex::encode(hash),
@@ -169,5 +205,14 @@ impl ModuleStore {
     pub fn clear(&self) {
         warn!("Clearing all modules from store");
         self.modules.clear();
+        self.total_bytes.store(0, Ordering::Release);
     }
+}
+
+fn env_limit(name: &str, default: usize) -> usize {
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(default)
 }

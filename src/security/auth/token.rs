@@ -1,32 +1,10 @@
-// ============================================================
-// src/security/auth/token.rs
-//
-// Sprint 6: JWT + API Key token sistemi
-//
-// ÖNCE: AuthToken { access_token: String } — boş struct
-//
-// SONRA:
-//   TokenManager → JWT üretir + doğrular
-//   ApiKey       → sabit token (servis-servis auth)
-//   Claims       → role + expiry + subject
-//
-// JWT secret: ortam değişkeninden (AETHEROS_JWT_SECRET)
-// API key: SHA-256 hash'li karşılaştırma
-// ============================================================
+use std::sync::OnceLock;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use std::time::{
-    SystemTime,
-    UNIX_EPOCH,
-};
-
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::security::rbac::Role;
-
-// ── Token yapıları ────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthToken {
@@ -37,109 +15,66 @@ pub struct AuthToken {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
-    /// Subject: user id veya service name
     pub sub: String,
-    /// Role
     pub role: Role,
-    /// Issued at (Unix timestamp)
     pub iat: u64,
-    /// Expiry (Unix timestamp)
     pub exp: u64,
 }
 
 impl Claims {
-    pub fn new(
-        subject: impl Into<String>,
-        role: Role,
-        ttl_seconds: u64,
-    ) -> Self {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        Self {
-            sub: subject.into(),
-            role,
-            iat: now,
-            exp: now + ttl_seconds,
-        }
+    pub fn new(subject: impl Into<String>, role: Role, ttl_seconds: u64) -> Self {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+        Self { sub: subject.into(), role, iat: now, exp: now + ttl_seconds }
     }
-
-    // SONRA (>= ile eşit anı da expire say):
     pub fn is_expired(&self) -> bool {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
         now >= self.exp
     }
-
     pub fn ttl_remaining(&self) -> u64 {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
         self.exp.saturating_sub(now)
     }
 }
 
-// ── API Key ───────────────────────────────────────────────
-
 #[derive(Debug, Clone)]
 pub struct ApiKey {
-    /// Ham key (Bearer header'dan gelen)
-    raw: String,
-    /// SHA-256 hash (DB'de saklanan)
     hash: String,
 }
 
 impl ApiKey {
     pub fn new(raw: impl Into<String>) -> Self {
-        let raw = raw.into();
-        let hash = Self::hash_key(&raw);
-        Self { raw, hash }
+        Self { hash: Self::hash_key(&raw.into()) }
     }
-
-    /// Verilen ham key'in hash'i kaydedilen hash ile eşleşiyor mu?
     pub fn verify(&self, provided: &str) -> bool {
-        let provided_hash = Self::hash_key(provided);
-        // Constant-time comparison (timing attack koruması)
-        constant_time_eq(&provided_hash, &self.hash)
+        constant_time_eq(&Self::hash_key(provided), &self.hash)
     }
-
-    /// Ham API key'i döndür (log maskeleme veya audit için).
-    pub fn raw(&self) -> &str {
-        &self.raw
-    }
-
-    pub fn hash(&self) -> &str {
-        &self.hash
-    }
-
+    pub fn hash(&self) -> &str { &self.hash }
     fn hash_key(key: &str) -> String {
-        use sha2::{
-            Digest,
-            Sha256,
-        };
-        let result = Sha256::digest(key.as_bytes());
-        hex::encode(result)
+        hex::encode(Sha256::digest(key.as_bytes()))
     }
 }
 
-/// Constant-time string karşılaştırma.
-/// Timing attack'ı önler.
-fn constant_time_eq(a: &str, b: &str) -> bool {
-    if a.len() != b.len() {
-        return false;
+pub struct ApiKeyStore { keys: Vec<ApiKey> }
+
+impl ApiKeyStore {
+    pub fn new(raw_keys: Vec<String>) -> Self {
+        Self { keys: raw_keys.into_iter().map(ApiKey::new).collect() }
     }
-    a.bytes()
-        .zip(b.bytes())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
+    pub fn from_env() -> Self {
+        let raw = std::env::var("AETHEROS_API_KEYS").unwrap_or_default();
+        let keys = raw.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned).collect();
+        Self::new(keys)
+    }
+    pub fn is_empty(&self) -> bool { self.keys.is_empty() }
+    pub fn is_valid(&self, provided: &str) -> bool {
+        !provided.is_empty() && self.keys.iter().any(|k| k.verify(provided))
+    }
 }
 
-// ── TokenManager ─────────────────────────────────────────
+pub(crate) fn constant_time_eq(a: &str, b: &str) -> bool {
+    if a.len() != b.len() { return false; }
+    a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
 
 pub struct TokenManager {
     secret: String,
@@ -147,153 +82,168 @@ pub struct TokenManager {
 }
 
 impl TokenManager {
-    pub fn new(
-        secret: impl Into<String>,
-        default_ttl_seconds: u64,
-    ) -> Self {
-        Self {
-            secret: secret.into(),
-            default_ttl: default_ttl_seconds,
-        }
+    pub fn new(secret: impl Into<String>, default_ttl_seconds: u64) -> Self {
+        Self { secret: secret.into(), default_ttl: default_ttl_seconds }
     }
 
-    /// Ortam değişkeninden oluştur.
     pub fn from_env() -> Self {
-        let secret = std::env::var("AETHEROS_JWT_SECRET")
-            .unwrap_or_else(|_| {
-                "dev-secret-change-in-production".to_string()
-            });
-        Self::new(secret, 3600) // 1 saat default TTL
+        static EPHEMERAL_SECRET: OnceLock<String> = OnceLock::new();
+        let secret = match std::env::var("AETHEROS_JWT_SECRET") {
+            Ok(s) if !s.is_empty() => s,
+            _ => EPHEMERAL_SECRET.get_or_init(|| {
+                let bytes: [u8; 32] = rand::random();
+                tracing::error!(
+                    "AETHEROS_JWT_SECRET ayarlanmamış — süreç başına rastgele JWT secret kullanılıyor. \
+                     Production'da kalıcı bir secret tanımlayın."
+                );
+                hex::encode(bytes)
+            }).clone(),
+        };
+        let ttl = std::env::var("AETHEROS_JWT_TTL_SECONDS")
+            .ok().and_then(|v| v.parse().ok()).filter(|v: &u64| *v > 0).unwrap_or(3600);
+        Self::new(secret, ttl)
     }
 
-    /// Claims → imzalı JWT token üret.
-    ///
-    /// Basit implementasyon: header.payload.signature
-    /// Base64url encode + HMAC-SHA256 imza.
-    /// Üretimde: jsonwebtoken crate ile değiştir.
-    pub fn generate(
-        &self,
-        subject: impl Into<String>,
-        role: Role,
-    ) -> AuthToken {
-        let claims =
-            Claims::new(subject, role, self.default_ttl);
-
-        let token = self.encode_claims(&claims);
-
+    pub fn generate(&self, subject: impl Into<String>, role: Role) -> AuthToken {
+        let claims = Claims::new(subject, role, self.default_ttl);
         AuthToken {
-            access_token: token,
+            access_token: self.encode_claims(&claims),
             token_type: "Bearer".to_string(),
             expires_in: self.default_ttl,
         }
     }
 
-    /// Token → Claims (doğrulama dahil).
-    pub fn verify(
-        &self,
-        token: &str,
-    ) -> Result<Claims, TokenError> {
+    pub fn verify(&self, token: &str) -> Result<Claims, TokenError> {
         let claims = self.decode_claims(token)?;
-
-        if claims.is_expired() {
-            return Err(TokenError::Expired);
-        }
-
+        if claims.is_expired() { return Err(TokenError::Expired); }
         Ok(claims)
     }
 
-    /// Basit encode: base64(header).base64(claims).hmac
     fn encode_claims(&self, claims: &Claims) -> String {
-        let header = base64_encode(
-            r#"{"alg":"HS256","typ":"JWT"}"#,
-        );
-        let payload = base64_encode(
-            &serde_json::to_string(claims)
-                .unwrap_or_default(),
-        );
+        let header = base64url_encode(br#"{"alg":"HS256","typ":"JWT"}"#);
+        let payload = base64url_encode(&serde_json::to_vec(claims).unwrap_or_default());
         let message = format!("{}.{}", header, payload);
-        let sig = self.hmac_sign(&message);
-        format!("{}.{}", message, sig)
+        format!("{}.{}", message, self.hmac_sign(&message))
     }
 
-    fn decode_claims(
-        &self,
-        token: &str,
-    ) -> Result<Claims, TokenError> {
+    fn decode_claims(&self, token: &str) -> Result<Claims, TokenError> {
         let parts: Vec<&str> = token.split('.').collect();
-        if parts.len() != 3 {
-            return Err(TokenError::Malformed);
-        }
+        if parts.len() != 3 { return Err(TokenError::Malformed); }
 
-        // İmza doğrula
-        let message =
-            format!("{}.{}", parts[0], parts[1]);
+        let message = format!("{}.{}", parts[0], parts[1]);
         let expected_sig = self.hmac_sign(&message);
-
         if !constant_time_eq(parts[2], &expected_sig) {
             return Err(TokenError::InvalidSignature);
         }
 
-        // Payload decode
-        let payload = base64_decode(parts[1])
-            .ok_or(TokenError::Malformed)?;
+        // Algoritma confusion riskini kapat: header gerçekten HS256/JWT olmalı.
+        let header = base64url_decode(parts[0]).ok_or(TokenError::Malformed)?;
+        if header != br#"{"alg":"HS256","typ":"JWT"}"# {
+            return Err(TokenError::Malformed);
+        }
 
-        serde_json::from_str(&payload)
-            .map_err(|_| TokenError::Malformed)
+        let payload = base64url_decode(parts[1]).ok_or(TokenError::Malformed)?;
+        serde_json::from_slice(&payload).map_err(|_| TokenError::Malformed)
     }
 
     fn hmac_sign(&self, message: &str) -> String {
-        use sha2::{Digest, Sha256};
-        let input =
-            format!("{}{}", self.secret, message);
-        let hash = Sha256::digest(input.as_bytes());
-        hex::encode(hash)
+        // RFC 2104 HMAC-SHA256; SHA256(secret || message) DEĞİL.
+        let mut key = self.secret.as_bytes().to_vec();
+        if key.len() > 64 { key = Sha256::digest(&key).to_vec(); }
+        key.resize(64, 0);
+
+        let mut ipad = [0x36u8; 64];
+        let mut opad = [0x5cu8; 64];
+        for i in 0..64 {
+            ipad[i] ^= key[i];
+            opad[i] ^= key[i];
+        }
+
+        let mut inner = Sha256::new();
+        inner.update(ipad);
+        inner.update(message.as_bytes());
+        let inner_hash = inner.finalize();
+
+        let mut outer = Sha256::new();
+        outer.update(opad);
+        outer.update(inner_hash);
+        hex::encode(outer.finalize())
     }
 }
 
-fn base64_encode(input: &str) -> String {
-    use std::fmt::Write;
-    // Basit hex encode (üretimde base64url kullan)
-    let mut out = String::new();
-    for b in input.bytes() {
-        write!(out, "{:02x}", b).ok();
+fn base64url_encode(input: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let mut out = String::with_capacity((input.len() * 4 + 2) / 3);
+    let mut i = 0;
+    while i + 3 <= input.len() {
+        let n = ((input[i] as u32) << 16) | ((input[i+1] as u32) << 8) | input[i+2] as u32;
+        out.push(T[((n >> 18) & 63) as usize] as char);
+        out.push(T[((n >> 12) & 63) as usize] as char);
+        out.push(T[((n >> 6) & 63) as usize] as char);
+        out.push(T[(n & 63) as usize] as char);
+        i += 3;
+    }
+    match input.len() - i {
+        1 => {
+            let n = (input[i] as u32) << 16;
+            out.push(T[((n >> 18) & 63) as usize] as char);
+            out.push(T[((n >> 12) & 63) as usize] as char);
+        }
+        2 => {
+            let n = ((input[i] as u32) << 16) | ((input[i+1] as u32) << 8);
+            out.push(T[((n >> 18) & 63) as usize] as char);
+            out.push(T[((n >> 12) & 63) as usize] as char);
+            out.push(T[((n >> 6) & 63) as usize] as char);
+        }
+        _ => {}
     }
     out
 }
 
-fn base64_decode(input: &str) -> Option<String> {
-    if input.len() % 2 != 0 {
-        return None;
+fn base64url_decode(input: &str) -> Option<Vec<u8>> {
+    fn v(c: u8) -> Option<u8> {
+        match c {
+            b'A'..=b'Z' => Some(c - b'A'),
+            b'a'..=b'z' => Some(c - b'a' + 26),
+            b'0'..=b'9' => Some(c - b'0' + 52),
+            b'-' => Some(62), b'_' => Some(63), _ => None,
+        }
     }
-    let bytes: Option<Vec<u8>> = (0..input.len())
-        .step_by(2)
-        .map(|i| {
-            u8::from_str_radix(&input[i..i + 2], 16).ok()
-        })
-        .collect();
-    bytes.and_then(|b| String::from_utf8(b).ok())
+    let b = input.as_bytes();
+    if b.len() % 4 == 1 { return None; }
+    let mut out = Vec::with_capacity(b.len() * 3 / 4);
+    let mut i = 0;
+    while i + 4 <= b.len() {
+        let n = ((v(b[i])? as u32) << 18)
+            | ((v(b[i+1])? as u32) << 12)
+            | ((v(b[i+2])? as u32) << 6)
+            | v(b[i+3])? as u32;
+        out.extend_from_slice(&[(n >> 16) as u8, (n >> 8) as u8, n as u8]);
+        i += 4;
+    }
+    match b.len() - i {
+        0 => {}
+        2 => {
+            let n = ((v(b[i])? as u32) << 18) | ((v(b[i+1])? as u32) << 12);
+            out.push((n >> 16) as u8);
+        }
+        3 => {
+            let n = ((v(b[i])? as u32) << 18) | ((v(b[i+1])? as u32) << 12) | ((v(b[i+2])? as u32) << 6);
+            out.extend_from_slice(&[(n >> 16) as u8, (n >> 8) as u8]);
+        }
+        _ => unreachable!(),
+    }
+    Some(out)
 }
-
-// ── Hata ─────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TokenError {
-    Expired,
-    InvalidSignature,
-    Malformed,
-    Missing,
-}
+pub enum TokenError { Expired, InvalidSignature, Malformed, Missing }
 
 impl std::fmt::Display for TokenError {
-    fn fmt(
-        &self,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Expired => write!(f, "Token expired"),
-            Self::InvalidSignature => {
-                write!(f, "Invalid signature")
-            }
+            Self::InvalidSignature => write!(f, "Invalid signature"),
             Self::Malformed => write!(f, "Malformed token"),
             Self::Missing => write!(f, "Token missing"),
         }

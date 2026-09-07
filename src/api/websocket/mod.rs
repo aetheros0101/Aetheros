@@ -17,10 +17,13 @@ pub mod events;
 pub mod subscriptions;
 
 use axum::{
+    extract::Query,
     extract::State,
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    response::IntoResponse,
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
+use serde::Deserialize;
 use serde_json;
 use tracing::{
     debug,
@@ -28,8 +31,18 @@ use tracing::{
     warn,
 };
 
+use crate::api::middleware::authenticate_ws;
 use crate::api::rest::router::AppState;
 use crate::events::bus::SystemEvent;
+
+/// Tarayıcı WebSocket API'si custom header gönderemediği için kimlik
+/// bilgisi query string üzerinden taşınır: /ws?token=<jwt> veya
+/// /ws?api_key=<key>. Bkz. `crate::api::middleware::authenticate_ws`.
+#[derive(Debug, Deserialize)]
+pub struct WsAuthQuery {
+    pub token: Option<String>,
+    pub api_key: Option<String>,
+}
 
 /// WebSocket upgrade endpoint.
 /// Router'a şöyle eklenir:
@@ -37,10 +50,19 @@ use crate::events::bus::SystemEvent;
 pub async fn ws_upgrade_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| {
-        ws_handler(socket, state)
-    })
+    Query(auth): Query<WsAuthQuery>,
+) -> Response {
+    if !authenticate_ws(auth.token.as_deref(), auth.api_key.as_deref()) {
+        warn!("WebSocket bağlantısı reddedildi: geçersiz/eksik kimlik bilgisi");
+        return (
+            StatusCode::UNAUTHORIZED,
+            "Unauthorized: provide ?token=<jwt> or ?api_key=<key>",
+        )
+            .into_response();
+    }
+
+    ws.on_upgrade(move |socket| ws_handler(socket, state))
+        .into_response()
 }
 
 async fn ws_handler(

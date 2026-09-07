@@ -230,3 +230,23 @@ fn api_key_different_keys_different_hashes() {
     let key2 = ApiKey::new("key-two");
     assert_ne!(key1.hash(), key2.hash());
 }
+
+
+#[test]
+fn jwt_roundtrip_uses_valid_jwt_encoding() {
+    let manager = TokenManager::new("test-secret", 3600);
+    let token = manager.generate("user-1", Role::Operator);
+    let claims = manager.verify(&token.access_token).unwrap();
+    assert_eq!(claims.sub, "user-1");
+    assert_eq!(claims.role, Role::Operator);
+    assert_eq!(token.access_token.split('.').count(), 3);
+}
+
+#[test]
+fn jwt_tampering_is_rejected() {
+    let manager = TokenManager::new("test-secret", 3600);
+    let token = manager.generate("user-1", Role::Operator);
+    let mut parts: Vec<_> = token.access_token.split('.').map(str::to_string).collect();
+    parts[1].push('A');
+    assert_eq!(manager.verify(&parts.join(".")), Err(TokenError::InvalidSignature));
+}

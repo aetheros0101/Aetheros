@@ -93,6 +93,19 @@ impl Role {
     pub fn is_admin(&self) -> bool {
         matches!(self, Role::Admin)
     }
+
+    /// Bir string'i role'e çevir (case-insensitive). Bilinmeyen değerler
+    /// için `None` döner — çağıran taraf güvenli bir varsayılana
+    /// (ör. en düşük yetkili Viewer) düşmelidir, asla Admin'e değil.
+    pub fn parse(s: &str) -> Option<Role> {
+        match s.to_ascii_lowercase().as_str() {
+            "admin" => Some(Role::Admin),
+            "operator" => Some(Role::Operator),
+            "viewer" => Some(Role::Viewer),
+            "agent" => Some(Role::Agent),
+            _ => None,
+        }
+    }
 }
 
 // ── RbacGuard ─────────────────────────────────────────────

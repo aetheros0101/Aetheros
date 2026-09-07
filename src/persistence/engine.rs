@@ -35,6 +35,7 @@ use tokio::time::{
 use tracing::{debug, warn};
 
 use crate::errors::persistence::PersistenceError;
+use crate::persistence::encryption::{cipher_from_env, AtRestCipher};
 use crate::persistence::models::PersistedTask;
 use crate::task::task::TaskState;
 use crate::types::ids::TaskId;
@@ -43,6 +44,11 @@ pub struct PersistenceEngine {
     database: Db,
     tasks: Tree,
     snapshots: Tree,
+    /// At-rest şifreleme kancası — bkz. src/persistence/encryption.rs.
+    /// Şu an itibariyle NoopCipher (gerçek şifreleme yok, bkz. dosya
+    /// dokümantasyonu), ama tüm okuma/yazma buradan geçtiği için ileride
+    /// tek satırla değiştirilebilir.
+    cipher: Box<dyn AtRestCipher>,
 }
 
 impl PersistenceEngine {
@@ -64,6 +70,7 @@ impl PersistenceEngine {
             database,
             tasks,
             snapshots,
+            cipher: cipher_from_env(),
         })
     }
 
@@ -82,6 +89,9 @@ impl PersistenceEngine {
             .map_err(|_| {
                 PersistenceError::SerializationFailure
             })?;
+
+        // At-rest şifreleme kancasından geçir (bkz. persistence/encryption.rs).
+        let value = self.cipher.encrypt(&value)?;
 
         debug!(
             task_id = %task.task.id.0,
@@ -145,6 +155,7 @@ impl PersistenceEngine {
 
         match value {
             Some(bytes) => {
+                let bytes = self.cipher.decrypt(&bytes)?;
                 // MessagePack deserialize
                 let task = rmp_serde::from_slice(&bytes)
                     .map_err(|_| {
@@ -183,7 +194,20 @@ impl PersistenceEngine {
                 }
             };
 
-            match rmp_serde::from_slice::<PersistedTask>(&value) {
+            let decrypted = match self.cipher.decrypt(&value) {
+                Ok(d) => d,
+                Err(e) => {
+                    warn!(
+                        key = %String::from_utf8_lossy(&key),
+                        err = %e,
+                        "Kayıt şifre çözme hatası, atlanıyor"
+                    );
+                    skipped += 1;
+                    continue;
+                }
+            };
+
+            match rmp_serde::from_slice::<PersistedTask>(&decrypted) {
                 Ok(task)  => tasks.push(task),
                 Err(e)    => {
                     // Eski format (hex serde dönemi) veya schema değişikliği.
