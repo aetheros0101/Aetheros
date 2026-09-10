@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use tokio::time::timeout;
-use tracing::{debug, info};
+use tracing::info;
 
 use wasmi::{Engine, Linker, Module, Store};
 
@@ -29,6 +29,12 @@ use crate::wasm::WasmExecutor;
 
 #[derive(Clone)]
 pub struct WasmiHostContext {
+    /// wasmi 0.31'de fuel metering yok — bu alan bilinçli olarak
+    /// hazır tutuluyor (ileride epoch-interruption/fuel wiring için),
+    /// şu an okunmuyor. Zaman aşımı `execute()` içindeki
+    /// `tokio::time::timeout` ile sağlanıyor (bkz. madde #5:
+    /// bu, çalışan bir native thread'i zorla durdurmaz — bilinen sınır).
+    #[allow(dead_code)]
     fuel_limit: u64,
 }
 
@@ -53,6 +59,11 @@ impl Default for WasmiSandboxLimits {
 pub struct WasmiEngine {
     limits:       WasmiSandboxLimits,
     module_store: Arc<ModuleStore>,
+    /// `execute()` her çağrıda kendi `Engine::default()` kopyasını
+    /// oluşturuyor (spawn_blocking sınırı yüzünden), bu yüzden bu alan
+    /// şu an okunmuyor. Gelecekte engine'i thread'ler arasında paylaşıp
+    /// her task için yeniden oluşturmayı önlemek için burada tutuluyor.
+    #[allow(dead_code)]
     engine:       Engine,
 }
 
@@ -70,38 +81,15 @@ impl WasmiEngine {
         Arc::clone(&self.module_store)
     }
 
-    fn execute_sync(
-        &self,
-        binary: Arc<Vec<u8>>,
-        entrypoint: String,
-        _fuel_limit: u64, // wasmi 0.31: fuel metering yok, timeout ile sınırlanır
-    ) -> Result<Vec<u8>, WasmError> {
-        let module = Module::new(&self.engine, &binary[..])
-            .map_err(|e| WasmError::InvalidModule {
-                reason: e.to_string(),
-            })?;
-
-        let host_ctx = WasmiHostContext { fuel_limit: _fuel_limit };
-        let mut store = Store::new(&self.engine, host_ctx);
-
-        let mut linker = Linker::<WasmiHostContext>::new(&self.engine);
-
-        register_wasmi_host_functions(&mut linker)
-            .map_err(|e| WasmError::EngineFailure {
-                message: e.to_string(),
-            })?;
-
-        let instance = linker
-            .instantiate(&mut store, &module)
-            .map_err(|_| WasmError::ExecutionPanic)?
-            .start(&mut store)
-            .map_err(|_| WasmError::ExecutionPanic)?;
-
-        let output = call_entrypoint(&mut store, &instance, &entrypoint)?;
-
-        debug!(entrypoint = %entrypoint, "wasmi execution OK");
-        Ok(output)
-    }
+    // NOT: Burada daha önce `execute_sync` adında, aşağıdaki
+    // `WasmExecutor::execute()` ile neredeyse birebir aynı mantığı
+    // tekrar eden, hiçbir yerden çağrılmayan bir metod vardı (derleme
+    // uyarısı: "method execute_sync is never used"). Gerçek yürütme
+    // yolu `execute()` — `spawn_blocking` içinde kendi `Engine::default()`
+    // kopyasını oluşturuyor (self.engine'i DEĞİL). Kafa karıştırıcı ölü
+    // kod olduğu için kaldırıldı; `self.engine` alanı şu an sadece bu
+    // yapının kurucusunda set ediliyor, aktif olarak okunmuyor
+    // (bkz. alandaki #[allow(dead_code)] notu).
 }
 
 // ── WasmExecutor impl ─────────────────────────────────────

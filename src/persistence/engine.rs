@@ -276,4 +276,15 @@ impl PersistenceEngine {
     pub fn snapshots(&self) -> &Tree {
         &self.snapshots
     }
+
+    /// At-rest cipher'ı dışarıya sızdırmadan kullanmak isteyen diğer
+    /// depolama katmanları (ör. ModuleStore) için ince wrapper'lar.
+    /// Böylece "tek şifreleme noktası" PersistenceEngine'de kalır.
+    pub fn encrypt_bytes(&self, plaintext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
+        self.cipher.encrypt(plaintext)
+    }
+
+    pub fn decrypt_bytes(&self, ciphertext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
+        self.cipher.decrypt(ciphertext)
+    }
 }

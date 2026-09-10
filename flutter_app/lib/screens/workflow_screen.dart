@@ -150,7 +150,19 @@ class _WorkflowBuilderSheetState extends State<_WorkflowBuilderSheet> {
     _stepCounter++;
   }
 
-  void _removeStep(int index) => setState(() => _steps.removeAt(index));
+  void _removeStep(int index) {
+    setState(() {
+      final removedId = _steps[index].id;
+      _steps.removeAt(index);
+      // Silinen adıma bağlı kalan tüm bağımlılıkları temizle; aksi halde
+      // backend'e artık var olmayan bir step id'si gönderilir.
+      for (final step in _steps) {
+        step.dependsOn = step.dependsOn
+            .where((id) => id != removedId)
+            .toList(growable: false);
+      }
+    });
+  }
 
   Future<void> _submit() async {
     if (_nameCtrl.text.trim().isEmpty) {
@@ -179,6 +191,7 @@ class _WorkflowBuilderSheetState extends State<_WorkflowBuilderSheet> {
         ));
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() { _submitting = false; _error = e.toString(); });
     }
   }
@@ -561,7 +574,7 @@ class _EmptyState extends StatelessWidget {
       const Text('Henüz workflow yok',
           style: TextStyle(color: Colors.white54, fontSize: 16)),
       const SizedBox(height: 8),
-      const Text('Adımları sürükle-bırak ile oluştur',
+      const Text('Adımları ekleyip bağımlılıklarını seçerek oluştur',
           style: TextStyle(color: Colors.white38, fontSize: 13)),
       const SizedBox(height: 24),
       ElevatedButton.icon(

@@ -307,6 +307,7 @@ class _RegisterNodeSheetState extends State<_RegisterNodeSheet> {
         ));
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() { _submitting = false; _error = e.toString(); });
     }
   }

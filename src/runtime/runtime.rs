@@ -24,7 +24,7 @@ use tokio::sync::{
 };
 
 use crate::errors::runtime::RuntimeError;
-use crate::events::bus::{
+use crate::errors::persistence::PersistenceError;use crate::events::bus::{
     EventBus,
     SystemEvent,
 };
@@ -87,8 +87,15 @@ impl Runtime {
             )?,
         );
 
+        // DÜZELTME (madde #7): ModuleStore artık `persistence` ile aynı
+        // sled veritabanına write-through yapıyor ve açılışta mevcut
+        // modülleri geri yüklüyor — restart sonrası "module not found
+        // in store" ile başarısız olan recovered task'lar sorunu çözüldü.
         let module_store = Arc::new(
-            crate::wasm::module_store::ModuleStore::new()
+            crate::wasm::module_store::ModuleStore::with_persistence(
+                Arc::clone(&persistence),
+            )
+            .map_err(|_| RuntimeError::Persistence(PersistenceError::StorageFailure))?
         );
 
         // ── WASM Engine — derleme zamanında seçilir ───────────

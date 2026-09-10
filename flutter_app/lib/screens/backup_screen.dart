@@ -20,8 +20,6 @@ const _backupVersion = 1;
 const _kWasmModules = 'aetheros_wasm_modules';
 const _kWat         = 'script_editor_wat';
 const _kJson        = 'script_editor_json';
-const _kAiModel     = 'gemini_model';
-// _kAiKey HARİÇ — API key yedeğe dahil edilmez (güvenlik)
 
 class BackupScreen extends StatefulWidget {
   const BackupScreen({super.key});
@@ -51,10 +49,6 @@ class _BackupScreenState extends State<BackupScreen> {
           'wat':  p.getString(_kWat)  ?? '',
           'json': p.getString(_kJson) ?? '',
         },
-        'ai_settings': {
-          'model': p.getString(_kAiModel) ?? '',
-          // api_key bilerek dahil edilmedi
-        },
       };
 
       final jsonStr = const JsonEncoder.withIndent('  ').convert(data);
@@ -74,18 +68,20 @@ class _BackupScreenState extends State<BackupScreen> {
         bytes: utf8.encode(jsonStr),
       );
 
+      if (!mounted) return;
       setState(() {
         _lastExportPath = savePath ?? file.path;
         _message = '✅ Yedek oluşturuldu: $fname';
         _messageIsError = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _message = '❌ Export hatası: $e';
         _messageIsError = true;
       });
     } finally {
-      setState(() => _exporting = false);
+      if (mounted) setState(() => _exporting = false);
     }
   }
 
@@ -101,7 +97,7 @@ class _BackupScreenState extends State<BackupScreen> {
       );
 
       if (result == null || result.files.single.bytes == null) {
-        setState(() => _importing = false);
+        if (mounted) setState(() => _importing = false);
         return;
       }
 
@@ -109,13 +105,13 @@ class _BackupScreenState extends State<BackupScreen> {
       final data = jsonDecode(content) as Map<String, dynamic>;
 
       final version = data['aetheros_backup_version'] as int?;
-      if (version == null) {
-        throw const FormatException('Geçersiz yedek dosyası');
+      if (version != _backupVersion) {
+        throw FormatException('Desteklenmeyen yedek sürümü: $version');
       }
 
       final confirmed = await _confirmImport(data);
       if (confirmed != true) {
-        setState(() => _importing = false);
+        if (mounted) setState(() => _importing = false);
         return;
       }
 
@@ -138,32 +134,27 @@ class _BackupScreenState extends State<BackupScreen> {
         if (json != null && json.isNotEmpty) await p.setString(_kJson, json);
       }
 
-      // AI ayarları (sadece model, key hariç)
-      final aiSettings = data['ai_settings'] as Map<String, dynamic>?;
-      if (aiSettings != null) {
-        final model = aiSettings['model'] as String?;
-        if (model != null && model.isNotEmpty) {
-          await p.setString(_kAiModel, model);
-        }
-      }
-
+      if (!mounted) return;
       setState(() {
-        _message = '✅ Geri yükleme tamamlandı. '
-            '${modules?.length ?? 0} WASM modülü, script ve AI ayarları geri yüklendi.';
+        _message = '✅ Ayarlar geri yüklendi. '
+            '${modules?.length ?? 0} WASM modül kaydı ve script içeriği aktarıldı. '
+            'WASM binary dosyaları JSON yedeğine dahil değildir; AI API anahtarları yeniden girilmelidir.';
         _messageIsError = false;
       });
     } on FormatException catch (e) {
+      if (!mounted) return;
       setState(() {
         _message = '❌ Geçersiz dosya: ${e.message}';
         _messageIsError = true;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _message = '❌ Import hatası: $e';
         _messageIsError = true;
       });
     } finally {
-      setState(() => _importing = false);
+      if (mounted) setState(() => _importing = false);
     }
   }
 
@@ -262,12 +253,10 @@ class _BackupScreenState extends State<BackupScreen> {
               ]),
               const SizedBox(height: 8),
               const Text(
-                '• WASM modül kayıtları (hash + isim)\n'
-                '• Script Editör (WAT + Workflow JSON)\n'
-                '• AI model tercihi\n\n'
-                '⚠️ Gemini API anahtarı GÜVENLİK nedeniyle '
-                'yedeğe dahil edilmez — paylaşılan yedek dosyasında '
-                'API anahtarınız bulunmaz.',
+                '• WASM modül kayıtları (hash + isim; binary dahil değil)\n'
+                '• Script Editör (WAT + Workflow JSON)\n\n'
+                '⚠️ AI API anahtarları yedeğe dahil edilmez; hedef cihazda '
+                'yeniden yapılandırılmalıdır.',
                 style: TextStyle(color: Colors.white60, fontSize: 12, height: 1.6),
               ),
             ]),

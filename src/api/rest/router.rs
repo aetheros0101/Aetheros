@@ -11,8 +11,9 @@ use std::sync::Arc;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::{get, post},
+    Extension,
     Json,
     Router,
 };
@@ -25,10 +26,12 @@ use crate::agents::context::AgentContext;
 use crate::agents::executor::AgentExecutor;
 use crate::ai::routing::router::ProviderRouter;
 use crate::api::dashboard::dashboard_handler;
+use crate::api::middleware::AuthContext;
 use crate::events::bus::EventBus;
 use crate::metrics::runtime::RuntimeMetrics;
 use crate::persistence::engine::PersistenceEngine;
 use crate::runtime::api::RuntimeHandle;
+use crate::security::rbac::Action;
 use crate::task::priority::TaskPriority;
 use crate::task::retry::RetryPolicy;
 use crate::task::task::{
@@ -38,6 +41,35 @@ use crate::task::task::{
 };
 use crate::types::ids::TaskId;
 use crate::wasm::module_store::ModuleStore;
+
+/// `require_auth`/`require_admin` middleware'i `AuthContext`'i request
+/// extensions'a koyduktan sonra, mutasyon yapan handler'lar burada
+/// ince taneli (per-action) RBAC kontrolü yapar. `Role::can()`
+/// (bkz. security/rbac.rs) zaten tam tanımlıydı ama hiçbir route bunu
+/// çağırmıyordu — Viewer bile /tasks POST edebiliyordu. Bu fonksiyon
+/// izin yoksa 403 döner, varsa None döner (handler devam eder).
+///
+/// NOT: /modules ve /scripts için ayrı bir Action varyantı yok; ikisi
+/// de "keyfi kod çalıştırma" ile aynı risk sınıfında olduğu için
+/// Action::TaskSubmit ile aynı yetki seviyesini paylaşıyorlar.
+fn require_action(ctx: &AuthContext, action: Action) -> Option<Response> {
+    if ctx.role.can(&action) {
+        None
+    } else {
+        Some(
+            (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({
+                    "error": format!(
+                        "Role '{:?}' cannot perform this action ({:?})",
+                        ctx.role, action
+                    )
+                })),
+            )
+                .into_response(),
+        )
+    }
+}
 use crate::workflows::compiler::{StepDsl, WorkflowDsl};
 use crate::workflows::engine::WorkflowEngine;
 use crate::scripting::definition::ScriptDefinition;
@@ -127,7 +159,6 @@ pub fn build_router() -> Router<AppState> {
     let admin_routes = Router::new()
         .route("/cluster/nodes", post(register_node_handler))
         .route("/remote/command", post(remote_command_handler))
-        .route("/modules", post(upload_module_handler))
         .route_layer(middleware::from_fn(require_admin));
 
     let protected_routes = Router::new()
@@ -146,13 +177,25 @@ pub fn build_router() -> Router<AppState> {
         // Cluster / Remote (salt okunur uçlar — yazma admin_routes'ta)
         .route("/cluster/nodes",    get(list_nodes_handler))
         .route("/cluster/health",   get(cluster_health_handler))
-        // Modules (salt okunur uçlar — yükleme admin_routes'ta)
+        // Modules: POST burada, admin_routes'ta DEĞİL — bkz. not aşağıda.
+        .route("/modules",       post(upload_module_handler))
         .route("/modules",       get(list_modules_handler))
         .route("/modules/{hash}", get(get_module_handler))
         // Scripts
         .route("/scripts",      post(run_script_handler))
         .route("/scripts",      get(list_scripts_handler))
         .route_layer(middleware::from_fn(require_auth));
+
+    // NOT (2026-09-08 düzeltmesi): POST /modules başlangıçta admin_routes'taydı.
+    // Ama /tasks ve /scripts zaten Operator role'üne (X-Api-Key varsayılanı)
+    // rastgele WASM binary'sini DOĞRUDAN ÇALIŞTIRMA izni veriyor — bu, sadece
+    // bir binary'yi diske cache'lemekten (POST /modules) daha yüksek risk.
+    // Modülü admin-only bırakmak tutarsızdı ve Operator key'lerle stress
+    // testini/normal kullanımı sessizce 403'e düşürüyordu (boş hash/size
+    // dönüyor, hata mesajı JSON'da .error altında kalıyor). Artık /tasks ve
+    // /scripts ile aynı seviyede: require_auth yeterli. Gerçekten daha
+    // yüksek yetki gerektiren tek işlemler cluster topolojisi değişiklikleri
+    // ve /remote/command — onlar admin_routes'ta kalmaya devam ediyor.
 
     let ws_routes = Router::new()
         .route("/ws", get(crate::api::websocket::ws_upgrade_handler));
@@ -189,12 +232,27 @@ async fn metrics_handler(
     }))
 }
 
-// ── Task ──────────────────────────────────────────────────
+/// ModuleStoreError'ı uygun HTTP status'e çevirir. `PersistenceFailure`
+/// istemci hatası değil — sunucu tarafı bir disk/şifreleme sorunu,
+/// bu yüzden 503 döner; geri kalanı (boyut/sayı limiti, geçersiz
+/// binary) 400'dür.
+fn module_store_error_response(e: crate::wasm::module_store::ModuleStoreError) -> Response {
+    use crate::wasm::module_store::ModuleStoreError as MSE;
+    let status = match e {
+        MSE::PersistenceFailure => StatusCode::SERVICE_UNAVAILABLE,
+        _ => StatusCode::BAD_REQUEST,
+    };
+    (status, Json(serde_json::json!({ "error": format!("module store error: {e:?}") }))).into_response()
+}
 
 async fn submit_task_handler(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Json(req): Json<TaskSubmitRequest>,
 ) -> impl IntoResponse {
+    if let Some(resp) = require_action(&auth, Action::TaskSubmit) {
+        return resp;
+    }
     if req.wasm_module_hex.len() > MAX_WASM_HEX_BYTES
         || req.timeout_ms == 0
         || req.timeout_ms > MAX_TASK_TIMEOUT_MS
@@ -222,10 +280,7 @@ async fn submit_task_handler(
     // ModuleStore'a kaydet → SHA-256 hash al
     let wasm_module_hash = match state.module_store.store(wasm_bytes) {
         Ok(h) => h,
-        Err(e) => return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": format!("module store error: {e:?}") })),
-        ).into_response(),
+        Err(e) => return module_store_error_response(e),
     };
 
     let priority = match req.priority.as_deref() {
@@ -302,8 +357,12 @@ async fn task_state_handler(
 
 async fn cancel_task_handler(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Path(id): Path<Uuid>,
 ) -> impl IntoResponse {
+    if let Some(resp) = require_action(&auth, Action::TaskCancel) {
+        return resp;
+    }
     let task_id = TaskId(id);
     match state.persistence.update_task_state(&task_id, TaskState::Cancelled) {
         Ok(()) => (
@@ -321,8 +380,12 @@ async fn cancel_task_handler(
 
 async fn start_agent_handler(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Json(req): Json<AgentStartRequest>,
 ) -> impl IntoResponse {
+    if let Some(resp) = require_action(&auth, Action::AgentStart) {
+        return resp;
+    }
     if req.objective.trim().is_empty()
         || req.objective.len() > MAX_AGENT_OBJECTIVE_BYTES
         || req.max_steps == 0
@@ -398,8 +461,12 @@ async fn get_agent_handler(
 
 async fn submit_workflow_handler(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Json(req): Json<WorkflowSubmitRequest>,
 ) -> impl IntoResponse {
+    if let Some(resp) = require_action(&auth, Action::WorkflowSubmit) {
+        return resp;
+    }
     if req.name.trim().is_empty()
         || req.name.len() > MAX_WORKFLOW_NAME_BYTES
         || req.steps.len() > MAX_WORKFLOW_STEPS
@@ -615,8 +682,12 @@ pub struct RegisterNodeRequest {
 /// FRB'deki upload_wasm_module'ün REST karşılığı.
 async fn upload_module_handler(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Json(req): Json<ModuleUploadRequest>,
 ) -> impl IntoResponse {
+    if let Some(resp) = require_action(&auth, Action::TaskSubmit) {
+        return resp;
+    }
     if req.wasm_hex.len() > MAX_WASM_HEX_BYTES {
         return (
             StatusCode::PAYLOAD_TOO_LARGE,
@@ -641,10 +712,7 @@ async fn upload_module_handler(
                 "size": size,
             })),
         ).into_response(),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": format!("{e:?}") })),
-        ).into_response(),
+        Err(e) => module_store_error_response(e),
     }
 }
 
@@ -692,8 +760,12 @@ async fn get_module_handler(
 
 async fn run_script_handler(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Json(req): Json<ScriptRunRequest>,
 ) -> impl IntoResponse {
+    if let Some(resp) = require_action(&auth, Action::TaskSubmit) {
+        return resp;
+    }
     // hex → binary
     if req.wasm_hex.len() > MAX_WASM_HEX_BYTES
         || req.timeout_ms == 0
@@ -715,10 +787,7 @@ async fn run_script_handler(
     // ModuleStore'a kaydet → hash
     let wasm_module_hash = match state.module_store.store(wasm_binary.clone()) {
         Ok(h) => h,
-        Err(e) => return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": format!("module store error: {e:?}") })),
-        ).into_response(),
+        Err(e) => return module_store_error_response(e),
     };
 
     // ScriptRegistry'ye kaydet

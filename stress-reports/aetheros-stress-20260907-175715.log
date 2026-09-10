@@ -1,0 +1,16 @@
+
+╔════════════════════════════════════════════════════╗
+║  AetherOS Hardened Stress Test v5.1               ║
+╚════════════════════════════════════════════════════╝
+URL            : http://localhost:8080
+Ramp           : 10 25 50 100
+Parallel cap   : 20
+Auth mode      : api-key
+Report         : ./stress-reports/aetheros-stress-20260907-175715.log
+
+════════════════════════════════════════════════════
+  1. Ön Kontroller
+════════════════════════════════════════════════════
+awk: warning: escape sequence `\|' treated as plain `|'
+awk: warning: escape sequence `\|' treated as plain `|'
+  ✗ GET /health HTTP {"active_workers":0,"healthy":true,"version":"0.1.0"}|||200

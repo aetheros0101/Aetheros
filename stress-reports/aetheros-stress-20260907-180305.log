@@ -1,0 +1,24 @@
+
+╔════════════════════════════════════════════════════╗
+║  AetherOS Hardened Stress Test v5.2               ║
+╚════════════════════════════════════════════════════╝
+URL            : http://localhost:8080
+Ramp           : 10 25 50 100
+Parallel cap   : 20
+Auth mode      : api-key
+Report         : ./stress-reports/aetheros-stress-20260907-180305.log
+
+════════════════════════════════════════════════════
+  1. Ön Kontroller
+════════════════════════════════════════════════════
+  ✓ GET /health HTTP 200
+  ✓ Health healthy=true
+  → Version: 0.1.0
+
+════════════════════════════════════════════════════
+  2. Authentication / Authorization
+════════════════════════════════════════════════════
+  ✓ Eksik auth → 401
+  ✓ Tasks eksik auth → 401
+  ✗ Geçerli auth → /metrics HTTP 401
+  → Bu noktada 401 alırsan test payload'ı değil, sunucudaki AETHEROS_API_KEYS ile testteki key eşleşmiyor.

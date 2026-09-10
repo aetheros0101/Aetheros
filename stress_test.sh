@@ -19,6 +19,21 @@ MAX_CONCURRENT="${AETHEROS_MAX_CONCURRENT:-256}"
 TASK_CHANNEL="${AETHEROS_TASK_CHANNEL:-1024}"
 VERBOSE="${VERBOSE:-0}"
 
+# Sertleştirmeden sonra /health dışındaki tüm uçlar kimlik ister.
+# Sunucuyu başlatırken kullandığın AETHEROS_API_KEYS değerlerinden
+# birini buraya da ver:
+#   export AETHEROS_API_KEYS=devkey123
+#   export AETHEROS_API_KEY=devkey123     # (bu script için)
+#   cargo run --no-default-features --features backend-wasmi &
+#   bash stress_test.sh
+API_KEY="${AETHEROS_API_KEY:-}"
+CURL_AUTH_ARGS=()
+[[ -n "$API_KEY" ]] && CURL_AUTH_ARGS=(-H "X-Api-Key: ${API_KEY}")
+if [[ -z "$API_KEY" ]]; then
+  echo -e "\033[1;33mUYARI: AETHEROS_API_KEY ayarlanmadı — sunucuda AETHEROS_API_KEYS\033[0m"
+  echo -e "\033[1;33m  set edilmediyse tüm /health-dışı istekler 401 dönecektir.\033[0m"
+fi
+
 # ── Bağımlılık kontrolü ───────────────────────────────────
 for dep in curl jq awk bc; do
   if ! command -v "$dep" &>/dev/null; then
@@ -70,11 +85,13 @@ api() {
   if [[ -n "$body" ]]; then
     resp=$(curl -s -w '\n__STATUS__%{http_code}' \
       -X "$method" "${BASE_URL}${path}" \
+      "${CURL_AUTH_ARGS[@]}" \
       -H 'Content-Type: application/json' \
       -d "$body" 2>&1)
   else
     resp=$(curl -s -w '\n__STATUS__%{http_code}' \
-      -X "$method" "${BASE_URL}${path}" 2>&1)
+      -X "$method" "${BASE_URL}${path}" \
+      "${CURL_AUTH_ARGS[@]}" 2>&1)
   fi
   local body_part status_part
   body_part=$(echo "$resp" | sed '$d')
@@ -149,6 +166,7 @@ timed_task() {
   local start; start=$(ms_now)
   local resp; resp=$(curl -s -o /dev/null -w "%{http_code}" \
     -X POST "${BASE_URL}/tasks" \
+    "${CURL_AUTH_ARGS[@]}" \
     -H 'Content-Type: application/json' \
     -d "{\"entrypoint\":\"run\",\"wasm_module_hex\":\"${WASM_HEX}\",
          \"priority\":\"${priority}\",\"max_attempts\":${attempts}}")
@@ -168,6 +186,7 @@ submit_n_tasks() {
   for (( i=0; i<n; i++ )); do
     (
       resp=$(curl -s -X POST "${BASE_URL}/tasks" \
+        "${CURL_AUTH_ARGS[@]}" \
         -H 'Content-Type: application/json' \
         -d "{\"entrypoint\":\"run\",\"wasm_module_hex\":\"${WASM_HEX}\",
              \"priority\":\"${priority}\",\"max_attempts\":${attempts}}" \
@@ -195,7 +214,7 @@ submit_n_tasks() {
 
 # Metrics snapshot al
 get_metrics() {
-  curl -s "${BASE_URL}/metrics" 2>/dev/null || echo '{}'
+  curl -s "${CURL_AUTH_ARGS[@]}" "${BASE_URL}/metrics" 2>/dev/null || echo '{}'
 }
 
 # =============================================================
@@ -395,7 +414,7 @@ tps=$(echo "scale=1; $TP_N * 1000 / $tp_ms" | bc)
 info "Gönderim throughput: ${tps} task/sn"
 
 if (( $(echo "$tps < 30" | bc -l) )); then
-  warn "Throughput ${tps} task/sn < 30 — release build deneyin: cargo build --release"
+  warn "Throughput ${tps} task/sn < 30 — release build deneyin: cargo build --release --no-default-features --features backend-wasmi"
 else
   pass "Throughput ${tps} task/sn (dev build; release build'de 3-5x daha yüksek beklenir)"
 fi
@@ -419,6 +438,7 @@ for (( i=0; i<BP_N; i++ )); do
   (
     c=$(curl -s -o /dev/null -w "%{http_code}" \
       -X POST "${BASE_URL}/tasks" \
+      "${CURL_AUTH_ARGS[@]}" \
       -H 'Content-Type: application/json' \
       -d "{\"entrypoint\":\"run\",\"wasm_module_hex\":\"${WASM_HEX}\",\"max_attempts\":1}" \
       --max-time 5 2>/dev/null || echo "000")
@@ -789,6 +809,7 @@ header "BÖLÜM 11: WebSocket Testi"
 # =============================================================
 
 WS_URL="${BASE_URL/http/ws}/ws"
+[[ -n "$API_KEY" ]] && WS_URL="${WS_URL}?api_key=${API_KEY}"
 
 if ! command -v websocat &>/dev/null; then
   fail "WebSocket testi: websocat kurulu değil"

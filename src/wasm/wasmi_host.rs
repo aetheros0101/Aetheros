@@ -24,7 +24,7 @@ pub fn register_host_functions(
         .func_wrap(
             "env",
             "aetheros_log",
-            |mut caller: Caller<WasmiHostContext>, ptr: i32, len: i32| {
+            |caller: Caller<WasmiHostContext>, ptr: i32, len: i32| {
                 let mem = caller.get_export("memory")
                     .and_then(|e| e.into_memory());
                 if let Some(mem) = mem {

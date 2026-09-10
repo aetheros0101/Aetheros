@@ -177,6 +177,7 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
     final p = await SharedPreferences.getInstance();
     final wat  = p.getString(_watKey);
     final json = p.getString(_jsonKey);
+    if (!mounted) return;
     if (wat  != null) _watCtrl.text  = wat;
     if (json != null) _jsonCtrl.text = json;
     if (wat == null && json == null) {
@@ -196,9 +197,22 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
   }
 
   Future<void> _saveJson() async {
+    final source = _jsonCtrl.text.trim();
+    if (source.isEmpty) {
+      if (mounted) setState(() => _compileError = 'Workflow JSON boş.');
+      return;
+    }
+    try {
+      jsonDecode(source);
+    } on FormatException catch (e) {
+      if (mounted) setState(() => _compileError = 'Geçersiz JSON: ${e.message}');
+      return;
+    }
+
     final p = await SharedPreferences.getInstance();
-    await p.setString(_watKey,  _watCtrl.text);
-    await p.setString(_jsonKey, _jsonCtrl.text);
+    await p.setString(_watKey, _watCtrl.text);
+    await p.setString(_jsonKey, source);
+    if (!mounted) return;
     setState(() { _saved = true; _compileError = null; });
     await Future.delayed(const Duration(seconds: 2));
     if (mounted) setState(() => _saved = false);

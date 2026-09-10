@@ -142,8 +142,16 @@ class _ActiveModelSelector extends StatelessWidget {
                   style: const TextStyle(color: Colors.white, fontSize: 13)),
               onChanged: (v) async {
                 if (v == null) return;
-                await AiProviderService.setActive(v);
-                onChanged();
+                try {
+                  await AiProviderService.setActive(v);
+                  onChanged();
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Aktif model değiştirilemedi: $e'),
+                    backgroundColor: _red,
+                  ));
+                }
               },
             );
           }),
@@ -295,12 +303,14 @@ class _ProviderCardState extends State<_ProviderCard> {
     });
     try {
       final result = await AiProviderService.testProvider(widget.info.id);
+      if (!mounted) return;
       setState(() {
         _testing = false;
         _testOk = true;
-        _testMsg = result.substring(0, result.length.clamp(0, 80));
+        _testMsg = result.substring(0, result.length > 80 ? 80 : result.length);
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _testing = false;
         _testOk = false;

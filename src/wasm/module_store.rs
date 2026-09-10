@@ -22,6 +22,19 @@
 //   Submit:  TaskDefinition { wasm_module_hash, .. }
 //   Execute: WasmEngine → ModuleStore::get(hash) → binary
 //            → get_or_compile(binary) → Module cache hit
+//
+// DÜZELTME (2026-09-08, madde #7): Restart sonrası kaybolan modüller.
+//   ÖNCE: ModuleStore SADECE bellek-içi DashMap'ti. Task recovery
+//   (runtime.rs) restart sonrası tamamlanmamış görevleri sled'den
+//   doğru şekilde geri yüklüyordu, AMA o görevlerin referans verdiği
+//   WASM binary'si hiçbir yerde kalıcı değildi — recovered task hemen
+//   "module not found in store" ile Failed'e düşüyordu.
+//   SONRA: `ModuleStore::with_persistence()` ile açılan bir store,
+//   PersistenceEngine üzerinden sled'e (ayrı bir tree, aynı cipher ile
+//   şifrelenmiş) write-through yapar ve açılışta mevcut tüm modülleri
+//   DashMap'e geri yükler. `ModuleStore::new()` (parametresiz) hâlâ
+//   var — testler ve tamamen ephemeral kullanım için bilinçli olarak
+//   kalıcılıksız bırakıldı, geriye dönük uyumluluğu bozmaz.
 // ============================================================
 
 use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
@@ -33,8 +46,11 @@ use sha2::{
 };
 use tracing::{
     debug,
+    info,
     warn,
 };
+
+use crate::persistence::engine::PersistenceEngine;
 
 pub type ModuleHash = [u8; 32];
 
@@ -44,6 +60,8 @@ pub enum ModuleStoreError {
     InvalidBinary,
     SizeLimitExceeded,
     StoreLimitExceeded,
+    /// Diske yazma/okuma başarısız oldu (kalıcılık yapılandırılmışken).
+    PersistenceFailure,
 }
 
 impl std::fmt::Display for ModuleStoreError {
@@ -58,20 +76,29 @@ impl std::fmt::Display for ModuleStoreError {
             Self::InvalidBinary => write!(f, "Invalid WASM binary"),
             Self::SizeLimitExceeded => write!(f, "WASM module exceeds configured size limit"),
             Self::StoreLimitExceeded => write!(f, "WASM module store resource limit exceeded"),
+            Self::PersistenceFailure => write!(f, "WASM module could not be persisted to disk"),
         }
     }
+}
+
+/// Kalıcılık yapılandırıldığında kullanılan disk erişim tutamacı.
+struct ModuleDisk {
+    tree: sled::Tree,
+    engine: Arc<PersistenceEngine>,
 }
 
 pub struct ModuleStore {
     /// hash → Arc<Vec<u8>>
     ///
     /// Arc: binary birden fazla engine thread'inde
-    /// paylaşılabilir — kopya yok.
+    /// paylaşılabilir — kopya yok. Kalıcılık açıksa bu, sled'in
+    /// önündeki bir okuma önbelleğidir (write-through).
     modules: DashMap<ModuleHash, Arc<Vec<u8>>>,
     total_bytes: AtomicUsize,
     max_module_bytes: usize,
     max_modules: usize,
     max_total_bytes: usize,
+    disk: Option<ModuleDisk>,
 }
 
 impl ModuleStore {
@@ -82,7 +109,100 @@ impl ModuleStore {
             max_module_bytes: env_limit("AETHEROS_MAX_MODULE_SIZE_BYTES", 64 * 1024 * 1024),
             max_modules: env_limit("AETHEROS_MAX_MODULE_COUNT", 256),
             max_total_bytes: env_limit("AETHEROS_MAX_MODULE_TOTAL_BYTES", 512 * 1024 * 1024),
+            disk: None,
         }
+    }
+
+    /// `new()` ile aynı, ama modülleri `engine`'in sled veritabanında
+    /// (ayrı bir tree'de, PersistenceEngine'in at-rest cipher'ıyla
+    /// şifrelenmiş) kalıcı hale getirir ve açılışta mevcut modülleri
+    /// geri yükler. Üretim runtime'ı bunu kullanır (bkz. runtime.rs);
+    /// testler ephemeral `new()`'i kullanmaya devam eder.
+    pub fn with_persistence(
+        engine: Arc<PersistenceEngine>,
+    ) -> Result<Self, ModuleStoreError> {
+        let tree = engine
+            .database()
+            .open_tree("wasm_modules_v1")
+            .map_err(|_| ModuleStoreError::PersistenceFailure)?;
+
+        let store = Self {
+            modules: DashMap::new(),
+            total_bytes: AtomicUsize::new(0),
+            max_module_bytes: env_limit("AETHEROS_MAX_MODULE_SIZE_BYTES", 64 * 1024 * 1024),
+            max_modules: env_limit("AETHEROS_MAX_MODULE_COUNT", 256),
+            max_total_bytes: env_limit("AETHEROS_MAX_MODULE_TOTAL_BYTES", 512 * 1024 * 1024),
+            disk: Some(ModuleDisk { tree, engine }),
+        };
+        store.load_from_disk()?;
+        Ok(store)
+    }
+
+    /// Açılışta sled'deki tüm modülleri DashMap'e geri yükler.
+    /// `&self` yeterli: DashMap/AtomicUsize iç değişebilirlik kullanır.
+    fn load_from_disk(&self) -> Result<(), ModuleStoreError> {
+        let Some(disk) = &self.disk else { return Ok(()); };
+
+        let mut loaded = 0usize;
+        let mut total = 0usize;
+
+        for item in disk.tree.iter() {
+            let (key, value) = item.map_err(|_| ModuleStoreError::PersistenceFailure)?;
+
+            if key.len() != 32 {
+                warn!("ModuleStore: beklenmeyen anahtar uzunluğu, atlanıyor");
+                continue;
+            }
+            let mut hash: ModuleHash = [0u8; 32];
+            hash.copy_from_slice(&key);
+
+            let plaintext = match disk.engine.decrypt_bytes(&value) {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!(
+                        hash = %hex::encode(hash),
+                        error = %e,
+                        "ModuleStore: modül şifresi çözülemedi, atlanıyor"
+                    );
+                    continue;
+                }
+            };
+
+            total += plaintext.len();
+            self.modules.insert(hash, Arc::new(plaintext));
+            loaded += 1;
+        }
+
+        self.total_bytes.store(total, Ordering::Release);
+
+        if loaded > 0 {
+            info!(
+                count = loaded,
+                bytes = total,
+                "ModuleStore: disk üzerinden modüller geri yüklendi"
+            );
+        }
+
+        Ok(())
+    }
+
+    fn persist_to_disk(
+        &self,
+        hash: &ModuleHash,
+        binary: &[u8],
+    ) -> Result<(), ModuleStoreError> {
+        let Some(disk) = &self.disk else { return Ok(()); };
+
+        let ciphertext = disk
+            .engine
+            .encrypt_bytes(binary)
+            .map_err(|_| ModuleStoreError::PersistenceFailure)?;
+
+        disk.tree
+            .insert(hash, ciphertext)
+            .map_err(|_| ModuleStoreError::PersistenceFailure)?;
+
+        Ok(())
     }
 
     /// Binary'yi depola → hash döndür.
@@ -122,32 +242,62 @@ impl ModuleStore {
             }
         }
 
+        let arc_binary = Arc::new(binary);
+        let mut newly_inserted = false;
+
         match self.modules.entry(hash) {
             dashmap::mapref::entry::Entry::Vacant(entry) => {
-                entry.insert(Arc::new(binary));
+                entry.insert(Arc::clone(&arc_binary));
+                newly_inserted = true;
             }
             dashmap::mapref::entry::Entry::Occupied(_) => {
                 self.total_bytes.fetch_sub(size, Ordering::AcqRel);
             }
         }
 
+        // Kalıcılığa yaz (yapılandırılmışsa). Başarısız olursa isteği
+        // reddet ve bellekten geri al — "modüller restart'tan sağ
+        // çıkar" garantisini sessizce bozmamak için (bkz. madde #7).
+        if newly_inserted {
+            if let Err(e) = self.persist_to_disk(&hash, &arc_binary) {
+                self.modules.remove(&hash);
+                self.total_bytes.fetch_sub(size, Ordering::AcqRel);
+                warn!(hash = %hex::encode(hash), error = %e, "Modül diske yazılamadı, kayıt reddedildi");
+                return Err(ModuleStoreError::PersistenceFailure);
+            }
+        }
+
         debug!(
             hash = %hex::encode(hash),
+            persisted = self.disk.is_some(),
             "Module stored"
         );
 
         Ok(hash)
     }
 
-    /// Hash'e göre binary'yi al.
+    /// Hash'e göre binary'yi al. Bellekte yoksa (ör. eager-load bir
+    /// şekilde atladıysa) ve kalıcılık açıksa, sled'den lazy-load
+    /// dener — normal akışta gerekmez, ek güvenlik ağıdır.
     pub fn get(
         &self,
         hash: &ModuleHash,
     ) -> Result<Arc<Vec<u8>>, ModuleStoreError> {
-        self.modules
-            .get(hash)
-            .map(|entry| Arc::clone(&entry))
-            .ok_or(ModuleStoreError::NotFound(*hash))
+        if let Some(entry) = self.modules.get(hash) {
+            return Ok(Arc::clone(&entry));
+        }
+
+        if let Some(disk) = &self.disk {
+            if let Ok(Some(ciphertext)) = disk.tree.get(hash) {
+                if let Ok(plaintext) = disk.engine.decrypt_bytes(&ciphertext) {
+                    let arc = Arc::new(plaintext);
+                    self.modules.insert(*hash, Arc::clone(&arc));
+                    return Ok(arc);
+                }
+            }
+        }
+
+        Err(ModuleStoreError::NotFound(*hash))
     }
 
     /// Binary mevcutsa true.

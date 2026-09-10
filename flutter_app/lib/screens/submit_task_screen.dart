@@ -51,11 +51,13 @@ class _SubmitTaskScreenState extends State<SubmitTaskScreen> {
         timeoutMs:      _timeoutMs,
         maxRetries:     _maxRetries,
       );
+      if (!mounted) return;
       setState(() => _result = taskId);
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.toString());
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 

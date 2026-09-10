@@ -1,3 +1,10 @@
+// `#[frb(...)]` makroları (flutter_rust_bridge) derleme sırasında
+// `frb_expand` adında bir cfg üretiyor; rustc bunu "beklenmeyen cfg"
+// diye 13 kez uyarıyor. Zararsız bir uyumsuzluk (frb_macros'ın eski bir
+// check-cfg deklarasyonu) — `cargo update -p flutter_rust_bridge_macros`
+// ile düzelebilir ama garanti değil, bu yüzden şimdilik susturuyoruz.
+#![allow(unexpected_cfgs)]
+
 pub mod errors;
 pub mod events;
 pub mod metrics;

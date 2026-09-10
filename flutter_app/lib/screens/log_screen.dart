@@ -38,6 +38,7 @@ class _LogScreenState extends State<LogScreen> {
   final _scrollCtrl   = ScrollController();
   final _searchCtrl   = TextEditingController();
   Timer? _timer;
+  Timer? _searchDebounce;
 
   @override
   void initState() {
@@ -54,6 +55,7 @@ class _LogScreenState extends State<LogScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _searchDebounce?.cancel();
     _scrollCtrl.dispose();
     _searchCtrl.dispose();
     super.dispose();
@@ -214,8 +216,10 @@ class _LogScreenState extends State<LogScreen> {
                       borderSide: BorderSide.none),
                 ),
                 onChanged: (v) {
-                  setState(() => _taskSearch = v.trim());
-                  _fetch();
+                  final value = v.trim();
+                  setState(() => _taskSearch = value);
+                  _searchDebounce?.cancel();
+                  _searchDebounce = Timer(const Duration(milliseconds: 350), _fetch);
                 },
               ),
             ),

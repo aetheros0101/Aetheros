@@ -63,14 +63,32 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
   // ── Persistence ──────────────────────────────────────
 
   Future<void> _loadFromPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList(_prefsKey) ?? [];
-    setState(() {
-      _modules = raw
-          .map((s) => WasmModule.fromJson(jsonDecode(s) as Map<String, dynamic>))
-          .toList()
-        ..sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt));
-    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getStringList(_prefsKey) ?? [];
+      final modules = <WasmModule>[];
+
+      for (final rawEntry in raw) {
+        try {
+          final module = WasmModule.fromJson(
+            jsonDecode(rawEntry) as Map<String, dynamic>,
+          );
+          if (await AetherApi.checkModuleExists(module.hash)) {
+            modules.add(module);
+          }
+        } catch (_) {
+          // Bozuk/eski metadata kaydı tüm ekranı düşürmesin.
+        }
+      }
+
+      modules.sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt));
+      if (!mounted) return;
+      setState(() => _modules = modules);
+      await _saveToPrefs();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _uploadError = 'Modül listesi yüklenemedi: $e');
+    }
   }
 
   Future<void> _saveToPrefs() async {
@@ -93,7 +111,7 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
       );
 
       if (result == null || result.files.single.bytes == null) {
-        setState(() => _uploading = false);
+        if (mounted) setState(() => _uploading = false);
         return;
       }
 
@@ -109,6 +127,7 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
         uploadedAt: DateTime.now().millisecondsSinceEpoch,
       );
 
+      if (!mounted) return;
       setState(() {
         // Aynı hash varsa üzerine yaz
         _modules.removeWhere((m) => m.hash == module.hash);
@@ -118,15 +137,21 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
 
       if (mounted) _showSuccess(module);
     } catch (e) {
-      setState(() => _uploadError = e.toString());
+      if (mounted) setState(() => _uploadError = e.toString());
     } finally {
-      setState(() => _uploading = false);
+      if (mounted) setState(() => _uploading = false);
     }
   }
 
   Future<void> _deleteModule(WasmModule m) async {
+    if (!mounted) return;
     setState(() => _modules.remove(m));
-    await _saveToPrefs();
+    try {
+      await _saveToPrefs();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _uploadError = 'Modül listesi kaydedilemedi: $e');
+    }
   }
 
   void _copyHash(String hash) {

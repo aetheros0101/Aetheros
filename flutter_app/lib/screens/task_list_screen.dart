@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../api/aetheros_api.dart';
 import '../src/rust/api/aetheros.dart' as rust;
-import 'submit_task_screen.dart';
 
 enum _Filter { all, active, failed, completed }
 
@@ -134,15 +133,23 @@ class _TaskListScreenState extends State<TaskListScreen> {
   }
 
   Future<void> _retry(rust.TaskStatusResponse task) async {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('Task Gönder ekranı açılıyor...'),
-      backgroundColor: Color(0xFF6C63FF),
-      duration: Duration(seconds: 2),
-    ));
-    await Navigator.push(context,
-        MaterialPageRoute(builder: (_) => const SubmitTaskScreen()));
-    _load();
+    try {
+      final newTaskId = await AetherApi.resubmitTask(task.taskId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Task yeniden kuyruğa alındı: ${newTaskId.substring(0, 8)}…'),
+        backgroundColor: const Color(0xFF6C63FF),
+        duration: const Duration(seconds: 2),
+      ));
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Yeniden deneme başarısız: $e'),
+        backgroundColor: const Color(0xFFEF5350),
+        duration: const Duration(seconds: 3),
+      ));
+    }
   }
 }
 

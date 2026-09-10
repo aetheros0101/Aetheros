@@ -176,25 +176,27 @@ class AiProviderService {
       throw ArgumentError('${info.displayName} için API anahtarı gerekli');
     }
 
-    if (info.needsApiKey) {
-      await _secureStorage.write(key: _secureKeyFor(providerId), value: resolvedKey);
-    }
-
-    final prefs = await SharedPreferences.getInstance();
-    if (resolvedBaseUrl != null) {
-      await prefs.setString(_prefBaseUrl(providerId), resolvedBaseUrl);
-    }
-    await prefs.setString(_prefModel(providerId), resolvedModel);
-    await prefs.setBool(_prefEnabled(providerId), true);
-
-    // Rust router'a kaydet (henüz initializeRuntime çalışmadıysa hata fırlatır —
-    // çağıran taraf bunu yakalayıp kullanıcıya göstermeli).
+    // Önce runtime'a uygula. Böylece bridge başarısız olursa cihazda
+    // yarım/kullanılamaz bir provider kaydı bırakmayız.
     await aether.configureAiProvider(
       providerId: providerId,
       apiKey: resolvedKey,
       baseUrl: resolvedBaseUrl,
       model: resolvedModel,
     );
+
+    final prefs = await SharedPreferences.getInstance();
+    if (info.needsApiKey) {
+      await _secureStorage.write(
+        key: _secureKeyFor(providerId),
+        value: resolvedKey,
+      );
+    }
+    if (resolvedBaseUrl != null) {
+      await prefs.setString(_prefBaseUrl(providerId), resolvedBaseUrl);
+    }
+    await prefs.setString(_prefModel(providerId), resolvedModel);
+    await prefs.setBool(_prefEnabled(providerId), true);
 
     // İlk yapılandırılan provider otomatik aktif olsun.
     final currentActive = await getActiveProviderId();
@@ -205,9 +207,20 @@ class AiProviderService {
 
   /// Birden fazla provider yapılandırılmışsa kullanılacak olanı seç.
   static Future<void> setActive(String providerId) async {
+    final info = aiProviders.where((p) => p.id == providerId);
+    if (info.isEmpty) {
+      throw ArgumentError('Bilinmeyen AI provider: $providerId');
+    }
+
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefActive, providerId);
+    final enabled = prefs.getBool(_prefEnabled(providerId)) ?? false;
+    if (!enabled) {
+      throw StateError('Provider yapılandırılmadan aktif edilemez: $providerId');
+    }
+
+    // Önce Rust router'ı değiştir; başarıdan sonra kalıcı seçimi yaz.
     await aether.setActiveAiProvider(providerId: providerId);
+    await prefs.setString(_prefActive, providerId);
   }
 
   static Future<String?> getActiveProviderId() async {

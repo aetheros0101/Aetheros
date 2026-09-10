@@ -124,32 +124,36 @@ class _AiChatScreenState extends State<AiChatScreen> {
         maxTokens: 2048,
       );
 
+      if (!mounted) return;
       setState(() {
         _messages.add(ChatMessage(
             role: MessageRole.model, text: reply, timestamp: DateTime.now()));
       });
     } catch (e) {
-      setState(() {
-        _messages.add(ChatMessage(
-            role: MessageRole.model,
-            text: '⚠️ Bağlantı hatası: $e',
-            timestamp: DateTime.now()));
-      });
+      if (mounted) {
+        setState(() {
+          _messages.add(ChatMessage(
+              role: MessageRole.model,
+              text: '⚠️ Bağlantı hatası: $e',
+              timestamp: DateTime.now()));
+        });
+      }
     } finally {
-      setState(() => _loading = false);
-      _scrollToBottom();
+      if (mounted) {
+        setState(() => _loading = false);
+        _scrollToBottom();
+      }
     }
   }
 
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollCtrl.hasClients) {
-        _scrollCtrl.animateTo(
+      if (!mounted || !_scrollCtrl.hasClients) return;
+      _scrollCtrl.animateTo(
           _scrollCtrl.position.maxScrollExtent,
           duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
-      }
+        curve: Curves.easeOut,
+      );
     });
   }
 
