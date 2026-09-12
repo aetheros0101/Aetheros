@@ -191,18 +191,37 @@ impl ModelProvider for GeminiProvider {
             })?;
 
         let status = response.status();
-
+        
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
             warn!("Gemini rate limit aşıldı");
             return Err(AiError::RateLimited);
         }
-
-        let gemini_resp: GeminiResponse = response
-            .json()
-            .await
-            .map_err(|e| AiError::ProviderFailure {
-                message: format!("JSON parse hatası: {e}"),
-            })?;
+        
+        let body_text = response.text().await.map_err(|e| AiError::ProviderFailure {
+            message: format!("Yanıt gövdesi okunamadı: {e}"),
+        })?;
+        
+        let gemini_resp: GeminiResponse = match serde_json::from_str::<GeminiResponse>(&body_text) {
+            Ok(r) => r,
+            Err(obj_err) => match serde_json::from_str::<Vec<GeminiResponse>>(&body_text) {
+                Ok(mut arr) if !arr.is_empty() => arr.remove(0),
+                _ => {
+                    let snippet: String = body_text.chars().take(300).collect();
+                    warn!(http_status = %status, body = %snippet, "Gemini yanıtı parse edilemedi");
+                    return Err(AiError::ProviderFailure {
+                        message: format!(
+                            "JSON parse hatası: {obj_err} (HTTP {status}) — gövde: {snippet}"
+                        ),
+                    });
+                }
+            },
+        };
+        
+        if !status.is_success() && gemini_resp.error.is_none() {
+            return Err(AiError::ProviderFailure {
+                message: format!("Gemini HTTP {status} döndü (detay yok)"),
+            });
+        }
 
         // API hata yanıtı
         if let Some(err) = gemini_resp.error {

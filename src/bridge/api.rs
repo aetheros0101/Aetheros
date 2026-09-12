@@ -902,7 +902,7 @@ pub async fn test_ai_provider(provider_id: String) -> Result<String, String> {
 
     let request = crate::ai::inference::request::InferenceRequest::new(
         "Tek kelimeyle selam ver.",
-        16,
+        64,
     );
 
     let response = provider
