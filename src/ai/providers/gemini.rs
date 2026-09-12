@@ -64,10 +64,14 @@ struct GeminiResponse {
 #[derive(Debug, Deserialize)]
 struct GeminiCandidate {
     content: Option<GeminiResponseContent>,
+    #[serde(rename = "finishReason", default)]
+        finish_reason: Option<String>,
+    
 }
 
 #[derive(Debug, Deserialize)]
 struct GeminiResponseContent {
+#[serde(default)]
     parts: Vec<GeminiResponsePart>,
 }
 
@@ -243,6 +247,18 @@ impl ModelProvider for GeminiProvider {
             .and_then(|c| c.parts.first())
             .and_then(|p| p.text.clone())
             .unwrap_or_default();
+
+        let finish_reason = gemini_resp.candidates.as_ref()
+            .and_then(|c| c.first())
+            .and_then(|c| c.finish_reason.clone());
+
+        if output.is_empty() && finish_reason.as_deref() == Some("MAX_TOKENS") {
+            return Err(AiError::ProviderFailure {
+                message: "Gemini yanıtı 'thinking' için token bütçesini tükettiği \
+                          için boş döndü (finishReason=MAX_TOKENS) — max_tokens \
+                          değerini artırın.".to_string(),
+            });
+        }
 
         let tokens_used = gemini_resp
             .usage_metadata
