@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -6,6 +7,7 @@ import 'src/rust/frb_generated.dart';
 import 'src/rust/api/aetheros.dart' as aether;
 import 'screens/home_screen.dart';
 import 'services/ai_provider_service.dart';
+import 'core/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -53,13 +55,14 @@ class AetherOSApp extends StatelessWidget {
     return MaterialApp(
       title: 'AetherOS',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6C63FF),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
+      theme: buildAetherTheme(),
+      locale: const Locale('tr'),
+      supportedLocales: const [Locale('tr'), Locale('en')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       home: const HomeScreen(),
     );
   }

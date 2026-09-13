@@ -8,6 +8,9 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../api/aetheros_api.dart';
+import '../core/app_error.dart';
+import '../services/workflow_validator.dart';
+import '../core/app_theme.dart';
 
 // ── Şablonlar ─────────────────────────────────────────────
 
@@ -202,10 +205,9 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
       if (mounted) setState(() => _compileError = 'Workflow JSON boş.');
       return;
     }
-    try {
-      jsonDecode(source);
-    } on FormatException catch (e) {
-      if (mounted) setState(() => _compileError = 'Geçersiz JSON: ${e.message}');
+    final validation = WorkflowValidator.validateJson(source);
+    if (!validation.isValid) {
+      if (mounted) setState(() => _compileError = validation.errors.join('\n'));
       return;
     }
 
@@ -265,7 +267,7 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
           'Hash: ${result.hash.substring(0, 16)}…\n'
           'Boyut: ${result.size} bayt',
         ),
-        backgroundColor: const Color(0xFF4CAF50),
+        backgroundColor: AetherColors.success,
         duration: const Duration(seconds: 3),
       ));
 
@@ -276,7 +278,7 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
       if (!mounted) return;
       setState(() {
         _compiling    = false;
-        _compileError = e.toString().replaceFirst('Exception: ', '');
+        _compileError = userFacingError(e);
       });
     }
   }
@@ -286,7 +288,7 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A2E),
+        backgroundColor: AetherColors.surface,
         title: Text('${t.name} şablonu',
             style: const TextStyle(color: Colors.white, fontSize: 15)),
         content: const Text('Mevcut içerik değiştirilecek.',
@@ -302,7 +304,7 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
                 Navigator.pop(context);
               },
               child: const Text('Uygula',
-                  style: TextStyle(color: Color(0xFF6C63FF)))),
+                  style: TextStyle(color: AetherColors.primary))),
         ],
       ),
     );
@@ -313,7 +315,7 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
       content: Text('Kod kopyalandı'),
-      backgroundColor: Color(0xFF6C63FF),
+      backgroundColor: AetherColors.primary,
       duration: Duration(seconds: 1),
     ));
   }
@@ -329,9 +331,9 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
     final templates = isWat ? _watTemplates : _jsonTemplates;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F1A),
+      backgroundColor: AetherColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F0F1A),
+        backgroundColor: AetherColors.background,
         title: const Text('Script Editör',
             style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white70),
@@ -344,25 +346,30 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
                 width: 18, height: 18,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: Color(0xFF6C63FF),
+                  color: AetherColors.primary,
                 ),
               ),
             )
-          else
+          else ...[
+            if (_tabs.index == 0)
+              IconButton(
+                icon: const Icon(Icons.save_outlined, color: Colors.white70),
+                tooltip: 'WAT kaydet',
+                onPressed: () async {
+                  final p = await SharedPreferences.getInstance();
+                  await p.setString(_watKey, _watCtrl.text);
+                  if (mounted) setState(() => _saved = true);
+                },
+              ),
             IconButton(
               icon: Icon(
-                _saved
-                    ? Icons.check
-                    : (_tabs.index == 0 ? Icons.play_arrow : Icons.save),
-                color: _saved
-                    ? const Color(0xFF4CAF50)
-                    : (_tabs.index == 0
-                        ? const Color(0xFF6C63FF)
-                        : Colors.white70),
+                _tabs.index == 0 ? Icons.play_arrow : Icons.save,
+                color: _saved ? AetherColors.success : AetherColors.primary,
               ),
-              tooltip: _tabs.index == 0 ? 'Derle & Yükle' : 'Kaydet',
-              onPressed: _save,
+              tooltip: _tabs.index == 0 ? 'Derle & Yükle' : 'Workflow JSON kaydet',
+              onPressed: _tabs.index == 0 ? _compileAndUpload : _saveJson,
             ),
+          ],
           // Kopyala
           IconButton(
             icon: const Icon(Icons.copy, color: Colors.white70),
@@ -372,8 +379,8 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
         ],
         bottom: TabBar(
           controller: _tabs,
-          indicatorColor: const Color(0xFF6C63FF),
-          labelColor: const Color(0xFF6C63FF),
+          indicatorColor: AetherColors.primary,
+          labelColor: AetherColors.primary,
           unselectedLabelColor: Colors.white38,
           tabs: const [
             Tab(text: 'WAT  (WebAssembly Text)'),
@@ -396,7 +403,7 @@ class _ScriptEditorScreenState extends State<ScriptEditorScreen>
                 style: const TextStyle(
                     color: Color(0xFFFF8A80), fontSize: 11),
               )),
-              GestureDetector(
+              InkWell(
                 onTap: () => setState(() => _compileError = null),
                 child: const Icon(Icons.close,
                     color: Colors.white38, size: 14),
@@ -442,19 +449,19 @@ class _TemplateBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     height: 40,
-    color: const Color(0xFF0F0F1A),
+    color: AetherColors.background,
     child: Row(children: [
       Expanded(
         child: ListView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          children: templates.map((t) => GestureDetector(
+          children: templates.map((t) => InkWell(
             onTap: () => onSelect(t),
             child: Container(
               margin: const EdgeInsets.only(right: 6),
               padding: const EdgeInsets.symmetric(horizontal: 10),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A1A2E),
+                color: AetherColors.surface,
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(color: Colors.white10),
               ),
@@ -466,7 +473,7 @@ class _TemplateBar extends StatelessWidget {
         ),
       ),
       // Temizle
-      GestureDetector(
+      InkWell(
         onTap: onClear,
         child: const Padding(
           padding: EdgeInsets.symmetric(horizontal: 12),
@@ -582,7 +589,7 @@ class _CompilerNotice extends StatelessWidget {
     child: Row(children: [
       Icon(
         isWat ? Icons.rocket_launch : Icons.info_outline,
-        color: const Color(0xFF6C63FF),
+        color: AetherColors.primary,
         size: 14,
       ),
       const SizedBox(width: 8),

@@ -4,12 +4,16 @@
 // ============================================================
 
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 import '../api/aetheros_api.dart';
 import 'submit_task_screen.dart';
+import '../core/app_error.dart';
+import '../core/app_theme.dart';
 
 // ── Model ─────────────────────────────────────────────────
 
@@ -91,6 +95,18 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
     }
   }
 
+  Future<Directory> _binaryDir() async {
+    final root = await getApplicationSupportDirectory();
+    final dir = Directory('${root.path}/wasm');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return dir;
+  }
+
+  Future<File> _binaryFile(String hash) async {
+    final dir = await _binaryDir();
+    return File('${dir.path}/$hash.wasm');
+  }
+
   Future<void> _saveToPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
@@ -126,6 +142,8 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
         filename:   file.name,
         uploadedAt: DateTime.now().millisecondsSinceEpoch,
       );
+      // Keep a local binary cache so a backup can restore the actual WASM.
+      await (await _binaryFile(module.hash)).writeAsBytes(bytes, flush: true);
 
       if (!mounted) return;
       setState(() {
@@ -137,7 +155,7 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
 
       if (mounted) _showSuccess(module);
     } catch (e) {
-      if (mounted) setState(() => _uploadError = e.toString());
+      if (mounted) setState(() => _uploadError = userFacingError(e));
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
@@ -147,6 +165,8 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
     if (!mounted) return;
     setState(() => _modules.remove(m));
     try {
+      final binary = await _binaryFile(m.hash);
+      if (await binary.exists()) await binary.delete();
       await _saveToPrefs();
     } catch (e) {
       if (!mounted) return;
@@ -158,7 +178,7 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
     Clipboard.setData(ClipboardData(text: hash));
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
       content: Text('Hash kopyalandı'),
-      backgroundColor: Color(0xFF6C63FF),
+      backgroundColor: AetherColors.primary,
       duration: Duration(seconds: 1),
     ));
   }
@@ -166,7 +186,7 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
   void _showSuccess(WasmModule m) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('✅ ${m.filename} yüklendi (${_kb(m.size)})'),
-      backgroundColor: const Color(0xFF4CAF50),
+      backgroundColor: AetherColors.success,
       duration: const Duration(seconds: 3),
     ));
   }
@@ -176,9 +196,9 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F1A),
+      backgroundColor: AetherColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F0F1A),
+        backgroundColor: AetherColors.background,
         title: const Text('WASM Modüller',
             style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white70),
@@ -197,7 +217,7 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
             width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF6C63FF),
+                backgroundColor: AetherColors.primary,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
@@ -225,14 +245,14 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFEF5350).withOpacity(0.08),
+                color: AetherColors.danger.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                    color: const Color(0xFFEF5350).withOpacity(0.3)),
+                    color: AetherColors.danger.withOpacity(0.3)),
               ),
               child: Text(_uploadError!,
                   style: const TextStyle(
-                      color: Color(0xFFEF5350), fontSize: 12)),
+                      color: AetherColors.danger, fontSize: 12)),
             ),
           ),
 
@@ -271,7 +291,7 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A2E),
+        backgroundColor: AetherColors.surface,
         title: const Text('Modülü Sil',
             style: TextStyle(color: Colors.white)),
         content: Text(
@@ -286,7 +306,7 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
           TextButton(
               onPressed: () => Navigator.pop(context, true),
               child: const Text('Sil',
-                  style: TextStyle(color: Color(0xFFEF5350)))),
+                  style: TextStyle(color: AetherColors.danger))),
         ],
       ),
     );
@@ -296,7 +316,7 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
   void _showHelp() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: AetherColors.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => Padding(
@@ -322,12 +342,12 @@ class _WasmModuleScreenState extends State<WasmModuleScreen> {
               Container(
                 width: 22, height: 22,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF6C63FF).withOpacity(0.2),
+                  color: AetherColors.primary.withOpacity(0.2),
                   shape: BoxShape.circle,
                 ),
                 child: Center(child: Text(item.$1,
                     style: const TextStyle(
-                        color: Color(0xFF6C63FF), fontSize: 11,
+                        color: AetherColors.primary, fontSize: 11,
                         fontWeight: FontWeight.bold))),
               ),
               const SizedBox(width: 10),
@@ -369,15 +389,15 @@ class _ModuleCard extends StatelessWidget {
         DateTime.fromMillisecondsSinceEpoch(module.uploadedAt).toLocal();
     final dateStr =
         '${dt.day.toString().padLeft(2,'0')}.${dt.month.toString().padLeft(2,'0')}.${dt.year}  '
-        '${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}';
+        '${dt.hour.toString().padLeft(2,'0')}:${dt.minutuserFacingError(e).padLeft(2,'0')}';
 
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A2E),
+        color: AetherColors.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-            color: const Color(0xFF6C63FF).withOpacity(0.2)),
+            color: AetherColors.primary.withOpacity(0.2)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // Başlık satırı
@@ -385,11 +405,11 @@ class _ModuleCard extends StatelessWidget {
           Container(
             width: 36, height: 36,
             decoration: BoxDecoration(
-              color: const Color(0xFF6C63FF).withOpacity(0.12),
+              color: AetherColors.primary.withOpacity(0.12),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(Icons.memory,
-                color: Color(0xFF6C63FF), size: 18),
+                color: AetherColors.primary, size: 18),
           ),
           const SizedBox(width: 10),
           Expanded(child: Column(
@@ -403,7 +423,7 @@ class _ModuleCard extends StatelessWidget {
                 style: const TextStyle(color: Colors.white38, fontSize: 11)),
           ])),
           // Sil
-          GestureDetector(
+          InkWell(
             onTap: onDelete,
             child: const Padding(
               padding: EdgeInsets.all(4),
@@ -415,7 +435,7 @@ class _ModuleCard extends StatelessWidget {
         const SizedBox(height: 10),
 
         // Hash kutusu
-        GestureDetector(
+        InkWell(
           onTap: onCopyHash,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -439,7 +459,7 @@ class _ModuleCard extends StatelessWidget {
               ),
               const SizedBox(width: 6),
               const Icon(Icons.copy,
-                  color: Color(0xFF6C63FF), size: 14),
+                  color: AetherColors.primary, size: 14),
             ]),
           ),
         ),
@@ -449,23 +469,23 @@ class _ModuleCard extends StatelessWidget {
         Row(children: [
           _Chip(label: _sizeStr(module.size), icon: Icons.data_usage),
           const Spacer(),
-          GestureDetector(
+          InkWell(
             onTap: onSubmitTask,
             child: Container(
               padding: const EdgeInsets.symmetric(
                   horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFF6C63FF).withOpacity(0.15),
+                color: AetherColors.primary.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                    color: const Color(0xFF6C63FF).withOpacity(0.4)),
+                    color: AetherColors.primary.withOpacity(0.4)),
               ),
               child: const Row(children: [
-                Icon(Icons.send, color: Color(0xFF6C63FF), size: 13),
+                Icon(Icons.send, color: AetherColors.primary, size: 13),
                 SizedBox(width: 5),
                 Text('Task Gönder',
                     style: TextStyle(
-                        color: Color(0xFF6C63FF),
+                        color: AetherColors.primary,
                         fontSize: 11,
                         fontWeight: FontWeight.bold)),
               ]),
@@ -515,8 +535,8 @@ class _EmptyState extends StatelessWidget {
       const SizedBox(height: 20),
       OutlinedButton.icon(
         style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xFF6C63FF),
-          side: const BorderSide(color: Color(0xFF6C63FF)),
+          foregroundColor: AetherColors.primary,
+          side: const BorderSide(color: AetherColors.primary),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10)),
         ),

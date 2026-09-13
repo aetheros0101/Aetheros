@@ -11,12 +11,14 @@
 import 'package:flutter/material.dart';
 
 import '../services/ai_provider_service.dart';
+import '../core/app_error.dart';
+import '../core/app_theme.dart';
 
-const _bg = Color(0xFF0F0F1A);
-const _card = Color(0xFF1A1A2E);
-const _accent = Color(0xFF6C63FF);
-const _green = Color(0xFF4CAF50);
-const _red = Color(0xFFEF5350);
+const _bg = AetherColors.background;
+const _card = AetherColors.surface;
+const _accent = AetherColors.primary;
+const _green = AetherColors.success;
+const _red = AetherColors.danger;
 
 class AiSettingsScreen extends StatefulWidget {
   const AiSettingsScreen({super.key});
@@ -229,6 +231,46 @@ class _ProviderCardState extends State<_ProviderCard> {
     }
     if (widget.info.id == 'ollama') {
       _fetchOllamaModels(silent: true);
+    } else if (widget.info.needsApiKey && (cfg?.apiKey?.isNotEmpty ?? false)) {
+      _fetchCloudModels(silent: true);
+    }
+  }
+
+  Future<void> _fetchCloudModels({bool silent = false}) async {
+    final key = _keyCtrl.text.trim();
+    if (key.isEmpty) {
+      if (!silent) _showSnack('Önce API anahtarını gir', isError: true);
+      return;
+    }
+
+    setState(() => _fetchingModels = true);
+    try {
+      final models = await AiProviderService.discoverModels(
+        providerId: widget.info.id,
+        apiKey: key,
+      );
+      if (!mounted) return;
+
+      setState(() {
+        _modelOptions = models;
+        if (models.isNotEmpty &&
+            (_model.isEmpty || !models.any((m) => m.value == _model))) {
+          _model = models.first.value;
+          _modelCtrl.text = _model;
+        }
+        _fetchingModels = false;
+      });
+
+      if (!silent && models.isEmpty) {
+        _showSnack('Bu hesap için kullanılabilir sohbet modeli bulunamadı',
+            isError: true);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _fetchingModels = false);
+      if (!silent) {
+        _showSnack('Model listesi alınamadı: ${userFacingError(e)}', isError: true);
+      }
     }
   }
 
@@ -241,7 +283,7 @@ class _ProviderCardState extends State<_ProviderCard> {
       if (!mounted) return;
       setState(() {
         _modelOptions = models
-            .map((m) => AiModelOption(m, m))
+            .map((m) => AiModelOption(m, m, providerId: 'ollama'))
             .toList(growable: false);
         if (models.isNotEmpty && !models.contains(_model)) {
           _model = models.first;
@@ -264,6 +306,20 @@ class _ProviderCardState extends State<_ProviderCard> {
       return;
     }
 
+    if (_model.trim().isEmpty) {
+      if (_modelOptions.isNotEmpty) {
+        _model = _modelOptions.first.value;
+      } else {
+        _showSnack(
+          info.needsApiKey
+              ? 'Önce “Modelleri getir” ile kullanılabilir bir model seç'
+              : 'Model adı gir',
+          isError: true,
+        );
+        return;
+      }
+    }
+
     setState(() => _saving = true);
     try {
       await AiProviderService.save(
@@ -277,7 +333,7 @@ class _ProviderCardState extends State<_ProviderCard> {
       widget.onChanged();
       setState(() => _expanded = false);
     } catch (e) {
-      _showSnack('Kaydedilemedi: $e', isError: true);
+      _showSnack('Kaydedilemedi: ${userFacingError(e)}', isError: true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -314,7 +370,7 @@ class _ProviderCardState extends State<_ProviderCard> {
       setState(() {
         _testing = false;
         _testOk = false;
-        _testMsg = e.toString();
+        _testMsg = userFacingError(e);
       });
     }
   }
@@ -464,20 +520,45 @@ class _ProviderCardState extends State<_ProviderCard> {
         ],
 
         // ── Model seçimi ──────────────────────────────────
-        _label('Model'),
+        Row(
+          children: [
+            Expanded(child: _label('Model')),
+            if (info.needsApiKey)
+              TextButton.icon(
+                onPressed: _fetchingModels ? null : () => _fetchCloudModels(),
+                style: TextButton.styleFrom(
+                  foregroundColor: _accent,
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                icon: _fetchingModels
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _accent,
+                        ),
+                      )
+                    : const Icon(Icons.sync, size: 15),
+                label: Text(_fetchingModels ? 'Getiriliyor...' : 'Modelleri getir'),
+              ),
+          ],
+        ),
         const SizedBox(height: 6),
         _modelOptions.isEmpty
             ? TextField(
                 controller: _modelCtrl,
                 style: const TextStyle(color: Colors.white, fontSize: 13),
-                decoration: _inputDecoration(hint: widget.info.defaultModel),
+                decoration: _inputDecoration(hint: info.needsApiKey ? 'Model ID (isteğe bağlı)' : info.defaultModel),
                 onChanged: (v) =>
                     _model = v.trim().isEmpty ? widget.info.defaultModel : v.trim(),
               )
             : Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0F0F1A),
+                  color: AetherColors.background,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: Colors.white12),
                 ),
@@ -596,7 +677,7 @@ class _ProviderCardState extends State<_ProviderCard> {
       hintText: hint,
       hintStyle: const TextStyle(color: Colors.white24),
       filled: true,
-      fillColor: const Color(0xFF0F0F1A),
+      fillColor: AetherColors.background,
       border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
       focusedBorder: OutlineInputBorder(

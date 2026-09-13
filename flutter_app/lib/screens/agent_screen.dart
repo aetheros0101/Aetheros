@@ -7,11 +7,13 @@
 //   • Execution detayı (durum, süre, hata)
 // ============================================================
 
-import 'dart:async';
+import '../core/lifecycle_poller.dart';
+import '../core/app_error.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../api/aetheros_api.dart';
 import '../src/rust/api/aetheros.dart' as rust;
+import '../core/app_theme.dart';
 
 class AgentScreen extends StatefulWidget {
   const AgentScreen({super.key});
@@ -22,17 +24,18 @@ class AgentScreen extends StatefulWidget {
 class _AgentScreenState extends State<AgentScreen> {
   List<rust.AgentStatusResponse> _agents = [];
   bool   _loading   = true;
-  Timer? _timer;
+  late final LifecyclePoller _poller;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _load(silent: true));
+    _poller = LifecyclePoller(interval: const Duration(seconds: 3), onTick: () => _load(silent: true));
+    _poller.start();
   }
 
   @override
-  void dispose() { _timer?.cancel(); super.dispose(); }
+  void dispose() { _poller.stop(); super.dispose(); }
 
   Future<void> _load({bool silent = false}) async {
     if (!silent && mounted) setState(() => _loading = true);
@@ -48,7 +51,7 @@ class _AgentScreenState extends State<AgentScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: AetherColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -59,7 +62,7 @@ class _AgentScreenState extends State<AgentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D1A),
+      backgroundColor: AetherColors.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         title: const Text('Agent Yönetimi',
@@ -74,12 +77,12 @@ class _AgentScreenState extends State<AgentScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showNewAgentDialog,
-        backgroundColor: const Color(0xFF6C63FF),
+        backgroundColor: AetherColors.primary,
         icon: const Icon(Icons.smart_toy, color: Colors.white),
         label: const Text('Yeni Agent', style: TextStyle(color: Colors.white)),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF6C63FF)))
+          ? const Center(child: CircularProgressIndicator(color: AetherColors.primary))
           : _agents.isEmpty
               ? _EmptyState(onNew: _showNewAgentDialog)
               : ListView.builder(
@@ -96,7 +99,7 @@ class _AgentScreenState extends State<AgentScreen> {
   void _showDetail(rust.AgentStatusResponse agent) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: AetherColors.surface,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -141,12 +144,12 @@ class _NewAgentSheetState extends State<_NewAgentSheet> {
         widget.onCreated();
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Agent başlatıldı'),
-          backgroundColor: Color(0xFF6C63FF),
+          backgroundColor: AetherColors.primary,
         ));
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() { _submitting = false; _error = e.toString(); });
+      setState(() { _submitting = false; _error = userFacingError(e); });
     }
   }
 
@@ -222,7 +225,7 @@ class _NewAgentSheetState extends State<_NewAgentSheet> {
             label: Text(_submitting ? 'Başlatılıyor…' : 'Başlat',
                 style: const TextStyle(color: Colors.white, fontSize: 16)),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6C63FF),
+              backgroundColor: AetherColors.primary,
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
@@ -247,13 +250,13 @@ class _AgentCard extends StatelessWidget {
     final icon    = _statusIcon(status);
     final elapsed = _elapsed(agent.startedAt, agent.finishedAt);
 
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A2E),
+          color: AetherColors.surface,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: color.withOpacity(0.3)),
         ),
@@ -305,9 +308,9 @@ class _AgentCard extends StatelessWidget {
   }
 
   Color _statusColor(String s) => switch (s) {
-    'completed' => const Color(0xFF4CAF50),
+    'completed' => AetherColors.success,
     'failed'    => const Color(0xFFFF5252),
-    'running'   => const Color(0xFF6C63FF),
+    'running'   => AetherColors.primary,
     _           => Colors.white38,
   };
 
@@ -370,11 +373,11 @@ class _AgentDetailSheet extends StatelessWidget {
                   duration: Duration(seconds: 1),
                 ));
               },
-              icon: const Icon(Icons.copy, size: 16, color: Color(0xFF6C63FF)),
+              icon: const Icon(Icons.copy, size: 16, color: AetherColors.primary),
               label: const Text('Execution ID Kopyala',
-                  style: TextStyle(color: Color(0xFF6C63FF))),
+                  style: TextStyle(color: AetherColors.primary)),
               style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFF6C63FF))),
+                  side: const BorderSide(color: AetherColors.primary)),
             ),
           ),
         ]),
@@ -405,7 +408,7 @@ class _EmptyState extends StatelessWidget {
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text('Yeni Agent', style: TextStyle(color: Colors.white)),
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF6C63FF),
+          backgroundColor: AetherColors.primary,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       ),
@@ -421,13 +424,13 @@ class _StepChip extends StatelessWidget {
   const _StepChip({required this.label, required this.value,
       required this.selected, required this.onTap});
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) => InkWell(
     onTap: onTap,
     child: Container(
       margin: const EdgeInsets.only(left: 6),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: selected ? const Color(0xFF6C63FF) : const Color(0xFF252540),
+        color: selected ? AetherColors.primary : const Color(0xFF252540),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(label,
@@ -474,7 +477,7 @@ InputDecoration _inputDeco(String label, String hint) => InputDecoration(
   ),
   focusedBorder: OutlineInputBorder(
     borderRadius: BorderRadius.circular(10),
-    borderSide: const BorderSide(color: Color(0xFF6C63FF)),
+    borderSide: const BorderSide(color: AetherColors.primary),
   ),
   filled: true,
   fillColor: const Color(0xFF252540),

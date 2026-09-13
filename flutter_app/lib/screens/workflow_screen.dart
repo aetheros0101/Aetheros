@@ -7,11 +7,15 @@
 //   • Workflow detayı (durum, adımlar, süre)
 // ============================================================
 
-import 'dart:async';
+import 'dart:convert';
+import '../core/lifecycle_poller.dart';
+import '../core/app_error.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../api/aetheros_api.dart';
 import '../src/rust/api/aetheros.dart' as rust;
+import '../core/app_theme.dart';
 
 class WorkflowScreen extends StatefulWidget {
   const WorkflowScreen({super.key});
@@ -22,17 +26,56 @@ class WorkflowScreen extends StatefulWidget {
 class _WorkflowScreenState extends State<WorkflowScreen> {
   List<rust.WorkflowStatusResponse> _workflows = [];
   bool   _loading = true;
-  Timer? _timer;
+  late final LifecyclePoller _poller;
+
+  // Rust tarafı bir workflow'un orijinal adım tanımını geri döndürmüyor
+  // (WorkflowStatusResponse sadece durum metadata'sı taşıyor) — bu yüzden
+  // "yeniden çalıştır" için adımları burada, uygulama oturumu boyunca
+  // client-side önbelleğe alıyoruz. NOT: Uygulama yeniden başlatılırsa bu
+  // önbellek sıfırlanır; o durumda eski bir workflow retry edilemez,
+  // yeniden oluşturulması gerekir.
+  final Map<String, List<rust.WorkflowStepRequest>> _stepsCache = {};
 
   @override
   void initState() {
     super.initState();
+    _restoreStepCache();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _load(silent: true));
+    _poller = LifecyclePoller(interval: const Duration(seconds: 3), onTick: () => _load(silent: true));
+    _poller.start();
   }
 
   @override
-  void dispose() { _timer?.cancel(); super.dispose(); }
+  void dispose() { _poller.stop(); super.dispose(); }
+
+  Future<void> _restoreStepCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in prefs.getKeys().where((k) => k.startsWith('workflow_steps_'))) {
+      final workflowId = key.substring('workflow_steps_'.length);
+      final raw = prefs.getStringList(key) ?? const [];
+      final steps = <rust.WorkflowStepRequest>[];
+      for (final value in raw) {
+        try {
+          final m = jsonDecode(value) as Map<String, dynamic>;
+          steps.add(rust.WorkflowStepRequest(
+            id: m['id'].toString(), name: m['name'].toString(),
+            kind: m['kind'].toString(), entrypoint: m['entrypoint']?.toString(),
+            dependsOn: (m['dependsOn'] as List? ?? const []).map((e) => e.toString()).toList(),
+            retryable: m['retryable'] == true,
+          ));
+        } catch (_) {}
+      }
+      if (steps.isNotEmpty) _stepsCache[workflowId] = steps;
+    }
+  }
+
+  Future<void> _persistStepCache(String workflowId, List<rust.WorkflowStepRequest> steps) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('workflow_steps_$workflowId', steps.map((s) => jsonEncode({
+      'id': s.id, 'name': s.name, 'kind': s.kind, 'entrypoint': s.entrypoint,
+      'dependsOn': s.dependsOn, 'retryable': s.retryable,
+    })).toList());
+  }
 
   Future<void> _load({bool silent = false}) async {
     if (!silent && mounted) setState(() => _loading = true);
@@ -44,22 +87,57 @@ class _WorkflowScreenState extends State<WorkflowScreen> {
     }
   }
 
+  void _onWorkflowCreated(rust.WorkflowStartResponse resp, List<rust.WorkflowStepRequest> steps) {
+    _stepsCache[resp.workflowId] = steps;
+    _persistStepCache(resp.workflowId, steps);
+    _load();
+  }
+
+  Future<void> _retry(rust.WorkflowStatusResponse wf) async {
+    final steps = _stepsCache[wf.workflowId];
+    if (steps == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Bu workflow için adım bilgisi bulunamadı '
+            '(uygulama yeniden başlatılmış olabilir) — yeni workflow oluştur.'),
+        backgroundColor: Colors.redAccent,
+      ));
+      return;
+    }
+    try {
+      final resp = await AetherApi.startWorkflow(name: wf.name, steps: steps);
+      _stepsCache[resp.workflowId] = steps;
+      await _persistStepCache(resp.workflowId, steps);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Workflow yeniden başlatıldı'),
+        backgroundColor: Color(0xFFE8A838),
+      ));
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Yeniden çalıştırılamadı: $e'),
+        backgroundColor: Colors.redAccent,
+      ));
+    }
+  }
+
   void _showBuilder() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: AetherColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _WorkflowBuilderSheet(onCreated: _load),
+      builder: (_) => _WorkflowBuilderSheet(onCreated: _onWorkflowCreated),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D1A),
+      backgroundColor: AetherColors.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         title: const Text('Workflow Yönetimi',
@@ -88,6 +166,7 @@ class _WorkflowScreenState extends State<WorkflowScreen> {
                   itemBuilder: (_, i) => _WorkflowCard(
                     workflow: _workflows[i],
                     onTap: () => _showDetail(_workflows[i]),
+                    onRetry: () => _retry(_workflows[i]),
                   ),
                 ),
     );
@@ -97,11 +176,17 @@ class _WorkflowScreenState extends State<WorkflowScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: AetherColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _WorkflowDetailSheet(workflow: wf),
+      builder: (_) => _WorkflowDetailSheet(
+        workflow: wf,
+        onRetry: () {
+          Navigator.pop(context);
+          _retry(wf);
+        },
+      ),
     );
   }
 }
@@ -127,7 +212,7 @@ class _WorkflowStep {
 }
 
 class _WorkflowBuilderSheet extends StatefulWidget {
-  final VoidCallback onCreated;
+  final void Function(rust.WorkflowStartResponse, List<rust.WorkflowStepRequest>) onCreated;
   const _WorkflowBuilderSheet({required this.onCreated});
   @override State<_WorkflowBuilderSheet> createState() => _WorkflowBuilderSheetState();
 }
@@ -169,6 +254,10 @@ class _WorkflowBuilderSheetState extends State<_WorkflowBuilderSheet> {
       setState(() => _error = 'Workflow adı boş olamaz.');
       return;
     }
+    if (_steps.isEmpty) {
+      setState(() => _error = 'En az bir adım eklemeden workflow çalıştırılamaz.');
+      return;
+    }
     setState(() { _submitting = true; _error = null; });
 
     final steps = _steps.map((s) => rust.WorkflowStepRequest(
@@ -181,10 +270,10 @@ class _WorkflowBuilderSheetState extends State<_WorkflowBuilderSheet> {
     )).toList();
 
     try {
-      await AetherApi.startWorkflow(name: _nameCtrl.text.trim(), steps: steps);
+      final resp = await AetherApi.startWorkflow(name: _nameCtrl.text.trim(), steps: steps);
       if (mounted) {
         Navigator.pop(context);
-        widget.onCreated();
+        widget.onCreated(resp, steps);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Workflow başlatıldı'),
           backgroundColor: Color(0xFFE8A838),
@@ -192,7 +281,7 @@ class _WorkflowBuilderSheetState extends State<_WorkflowBuilderSheet> {
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() { _submitting = false; _error = e.toString(); });
+      setState(() { _submitting = false; _error = userFacingError(e); });
     }
   }
 
@@ -390,7 +479,7 @@ class _StepCard extends StatelessWidget {
             ),
             ...availableIds.map((id) {
               final selected = step.dependsOn.contains(id);
-              return GestureDetector(
+              return InkWell(
                 onTap: () {
                   if (selected) step.dependsOn.remove(id);
                   else step.dependsOn.add(id);
@@ -402,7 +491,7 @@ class _StepCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: selected
                         ? const Color(0xFFE8A838).withOpacity(0.2)
-                        : const Color(0xFF1A1A2E),
+                        : AetherColors.surface,
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(
                       color: selected
@@ -431,7 +520,8 @@ class _StepCard extends StatelessWidget {
 class _WorkflowCard extends StatelessWidget {
   final rust.WorkflowStatusResponse workflow;
   final VoidCallback onTap;
-  const _WorkflowCard({required this.workflow, required this.onTap});
+  final VoidCallback onRetry;
+  const _WorkflowCard({required this.workflow, required this.onTap, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -445,13 +535,13 @@ class _WorkflowCard extends StatelessWidget {
         ? _fmt(end.difference(start))
         : _fmt(DateTime.now().difference(start));
 
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A2E),
+          color: AetherColors.surface,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: color.withOpacity(0.3)),
         ),
@@ -476,6 +566,15 @@ class _WorkflowCard extends StatelessWidget {
                       fontSize: 11, fontFamily: 'monospace')),
             ],
           )),
+          // Yeniden çalıştır — koşum bitmiş (completed/failed) her workflow
+          // için gösterilir; hâlâ çalışan (running) bir tanesini tekrar
+          // tetiklemek anlamsız olduğu için sadece bitmişlerde çıkar.
+          if (status != 'running')
+            IconButton(
+              icon: const Icon(Icons.replay, color: Colors.white54, size: 20),
+              tooltip: 'Yeniden çalıştır',
+              onPressed: onRetry,
+            ),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -496,7 +595,7 @@ class _WorkflowCard extends StatelessWidget {
   }
 
   Color _statusColor(String s) => switch (s) {
-    'completed' => const Color(0xFF4CAF50),
+    'completed' => AetherColors.success,
     'failed'    => const Color(0xFFFF5252),
     'running'   => const Color(0xFFE8A838),
     _           => Colors.white38,
@@ -513,7 +612,8 @@ class _WorkflowCard extends StatelessWidget {
 
 class _WorkflowDetailSheet extends StatelessWidget {
   final rust.WorkflowStatusResponse workflow;
-  const _WorkflowDetailSheet({required this.workflow});
+  final VoidCallback onRetry;
+  const _WorkflowDetailSheet({required this.workflow, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -538,6 +638,18 @@ class _WorkflowDetailSheet extends StatelessWidget {
           if (workflow.error != null)
             _Row('Hata', workflow.error!, errorColor: true),
           const SizedBox(height: 16),
+          if (workflow.status != 'running')
+            SizedBox(width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.replay, size: 18, color: Colors.white),
+                label: const Text('Yeniden Çalıştır',
+                    style: TextStyle(color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE8A838)),
+              ),
+            ),
+          const SizedBox(height: 10),
           SizedBox(width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () {
@@ -596,13 +708,13 @@ class _KindChip extends StatelessWidget {
   final VoidCallback onTap;
   const _KindChip({required this.label, required this.selected, required this.onTap});
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) => InkWell(
     onTap: onTap,
     child: Container(
       margin: const EdgeInsets.only(left: 6),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: selected ? const Color(0xFFE8A838) : const Color(0xFF1A1A2E),
+        color: selected ? const Color(0xFFE8A838) : AetherColors.surface,
         borderRadius: BorderRadius.circular(6),
         border: Border.all(
           color: selected ? const Color(0xFFE8A838) : Colors.white24),

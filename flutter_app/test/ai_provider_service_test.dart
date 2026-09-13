@@ -29,13 +29,11 @@ void main() {
           reason: 'Tekrarlayan provider id bulundu: $ids');
     });
 
-    test('her provider için id, displayName ve defaultModel boş değil', () {
+    test('her provider için id ve displayName boş değil', () {
       for (final p in aiProviders) {
         expect(p.id.isNotEmpty, isTrue, reason: 'boş id');
         expect(p.displayName.isNotEmpty, isTrue,
             reason: '${p.id}: boş displayName');
-        expect(p.defaultModel.isNotEmpty, isTrue,
-            reason: '${p.id}: boş defaultModel');
       }
     });
 
@@ -46,6 +44,14 @@ void main() {
           expect(p.defaultBaseUrl.isNotEmpty, isTrue,
               reason: '${p.id}: needsBaseUrl=true ama defaultBaseUrl boş');
         }
+      }
+    });
+
+    test('cloud provider modelleri runtime keşfine bırakıyor', () {
+      for (final id in ['anthropic', 'openai', 'gemini']) {
+        final provider = aiProviderById(id);
+        expect(provider.modelOptions, isEmpty, reason: '$id sabit model listesi içermemeli');
+        expect(provider.defaultModel, isEmpty, reason: '$id sabit default model içermemeli');
       }
     });
 

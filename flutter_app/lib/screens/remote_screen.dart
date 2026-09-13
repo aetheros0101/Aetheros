@@ -7,10 +7,12 @@
 //   • Yeni node kayıt
 // ============================================================
 
-import 'dart:async';
+import '../core/lifecycle_poller.dart';
+import '../core/app_error.dart';
 import 'package:flutter/material.dart';
 import '../api/aetheros_api.dart';
 import '../src/rust/api/aetheros.dart' as rust;
+import '../core/app_theme.dart';
 
 class RemoteScreen extends StatefulWidget {
   const RemoteScreen({super.key});
@@ -21,17 +23,18 @@ class RemoteScreen extends StatefulWidget {
 class _RemoteScreenState extends State<RemoteScreen> {
   rust.ClusterStatusResponse? _cluster;
   bool   _loading = true;
-  Timer? _timer;
+  late final LifecyclePoller _poller;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) => _load(silent: true));
+    _poller = LifecyclePoller(interval: const Duration(seconds: 5), onTick: () => _load(silent: true));
+    _poller.start();
   }
 
   @override
-  void dispose() { _timer?.cancel(); super.dispose(); }
+  void dispose() { _poller.stop(); super.dispose(); }
 
   Future<void> _load({bool silent = false}) async {
     if (!silent && mounted) setState(() => _loading = true);
@@ -47,7 +50,7 @@ class _RemoteScreenState extends State<RemoteScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: AetherColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -61,7 +64,7 @@ class _RemoteScreenState extends State<RemoteScreen> {
     final healthColor = _healthColor(health);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D1A),
+      backgroundColor: AetherColors.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         title: const Text('Cluster / Remote',
@@ -90,7 +93,7 @@ class _RemoteScreenState extends State<RemoteScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A2E),
+                    color: AetherColors.surface,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: healthColor.withOpacity(0.4)),
                   ),
@@ -124,12 +127,12 @@ class _RemoteScreenState extends State<RemoteScreen> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF4CAF50).withOpacity(0.15),
+                              color: AetherColors.success.withOpacity(0.15),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: const Text('Quorum ✓',
                                 style: TextStyle(
-                                    color: Color(0xFF4CAF50), fontSize: 11)),
+                                    color: AetherColors.success, fontSize: 11)),
                           ),
                       ]),
                       const SizedBox(height: 12),
@@ -143,7 +146,7 @@ class _RemoteScreenState extends State<RemoteScreen> {
                         _StatPill(
                           label: 'Sağlıklı',
                           value: '${_cluster?.healthy ?? 0}',
-                          color: const Color(0xFF4CAF50),
+                          color: AetherColors.success,
                         ),
                         if (_cluster?.leader != null) ...[
                           const SizedBox(width: 10),
@@ -177,7 +180,7 @@ class _RemoteScreenState extends State<RemoteScreen> {
   }
 
   Color _healthColor(String h) => switch (h) {
-    'Healthy'  => const Color(0xFF4CAF50),
+    'Healthy'  => AetherColors.success,
     'Degraded' => const Color(0xFFFF9800),
     'Critical' => const Color(0xFFFF5252),
     _          => Colors.white38,
@@ -201,14 +204,14 @@ class _NodeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final healthy = node.healthy;
     final color   = healthy
-        ? const Color(0xFF4CAF50)
+        ? AetherColors.success
         : const Color(0xFFFF5252);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A2E),
+        color: AetherColors.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: color.withOpacity(0.3)),
       ),
@@ -255,7 +258,7 @@ class _NodeCard extends StatelessWidget {
           _Metric(label: 'Çalışan',
               value: '${node.activeExecutions}',
               color: node.activeExecutions > 0
-                  ? const Color(0xFF6C63FF)
+                  ? AetherColors.primary
                   : Colors.white38),
         ]),
       ]),
@@ -263,7 +266,7 @@ class _NodeCard extends StatelessWidget {
   }
 
   Color _cpuColor(double pct) {
-    if (pct < 50) return const Color(0xFF4CAF50);
+    if (pct < 50) return AetherColors.success;
     if (pct < 80) return const Color(0xFFFF9800);
     return const Color(0xFFFF5252);
   }
@@ -308,7 +311,7 @@ class _RegisterNodeSheetState extends State<_RegisterNodeSheet> {
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() { _submitting = false; _error = e.toString(); });
+      setState(() { _submitting = false; _error = userFacingError(e); });
     }
   }
 

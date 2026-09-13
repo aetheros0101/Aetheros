@@ -82,3 +82,8 @@ Stres testinde `completed=0`, `failed=2119` görülmesi tek başına Flutter bug
 8. Ollama local/LAN bağlantı testi.
 9. Backup/export/import ve eksik binary davranışı.
 10. Release signing + APK/AAB build.
+
+
+## 2026-09-13 — Dinamik AI model discovery uygulandı
+
+Cloud provider'ların model listeleri artık runtime'da resmi API kataloglarından getiriliyor. OpenAI, Anthropic ve Gemini için hard-coded model seçenekleri kaldırıldı; Ollama dinamik keşif davranışı korundu. Ayrıntılar `FLUTTER_PRO_REVIEW.md` içindedir.

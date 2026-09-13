@@ -19,6 +19,7 @@ import 'agent_screen.dart';
 import 'workflow_screen.dart';
 import 'remote_screen.dart';
 import 'settings_screen.dart';
+import '../core/app_theme.dart';
 
 // ── Provider ──────────────────────────────────────────────────
 
@@ -37,15 +38,15 @@ class HomeScreen extends ConsumerWidget {
     final metrics = ref.watch(metricsProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F1A),
+      backgroundColor: AetherColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F0F1A),
+        backgroundColor: AetherColors.background,
         title: const Row(children: [
           _AetherLogo(),
           SizedBox(width: 10),
           Text('AetherOS',
               style: TextStyle(
-                  color: Color(0xFF6C63FF),
+                  color: AetherColors.primary,
                   fontWeight: FontWeight.bold,
                   fontSize: 22,
                   letterSpacing: 1.2)),
@@ -117,7 +118,7 @@ class HomeScreen extends ConsumerWidget {
               width: double.infinity,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF6C63FF),
+                  backgroundColor: AetherColors.primary,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
@@ -174,7 +175,7 @@ class _QuickActions extends StatelessWidget {
             color: const Color(0xFF4DB6AC), onTap: onWasm),
         const SizedBox(width: 10),
         _Tile(icon: Icons.code,       label: 'Script\nEditör',
-            color: const Color(0xFFFFB74D), onTap: onScript),
+            color: AetherColors.warning, onTap: onScript),
       ]),
       const SizedBox(height: 10),
 
@@ -184,7 +185,7 @@ class _QuickActions extends StatelessWidget {
             color: const Color(0xFF7E57C2), onTap: onTasks),
         const SizedBox(width: 10),
         _Tile(icon: Icons.auto_awesome,         label: 'AI\nAsistan',
-            color: const Color(0xFF6C63FF), onTap: onAi),
+            color: AetherColors.primary, onTap: onAi),
       ]),
       const SizedBox(height: 10),
 
@@ -204,32 +205,32 @@ class _QuickActions extends StatelessWidget {
             color: const Color(0xFF78909C), onTap: onLogs),
         const SizedBox(width: 10),
         _Tile(icon: Icons.hub,          label: 'Remote\nCluster',
-            color: const Color(0xFF42A5F5), onTap: onRemote),
+            color: AetherColors.info, onTap: onRemote),
       ]),
       const SizedBox(height: 10),
 
       // Satır 5: Yedekleme — tam genişlik
-      GestureDetector(
+      InkWell(
         onTap: onBackup,
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: const Color(0xFF42A5F5).withOpacity(0.08),
+            color: AetherColors.info.withOpacity(0.08),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-                color: const Color(0xFF42A5F5).withOpacity(0.25)),
+                color: AetherColors.info.withOpacity(0.25)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(Icons.shield_outlined,
-                  color: const Color(0xFF42A5F5).withOpacity(0.85),
+                  color: AetherColors.info.withOpacity(0.85),
                   size: 20),
               const SizedBox(width: 8),
               Text('Yedekleme / Geri Yükleme',
                   style: TextStyle(
-                      color: const Color(0xFF42A5F5).withOpacity(0.85),
+                      color: AetherColors.info.withOpacity(0.85),
                       fontSize: 12,
                       fontWeight: FontWeight.bold)),
             ],
@@ -255,7 +256,7 @@ class _Tile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Expanded(
-    child: GestureDetector(
+    child: InkWell(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14),
@@ -296,11 +297,11 @@ class _RuntimeStatusCard extends StatelessWidget {
         return Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1A2E),
+            color: AetherColors.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isRunning
-                  ? const Color(0xFF6C63FF).withOpacity(0.4)
+                  ? AetherColors.primary.withOpacity(0.4)
                   : Colors.red.withOpacity(0.3),
             ),
           ),
@@ -309,10 +310,10 @@ class _RuntimeStatusCard extends StatelessWidget {
               width: 10, height: 10,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isRunning ? const Color(0xFF4CAF50) : Colors.red,
+                color: isRunning ? AetherColors.success : Colors.red,
                 boxShadow: [BoxShadow(
                   color: (isRunning
-                      ? const Color(0xFF4CAF50)
+                      ? AetherColors.success
                       : Colors.red).withOpacity(0.6),
                   blurRadius: 6,
                 )],
@@ -355,11 +356,11 @@ class _MetricsGrid extends StatelessWidget {
     physics: const NeverScrollableScrollPhysics(),
     children: [
       _MetricTile(label: 'Tamamlandı',     value: snapshot?.completedTasks,
-          color: const Color(0xFF4CAF50),  icon: Icons.check_circle_outline),
+          color: AetherColors.success,  icon: Icons.check_circle_outline),
       _MetricTile(label: 'Başarısız',      value: snapshot?.failedTasks,
-          color: const Color(0xFFEF5350),  icon: Icons.error_outline),
+          color: AetherColors.danger,  icon: Icons.error_outline),
       _MetricTile(label: 'Kuyrukta',       value: snapshot?.queuedTasks,
-          color: const Color(0xFFFFB74D),  icon: Icons.hourglass_bottom),
+          color: AetherColors.warning,  icon: Icons.hourglass_bottom),
       _MetricTile(label: 'Yeniden Deneme', value: snapshot?.retriedTasks,
           color: const Color(0xFF7E57C2),  icon: Icons.refresh),
     ],
@@ -411,7 +412,7 @@ class _AetherLogo extends StatelessWidget {
     width: 32, height: 32,
     decoration: BoxDecoration(
       gradient: const LinearGradient(
-          colors: [Color(0xFF6C63FF), Color(0xFF3F51B5)],
+          colors: [AetherColors.primary, Color(0xFF3F51B5)],
           begin: Alignment.topLeft, end: Alignment.bottomRight),
       borderRadius: BorderRadius.circular(8),
     ),

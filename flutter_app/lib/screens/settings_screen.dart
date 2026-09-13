@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../api/aetheros_api.dart';
 import '../src/rust/api/aetheros.dart' as rust;
 import 'ai_settings_screen.dart';
+import '../core/app_theme.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -42,7 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D1A),
+      backgroundColor: AetherColors.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         title: const Text(
@@ -61,7 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF1A1A2E),
+              color: AetherColors.surface,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.white12),
             ),
@@ -80,7 +81,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     icon: const Icon(Icons.tune, size: 18),
                     label: const Text('AI Provider Ayarları'),
                     style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF6C63FF),
+                      backgroundColor: AetherColors.primary,
                       padding: const EdgeInsets.symmetric(vertical: 13),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
@@ -114,7 +115,7 @@ class _SectionHeader extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 10),
         child: Row(
           children: [
-            Icon(icon, color: const Color(0xFF6C63FF), size: 17),
+            Icon(icon, color: AetherColors.primary, size: 17),
             const SizedBox(width: 8),
             Text(
               label,
@@ -140,7 +141,7 @@ class _RuntimeCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A2E),
+        color: AetherColors.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white12),
       ),
@@ -150,7 +151,7 @@ class _RuntimeCard extends StatelessWidget {
               child: Center(
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: Color(0xFF6C63FF),
+                  color: AetherColors.primary,
                 ),
               ),
             )
@@ -170,7 +171,7 @@ class _RuntimeCard extends StatelessWidget {
                       'Durum',
                       info!.isRunning ? 'Aktif' : 'Durdu',
                       color: info!.isRunning
-                          ? const Color(0xFF4CAF50)
+                          ? AetherColors.success
                           : const Color(0xFFFF5252),
                     ),
                   ],

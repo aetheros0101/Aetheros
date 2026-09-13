@@ -1,41 +1,26 @@
 // ============================================================
-// flutter_app/lib/services/ai_provider_service.dart
-// Haziran 2026 — Çoklu AI provider yapılandırması
+// AetherOS — AI provider configuration
 //
-// Kullanıcı API key girerek bir modeli aktif eder:
-//   - Anthropic / OpenAI  → ücretli, API key gerekir
-//   - Gemini              → ücretsiz tier, API key gerekir
-//   - Ollama (local)      → key gerekmez, kullanıcı kendi
-//                            cihazında/ağında indirdiği modele bağlanır
+// Model selection is runtime-driven:
+//   - OpenAI / Anthropic / Gemini: official provider model catalog is queried
+//     after the user supplies an API key.
+//   - Ollama: models are queried from the configured Ollama host.
+//   - No cloud model ID is treated as a permanent application constant.
 //
-// Birden fazla provider yapılandırılmışsa hangisinin kullanılacağına
-// kullanıcı karar verir (setActive) — otomatik fallback YOK.
-//
-// DEPOLAMA:
-//   API key'ler  → flutter_secure_storage (şifreli, Android Keystore)
-//   Diğer ayarlar (model, host, aktif provider) → shared_preferences
-//
-// ÖNEMLİ — REHYDRATE:
-//   Rust tarafındaki ProviderRouter in-memory'dir; uygulama her
-//   yeniden başladığında sıfırlanır. Bu yüzden initializeRuntime()
-//   başarılı olduktan SONRA rehydrateFromStorage() çağrılmalı —
-//   aksi halde Ayarlar'da "kayıtlı" görünen provider'lar Rust
-//   tarafında sessizce kayıp olur. Bkz. main.dart.
+// API keys are stored only in flutter_secure_storage. Model/base-url/active
+// provider metadata is stored in SharedPreferences.
 // ============================================================
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'ai_model.dart';
+import 'ai_model_catalog.dart';
+
 import '../src/rust/api/aetheros.dart' as aether;
 
 // ── Provider metadata ──────────────────────────────────────
-
-class AiModelOption {
-  final String value;
-  final String label;
-  const AiModelOption(this.value, this.label);
-}
 
 class AiProviderInfo {
   final String id;
@@ -67,30 +52,19 @@ const List<AiProviderInfo> aiProviders = [
     displayName: 'Anthropic Claude',
     needsApiKey: true,
     needsBaseUrl: false,
-    defaultModel: 'claude-sonnet-4-6',
-    modelOptions: [
-      AiModelOption('claude-sonnet-4-6', 'Claude Sonnet 4.6 (Önerilen)'),
-      AiModelOption('claude-opus-4-7', 'Claude Opus 4.7 (En güçlü)'),
-      AiModelOption('claude-haiku-4-5-20251001', 'Claude Haiku 4.5 (En hızlı/ucuz)'),
-    ],
-    helpText: '1. console.anthropic.com adresine git\n'
-        '2. "API Keys" → "Create Key"\n'
-        '3. Ücretli — kullanım bazlı faturalandırma',
+    defaultModel: '',
+    modelOptions: const [],
+    helpText: 'API anahtarını gir ve modelleri sağlayıcıdan dinamik olarak getir.',
     helpUrl: 'https://console.anthropic.com',
   ),
   AiProviderInfo(
     id: 'openai',
-    displayName: 'OpenAI GPT',
+    displayName: 'OpenAI',
     needsApiKey: true,
     needsBaseUrl: false,
-    defaultModel: 'gpt-5.5',
-    modelOptions: [
-      AiModelOption('gpt-5.5', 'GPT-5.5 (Önerilen, flagship)'),
-      AiModelOption('gpt-5.4-mini', 'GPT-5.4 Mini (Daha ucuz/hızlı)'),
-    ],
-    helpText: '1. platform.openai.com/api-keys adresine git\n'
-        '2. "Create new secret key"\n'
-        '3. Ücretli — kullanım bazlı faturalandırma',
+    defaultModel: '',
+    modelOptions: const [],
+    helpText: 'API anahtarını gir ve modelleri OpenAI hesabından dinamik olarak getir.',
     helpUrl: 'https://platform.openai.com/api-keys',
   ),
   AiProviderInfo(
@@ -98,14 +72,9 @@ const List<AiProviderInfo> aiProviders = [
     displayName: 'Google Gemini',
     needsApiKey: true,
     needsBaseUrl: false,
-    defaultModel: 'gemini-flash-latest',
-    modelOptions: [
-      AiModelOption('gemini-flash-latest', 'Gemini Flash (En Güncel — Ücretsiz)'),
-      AiModelOption('gemini-pro-latest', 'Gemini Pro (En Güncel — Sınırlı Ücretsiz)'),
-    ],
-    helpText: '1. aistudio.google.com adresine git\n'
-        '2. "Get API Key" → "Create API Key"\n'
-        '3. Ücretsiz tier: dakikada 15 istek, günde 1500 istek',
+    defaultModel: '',
+    modelOptions: const [],
+    helpText: 'API anahtarını gir ve modelleri Google hesabından dinamik olarak getir.',
     helpUrl: 'https://aistudio.google.com',
   ),
   AiProviderInfo(
@@ -308,6 +277,17 @@ class AiProviderService {
         debugPrint('AI aktif provider rehydrate hatası: $e');
       }
     }
+  }
+
+  /// Cloud provider modellerini sağlayıcının resmi model kataloğundan getir.
+  ///
+  /// API anahtarı yalnızca bu istek için kullanılır; kalıcı kayıt yine
+  /// flutter_secure_storage üzerinden yapılır.
+  static Future<List<AiModelOption>> discoverModels({
+    required String providerId,
+    required String apiKey,
+  }) {
+    return AiModelCatalog.list(providerId: providerId, apiKey: apiKey);
   }
 
   /// Ollama sunucusunda yüklü modelleri listele (Ayarlar dropdown'ı için).

@@ -1,26 +1,23 @@
-// ============================================================
-// flutter_app/lib/screens/backup_screen.dart
-// Sprint 5 — Yedekleme / Geri Yükleme (Export/Import JSON)
-//
-// Kapsam: WASM modül listesi, Script Editör içeriği (WAT+JSON),
-// AI ayarları (model seçimi — API key HARİÇ, güvenlik).
-// ============================================================
-
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+
+import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const _backupVersion = 1;
+import '../api/aetheros_api.dart';
+import '../core/app_error.dart';
+import '../core/app_theme.dart';
 
-// SharedPreferences anahtarları (diğer ekranlarla aynı olmalı)
+const _backupVersion = 2;
 const _kWasmModules = 'aetheros_wasm_modules';
-const _kWat         = 'script_editor_wat';
-const _kJson        = 'script_editor_json';
+const _kWat = 'script_editor_wat';
+const _kJson = 'script_editor_json';
 
+/// Portable AetherOS backup. Version 2 is a ZIP container with a JSON manifest
+/// and actual cached WASM binaries. API keys are deliberately excluded.
 class BackupScreen extends StatefulWidget {
   const BackupScreen({super.key});
   @override
@@ -28,357 +25,210 @@ class BackupScreen extends StatefulWidget {
 }
 
 class _BackupScreenState extends State<BackupScreen> {
-  bool _exporting = false;
-  bool _importing = false;
-  String? _lastExportPath;
+  bool _busy = false;
   String? _message;
-  bool _messageIsError = false;
+  bool _error = false;
 
-  // ── Export ────────────────────────────────────────────
+  Future<Directory> _wasmDir() async {
+    final root = await getApplicationSupportDirectory();
+    final dir = Directory('${root.path}/wasm');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return dir;
+  }
 
   Future<void> _export() async {
-    setState(() { _exporting = true; _message = null; });
+    setState(() { _busy = true; _message = null; });
     try {
-      final p = await SharedPreferences.getInstance();
+      final prefs = await SharedPreferences.getInstance();
+      final rawModules = prefs.getStringList(_kWasmModules) ?? const [];
+      final dir = await _wasmDir();
+      final archive = Archive();
+      final modules = <Map<String, dynamic>>[];
 
-      final data = <String, dynamic>{
+      for (final raw in rawModules) {
+        final decoded = jsonDecode(raw);
+        if (decoded is! Map) continue;
+        final hash = decoded['hash']?.toString() ?? '';
+        if (hash.isEmpty) continue;
+        final binary = File('${dir.path}/$hash.wasm');
+        final hasBinary = await binary.exists();
+        final path = 'wasm/$hash.wasm';
+        if (hasBinary) {
+          final bytes = await binary.readAsBytes();
+          archive.addFile(ArchiveFile(path, bytes.length, bytes));
+        }
+        modules.add({
+          ...Map<String, dynamic>.from(decoded),
+          'binary_path': hasBinary ? path : null,
+          'binary_available': hasBinary,
+        });
+      }
+
+      final manifest = <String, dynamic>{
         'aetheros_backup_version': _backupVersion,
-        'exported_at': DateTime.now().toIso8601String(),
-        'wasm_modules': p.getStringList(_kWasmModules) ?? [],
+        'format': 'aetheros-zip',
+        'exported_at': DateTime.now().toUtc().toIso8601String(),
+        'wasm_modules': modules,
         'script_editor': {
-          'wat':  p.getString(_kWat)  ?? '',
-          'json': p.getString(_kJson) ?? '',
+          'wat': prefs.getString(_kWat) ?? '',
+          'json': prefs.getString(_kJson) ?? '',
         },
       };
+      final manifestBytes = utf8.encode(const JsonEncoder.withIndent('  ').convert(manifest));
+      archive.addFile(ArchiveFile('manifest.json', manifestBytes.length, manifestBytes));
+      final bytes = ZipEncoder().encode(archive);
+      if (bytes == null || bytes.isEmpty) throw StateError('Yedek arşivi oluşturulamadı.');
 
-      final jsonStr = const JsonEncoder.withIndent('  ').convert(data);
-
-      final dir = await getTemporaryDirectory();
-      final ts  = DateTime.now();
-      final fname =
-          'aetheros_backup_${ts.year}${_p(ts.month)}${_p(ts.day)}_'
-          '${_p(ts.hour)}${_p(ts.minute)}.json';
-      final file = File('${dir.path}/$fname');
-      await file.writeAsString(jsonStr);
-
-      // Kullanıcının seçtiği konuma kaydet
-      final savePath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Yedeği Kaydet',
-        fileName: fname,
-        bytes: utf8.encode(jsonStr),
+      final ts = DateTime.now();
+      final name = 'aetheros_backup_${ts.year}${_p(ts.month)}${_p(ts.day)}_${_p(ts.hour)}${_p(ts.minute)}.aetheros';
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'AetherOS Yedeğini Kaydet',
+        fileName: name,
+        bytes: bytes,
       );
-
       if (!mounted) return;
       setState(() {
-        _lastExportPath = savePath ?? file.path;
-        _message = '✅ Yedek oluşturuldu: $fname';
-        _messageIsError = false;
+        _message = path == null ? 'Yedek oluşturuldu ancak kaydetme iptal edildi.' : 'Yedek kaydedildi: $name';
+        _error = false;
       });
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _message = '❌ Export hatası: $e';
-        _messageIsError = true;
-      });
+      if (mounted) setState(() { _message = userFacingError(e); _error = true; });
     } finally {
-      if (mounted) setState(() => _exporting = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  // ── Import ────────────────────────────────────────────
-
   Future<void> _import() async {
-    setState(() { _importing = true; _message = null; });
+    setState(() { _busy = true; _message = null; });
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['json'],
+        allowedExtensions: ['aetheros', 'json'],
         withData: true,
       );
+      final bytes = result?.files.single.bytes;
+      if (bytes == null) return;
 
-      if (result == null || result.files.single.bytes == null) {
-        if (mounted) setState(() => _importing = false);
-        return;
+      Map<String, dynamic> manifest;
+      final selectedName = result!.files.single.name.toLowerCase();
+      if (selectedName.endsWith('.json')) {
+        // Backward-compatible import for v1 JSON backups.
+        final decoded = jsonDecode(utf8.decode(bytes));
+        if (decoded is! Map<String, dynamic>) throw const FormatException('Yedek kökü object olmalı.');
+        manifest = decoded;
+      } else {
+        final archive = ZipDecoder().decodeBytes(bytes);
+        final file = _findArchiveFile(archive, 'manifest.json');
+        if (file == null) throw const FormatException('manifest.json bulunamadı.');
+        final content = file.content;
+        manifest = jsonDecode(utf8.decode(content is List<int> ? content : List<int>.from(content))) as Map<String, dynamic>;
       }
 
-      final content = utf8.decode(result.files.single.bytes!);
-      final data = jsonDecode(content) as Map<String, dynamic>;
-
-      final version = data['aetheros_backup_version'] as int?;
-      if (version != _backupVersion) {
+      final version = (manifest['aetheros_backup_version'] as num?)?.toInt();
+      if (version == null || version < 1 || version > _backupVersion) {
         throw FormatException('Desteklenmeyen yedek sürümü: $version');
       }
+      if (!mounted) return;
+      final ok = await _confirmImport(manifest);
+      if (ok != true) return;
 
-      final confirmed = await _confirmImport(data);
-      if (confirmed != true) {
-        if (mounted) setState(() => _importing = false);
-        return;
+      final prefs = await SharedPreferences.getInstance();
+      final modules = (manifest['wasm_modules'] as List?)?.whereType<Map>().toList() ?? const <Map>[];
+      final savedModules = <String>[];
+      final wasmDir = await _wasmDir();
+      int restoredBinaryCount = 0;
+
+      // For ZIP v2, re-upload every available binary into the Rust ModuleStore.
+      // JSON v1 retains metadata-only behavior.
+      Archive? decodedArchive;
+      if (!selectedName.endsWith('.json')) decodedArchive = ZipDecoder().decodeBytes(bytes);
+      for (final module in modules) {
+        final map = Map<String, dynamic>.from(module);
+        final path = map['binary_path']?.toString();
+        if (decodedArchive != null && path != null) {
+          final file = _findArchiveFile(decodedArchive, path);
+          if (file != null) {
+            final content = file.content;
+            final wasm = content is List<int> ? content : List<int>.from(content);
+            final uploaded = await AetherApi.uploadWasmModule(bytes: wasm);
+            map['hash'] = uploaded.hash;
+            map['size'] = uploaded.size;
+            await File('${wasmDir.path}/${uploaded.hash}.wasm').writeAsBytes(wasm, flush: true);
+            restoredBinaryCount++;
+          }
+        }
+        map.remove('binary_path');
+        map.remove('binary_available');
+        savedModules.add(jsonEncode(map));
       }
+      await prefs.setStringList(_kWasmModules, savedModules);
 
-      final p = await SharedPreferences.getInstance();
-
-      // WASM modülleri
-      final modules = (data['wasm_modules'] as List?)
-          ?.map((e) => e.toString())
-          .toList();
-      if (modules != null) {
-        await p.setStringList(_kWasmModules, modules);
-      }
-
-      // Script editör
-      final scriptEditor = data['script_editor'] as Map<String, dynamic>?;
-      if (scriptEditor != null) {
-        final wat  = scriptEditor['wat']  as String?;
-        final json = scriptEditor['json'] as String?;
-        if (wat  != null && wat.isNotEmpty)  await p.setString(_kWat,  wat);
-        if (json != null && json.isNotEmpty) await p.setString(_kJson, json);
+      final editor = manifest['script_editor'];
+      if (editor is Map) {
+        await prefs.setString(_kWat, editor['wat']?.toString() ?? '');
+        await prefs.setString(_kJson, editor['json']?.toString() ?? '');
       }
 
       if (!mounted) return;
       setState(() {
-        _message = '✅ Ayarlar geri yüklendi. '
-            '${modules?.length ?? 0} WASM modül kaydı ve script içeriği aktarıldı. '
-            'WASM binary dosyaları JSON yedeğine dahil değildir; AI API anahtarları yeniden girilmelidir.';
-        _messageIsError = false;
+        _message = 'Geri yükleme tamamlandı. ${savedModules.length} modül kaydı, $restoredBinaryCount WASM binary ve editör verileri geri yüklendi. API anahtarları güvenlik nedeniyle aktarılmadı.';
+        _error = false;
       });
     } on FormatException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _message = '❌ Geçersiz dosya: ${e.message}';
-        _messageIsError = true;
-      });
+      if (mounted) setState(() { _message = e.message; _error = true; });
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _message = '❌ Import hatası: $e';
-        _messageIsError = true;
-      });
+      if (mounted) setState(() { _message = userFacingError(e); _error = true; });
     } finally {
-      if (mounted) setState(() => _importing = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<bool?> _confirmImport(Map<String, dynamic> data) {
-    final exportedAt = data['exported_at'] as String?;
-    final moduleCount = (data['wasm_modules'] as List?)?.length ?? 0;
-    final hasWat  = ((data['script_editor']?['wat']  as String?) ?? '').isNotEmpty;
-    final hasJson = ((data['script_editor']?['json'] as String?) ?? '').isNotEmpty;
-
+    final modules = data['wasm_modules'] as List? ?? const [];
     return showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A2E),
-        title: const Text('Geri Yükleme Onayı',
-            style: TextStyle(color: Colors.white, fontSize: 16)),
-        content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-          if (exportedAt != null)
-            Text('Yedek tarihi: ${_fmtDate(exportedAt)}',
-                style: const TextStyle(color: Colors.white60, fontSize: 12)),
-          const SizedBox(height: 10),
-          Text('• $moduleCount WASM modülü',
-              style: const TextStyle(color: Colors.white70, fontSize: 13)),
-          Text('• WAT kodu: ${hasWat ? "Var" : "Yok"}',
-              style: const TextStyle(color: Colors.white70, fontSize: 13)),
-          Text('• Workflow JSON: ${hasJson ? "Var" : "Yok"}',
-              style: const TextStyle(color: Colors.white70, fontSize: 13)),
-          const SizedBox(height: 12),
-          const Text(
-            'Mevcut veriler bu yedekle değiştirilecek. Devam edilsin mi?',
-            style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
-          ),
-        ]),
+        title: const Text('Geri Yükleme Onayı'),
+        content: Text('${modules.length} WASM kaydı ve editör verileri mevcut verilerin üzerine yazılacak. Devam edilsin mi?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('İptal',
-                style: TextStyle(color: Colors.white54)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Geri Yükle',
-                style: TextStyle(color: Color(0xFF6C63FF))),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('İptal')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Geri Yükle')),
         ],
       ),
     );
   }
 
-  String _fmtDate(String iso) {
-    try {
-      final d = DateTime.parse(iso).toLocal();
-      return '${_p(d.day)}.${_p(d.month)}.${d.year}  ${_p(d.hour)}:${_p(d.minute)}';
-    } catch (_) {
-      return iso;
+  ArchiveFile? _findArchiveFile(Archive archive, String name) {
+    for (final file in archive.files) {
+      if (file.name == name) return file;
     }
+    return null;
   }
 
   String _p(int n) => n.toString().padLeft(2, '0');
 
-  // ── UI ────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F1A),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0F0F1A),
-        title: const Text('Yedekleme', style: TextStyle(color: Colors.white)),
-        iconTheme: const IconThemeData(color: Colors.white70),
-      ),
+      appBar: AppBar(title: const Text('Yedekleme')),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // ── Bilgi ────────────────────────────────────
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFF6C63FF).withOpacity(0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: const Color(0xFF6C63FF).withOpacity(0.25)),
-            ),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Row(children: [
-                Icon(Icons.shield_outlined,
-                    color: Color(0xFF6C63FF), size: 16),
-                SizedBox(width: 8),
-                Text('Yedek İçeriği',
-                    style: TextStyle(
-                        color: Color(0xFF6C63FF),
-                        fontWeight: FontWeight.bold, fontSize: 13)),
-              ]),
-              const SizedBox(height: 8),
-              const Text(
-                '• WASM modül kayıtları (hash + isim; binary dahil değil)\n'
-                '• Script Editör (WAT + Workflow JSON)\n\n'
-                '⚠️ AI API anahtarları yedeğe dahil edilmez; hedef cihazda '
-                'yeniden yapılandırılmalıdır.',
-                style: TextStyle(color: Colors.white60, fontSize: 12, height: 1.6),
-              ),
-            ]),
-          ),
-          const SizedBox(height: 28),
-
-          // ── Export ───────────────────────────────────
-          _label('Yedek Oluştur'),
-          const SizedBox(height: 6),
-          const Text(
-            'Tüm verilerini bir JSON dosyasına aktar. '
-            'Bu dosyayı başka bir cihaza taşıyabilir veya yedek olarak saklayabilirsin.',
-            style: TextStyle(color: Colors.white38, fontSize: 12),
-          ),
+          Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
+            Row(children: [Icon(Icons.shield_outlined), SizedBox(width: 8), Text('Güvenli ve taşınabilir yedek')]),
+            SizedBox(height: 10),
+            Text('AetherOS v2 yedeği gerçek WASM binary dosyalarını ZIP içine alır. API anahtarları hiçbir zaman yedeğe girmez.'),
+          ]))),
+          const SizedBox(height: 20),
+          FilledButton.icon(onPressed: _busy ? null : _export, icon: const Icon(Icons.upload_file), label: Text(_busy ? 'İşleniyor...' : 'Yedek Oluştur (.aetheros)')),
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF6C63FF),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: _exporting ? null : _export,
-              icon: _exporting
-                  ? const SizedBox(width: 16, height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.upload, size: 18),
-              label: Text(_exporting ? 'Oluşturuluyor...' : 'Yedek Oluştur ve Kaydet'),
-            ),
-          ),
-          const SizedBox(height: 32),
-
-          Divider(color: Colors.white12),
-          const SizedBox(height: 24),
-
-          // ── Import ───────────────────────────────────
-          _label('Yedekten Geri Yükle'),
-          const SizedBox(height: 6),
-          const Text(
-            'Önceden oluşturduğun bir .json yedek dosyasını seç. '
-            'Mevcut WASM modülleri, script ve AI tercihleri değiştirilecek.',
-            style: TextStyle(color: Colors.white38, fontSize: 12),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF6C63FF),
-                side: const BorderSide(color: Color(0xFF6C63FF)),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: _importing ? null : _import,
-              icon: _importing
-                  ? const SizedBox(width: 16, height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Color(0xFF6C63FF)))
-                  : const Icon(Icons.download, size: 18),
-              label: Text(_importing ? 'Yükleniyor...' : 'Yedek Dosyası Seç'),
-            ),
-          ),
-
-          // ── Sonuç mesajı ─────────────────────────────
+          OutlinedButton.icon(onPressed: _busy ? null : _import, icon: const Icon(Icons.download), label: const Text('Yedekten Geri Yükle')),
           if (_message != null) ...[
             const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: (_messageIsError
-                        ? const Color(0xFFEF5350)
-                        : const Color(0xFF4CAF50))
-                    .withOpacity(0.08),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: (_messageIsError
-                          ? const Color(0xFFEF5350)
-                          : const Color(0xFF4CAF50))
-                      .withOpacity(0.3),
-                ),
-              ),
-              child: Row(children: [
-                Expanded(
-                  child: Text(_message!,
-                      style: TextStyle(
-                        color: _messageIsError
-                            ? const Color(0xFFEF5350)
-                            : const Color(0xFF4CAF50),
-                        fontSize: 12,
-                      )),
-                ),
-                if (_lastExportPath != null && !_messageIsError)
-                  GestureDetector(
-                    onTap: () {
-                      Clipboard.setData(
-                          ClipboardData(text: _lastExportPath!));
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('Yol kopyalandı'),
-                        backgroundColor: Color(0xFF6C63FF),
-                        duration: Duration(seconds: 1),
-                      ));
-                    },
-                    child: const Icon(Icons.copy,
-                        color: Color(0xFF4CAF50), size: 16),
-                  ),
-              ]),
-            ),
+            SelectableText(_message!, style: TextStyle(color: _error ? Theme.of(context).colorScheme.error : Colors.greenAccent)),
           ],
         ],
       ),
     );
   }
-
-  Widget _label(String t) => Text(t,
-      style: const TextStyle(
-          color: Colors.white,
-          fontSize: 14,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 0.5));
 }

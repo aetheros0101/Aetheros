@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 import '../services/ai_provider_service.dart';
 import 'ai_settings_screen.dart';
 import 'script_editor_screen.dart' show ScriptEditorScreen;
+import '../core/app_theme.dart';
 
 // ── Sohbet mesaj modeli (provider'dan bağımsız) ─────────────
 
@@ -170,9 +171,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F1A),
+      backgroundColor: AetherColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F0F1A),
+        backgroundColor: AetherColors.background,
         title: Row(children: [
           const Text('AI Asistan',
               style: TextStyle(color: Colors.white)),
@@ -181,8 +182,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
               color: (_activeProviderId == null
-                      ? const Color(0xFFFFB74D)
-                      : const Color(0xFF4CAF50))
+                      ? AetherColors.warning
+                      : AetherColors.success)
                   .withOpacity(0.15),
               borderRadius: BorderRadius.circular(4),
             ),
@@ -192,8 +193,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   : aiProviderById(_activeProviderId!).displayName,
               style: TextStyle(
                   color: _activeProviderId == null
-                      ? const Color(0xFFFFB74D)
-                      : const Color(0xFF4CAF50),
+                      ? AetherColors.warning
+                      : AetherColors.success,
                   fontSize: 10, fontWeight: FontWeight.bold),
             ),
           ),
@@ -253,13 +254,13 @@ class _ApiKeyWarning extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     width: double.infinity,
     padding: const EdgeInsets.all(12),
-    color: const Color(0xFFFFB74D).withOpacity(0.08),
+    color: AetherColors.warning.withOpacity(0.08),
     child: Row(children: [
-      const Icon(Icons.warning_amber, color: Color(0xFFFFB74D), size: 18),
+      const Icon(Icons.warning_amber, color: AetherColors.warning, size: 18),
       const SizedBox(width: 8),
       const Expanded(child: Text(
         'Hiçbir AI modeli aktif değil',
-        style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
+        style: TextStyle(color: AetherColors.warning, fontSize: 12),
       )),
       TextButton(
         onPressed: onSetup,
@@ -267,7 +268,7 @@ class _ApiKeyWarning extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8)),
         child: const Text('Ayarla',
             style: TextStyle(
-                color: Color(0xFFFFB74D),
+                color: AetherColors.warning,
                 fontWeight: FontWeight.bold, fontSize: 12)),
       ),
     ]),
@@ -296,7 +297,7 @@ class _EmptyChat extends StatelessWidget {
           width: 64, height: 64,
           decoration: BoxDecoration(
             gradient: const LinearGradient(
-                colors: [Color(0xFF6C63FF), Color(0xFF3F51B5)],
+                colors: [AetherColors.primary, Color(0xFF3F51B5)],
                 begin: Alignment.topLeft, end: Alignment.bottomRight),
             borderRadius: BorderRadius.circular(16),
           ),
@@ -316,13 +317,13 @@ class _EmptyChat extends StatelessWidget {
         const SizedBox(height: 24),
         ..._prompts.map((p) => Padding(
           padding: const EdgeInsets.only(bottom: 8),
-          child: GestureDetector(
+          child: InkWell(
             onTap: () => onQuickPrompt(p.$2),
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A1A2E),
+                color: AetherColors.surface,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: Colors.white12),
               ),
@@ -359,8 +360,8 @@ class _MessageBubble extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: _isUser
-            ? const Color(0xFF6C63FF)
-            : const Color(0xFF1A1A2E),
+            ? AetherColors.primary
+            : AetherColors.surface,
         borderRadius: BorderRadius.only(
           topLeft: const Radius.circular(14),
           topRight: const Radius.circular(14),
@@ -383,12 +384,12 @@ class _MessageBubble extends StatelessWidget {
                   fontSize: 10)),
           if (!_isUser) ...[
             const SizedBox(width: 8),
-            GestureDetector(
+            InkWell(
               onTap: () {
                 Clipboard.setData(ClipboardData(text: message.text));
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                   content: Text('Kopyalandı'),
-                  backgroundColor: Color(0xFF6C63FF),
+                  backgroundColor: AetherColors.primary,
                   duration: Duration(seconds: 1),
                 ));
               },
@@ -435,7 +436,7 @@ class _TypingIndicatorState extends State<_TypingIndicator>
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A2E),
+        color: AetherColors.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.white12),
       ),
@@ -452,7 +453,7 @@ class _TypingIndicatorState extends State<_TypingIndicator>
               child: Container(
                 width: 6, height: 6,
                 decoration: const BoxDecoration(
-                  shape: BoxShape.circle, color: Color(0xFF6C63FF)),
+                  shape: BoxShape.circle, color: AetherColors.primary),
               ),
             ),
           );
@@ -480,7 +481,7 @@ class _InputBar extends StatelessWidget {
     padding: EdgeInsets.fromLTRB(
         12, 10, 12, 10 + MediaQuery.of(context).padding.bottom),
     decoration: const BoxDecoration(
-      color: Color(0xFF0F0F1A),
+      color: AetherColors.background,
       border: Border(top: BorderSide(color: Colors.white12)),
     ),
     child: Row(children: [
@@ -497,7 +498,7 @@ class _InputBar extends StatelessWidget {
             hintText: 'Bir soru sor...',
             hintStyle: const TextStyle(color: Colors.white24),
             filled: true,
-            fillColor: const Color(0xFF1A1A2E),
+            fillColor: AetherColors.surface,
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             border: OutlineInputBorder(
@@ -507,14 +508,14 @@ class _InputBar extends StatelessWidget {
         ),
       ),
       const SizedBox(width: 8),
-      GestureDetector(
+      InkWell(
         onTap: loading ? null : onSend,
         child: Container(
           width: 42, height: 42,
           decoration: BoxDecoration(
             color: loading
                 ? Colors.white12
-                : const Color(0xFF6C63FF),
+                : AetherColors.primary,
             shape: BoxShape.circle,
           ),
           child: loading

@@ -13,10 +13,13 @@
 // ============================================================
 
 import 'dart:async';
+import '../core/lifecycle_poller.dart';
+import '../core/app_error.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../api/aetheros_api.dart';
 import '../src/rust/api/aetheros.dart' as rust;
+import '../core/app_theme.dart';
 
 class LogScreen extends StatefulWidget {
   /// Opsiyonel: belirli bir task için filtreli açılış
@@ -37,7 +40,7 @@ class _LogScreenState extends State<LogScreen> {
 
   final _scrollCtrl   = ScrollController();
   final _searchCtrl   = TextEditingController();
-  Timer? _timer;
+  late final LifecyclePoller _poller;
   Timer? _searchDebounce;
 
   @override
@@ -47,14 +50,13 @@ class _LogScreenState extends State<LogScreen> {
       _taskSearch = widget.filterTaskId!;
       _searchCtrl.text = widget.filterTaskId!;
     }
-    _fetch();
-    _timer = Timer.periodic(
-      const Duration(seconds: 2), (_) => _fetch());
+    _poller = LifecyclePoller(interval: const Duration(seconds: 2), onTick: _fetch);
+    _poller.start();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _poller.stop();
     _searchDebounce?.cancel();
     _scrollCtrl.dispose();
     _searchCtrl.dispose();
@@ -97,7 +99,7 @@ class _LogScreenState extends State<LogScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF0A0A14),
         title: Row(children: [
-          const Icon(Icons.terminal, color: Color(0xFF6C63FF), size: 18),
+          const Icon(Icons.terminal, color: AetherColors.primary, size: 18),
           const SizedBox(width: 8),
           const Text('Runtime Logları',
               style: TextStyle(color: Colors.white, fontSize: 16)),
@@ -106,13 +108,13 @@ class _LogScreenState extends State<LogScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
             decoration: BoxDecoration(
-              color: const Color(0xFF6C63FF).withOpacity(0.2),
+              color: AetherColors.primary.withOpacity(0.2),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
               '${_all.length}',
               style: const TextStyle(
-                  color: Color(0xFF6C63FF), fontSize: 11,
+                  color: AetherColors.primary, fontSize: 11,
                   fontWeight: FontWeight.bold),
             ),
           ),
@@ -124,7 +126,7 @@ class _LogScreenState extends State<LogScreen> {
             icon: Icon(
               _autoScroll ? Icons.lock : Icons.lock_open,
               color: _autoScroll
-                  ? const Color(0xFF6C63FF) : Colors.white38,
+                  ? AetherColors.primary : Colors.white38,
               size: 18,
             ),
             tooltip: _autoScroll ? 'Otomatik kaydır: Açık' : 'Otomatik kaydır: Kapalı',
@@ -146,7 +148,7 @@ class _LogScreenState extends State<LogScreen> {
 
         // ── Filtre bar ──────────────────────────────────
         Container(
-          color: const Color(0xFF0F0F1A),
+          color: AetherColors.background,
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
           child: Column(children: [
 
@@ -173,12 +175,12 @@ class _LogScreenState extends State<LogScreen> {
                   : Row(children: [
                       Container(width: 6, height: 6,
                           decoration: const BoxDecoration(
-                              color: Color(0xFF4CAF50),
+                              color: AetherColors.success,
                               shape: BoxShape.circle)),
                       const SizedBox(width: 4),
                       const Text('Canlı',
                           style: TextStyle(
-                              color: Color(0xFF4CAF50), fontSize: 10)),
+                              color: AetherColors.success, fontSize: 10)),
                     ]),
             ]),
             const SizedBox(height: 8),
@@ -198,7 +200,7 @@ class _LogScreenState extends State<LogScreen> {
                   prefixIcon: const Icon(Icons.search,
                       color: Colors.white24, size: 16),
                   suffixIcon: _taskSearch.isNotEmpty
-                      ? GestureDetector(
+                      ? InkWell(
                           onTap: () {
                             _searchCtrl.clear();
                             setState(() => _taskSearch = '');
@@ -243,7 +245,7 @@ class _LogScreenState extends State<LogScreen> {
                         const SnackBar(
                           content: Text('Task ID kopyalandı'),
                           duration: Duration(seconds: 1),
-                          backgroundColor: Color(0xFF6C63FF),
+                          backgroundColor: AetherColors.primary,
                         ),
                       );
                     },
@@ -269,17 +271,17 @@ class _LevelChip extends StatelessWidget {
 
   static Color _color(String lvl) {
     switch (lvl) {
-      case 'ERROR': return const Color(0xFFEF5350);
+      case 'ERROR': return AetherColors.danger;
       case 'WARN':  return const Color(0xFFFF9800);
       case 'INFO':  return const Color(0xFF4FC3F7);
-      default:      return const Color(0xFF6C63FF);
+      default:      return AetherColors.primary;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final c = _color(label);
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
@@ -310,7 +312,7 @@ class _LogRow extends StatelessWidget {
 
   Color get _levelColor {
     switch (entry.level) {
-      case 'ERROR': return const Color(0xFFEF5350);
+      case 'ERROR': return AetherColors.danger;
       case 'WARN':  return const Color(0xFFFF9800);
       default:      return const Color(0xFF4FC3F7);
     }
@@ -370,7 +372,7 @@ class _LogRow extends StatelessWidget {
                       color: Colors.white70, fontSize: 12)),
               if (short != null) ...[
                 const SizedBox(height: 2),
-                GestureDetector(
+                InkWell(
                   onTap: () => onCopyTaskId(taskId!),
                   child: Text(
                     short,
@@ -420,7 +422,7 @@ class _EmptyLog extends StatelessWidget {
           icon: const Icon(Icons.visibility_outlined, size: 16),
           label: const Text('Göster'),
           style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF6C63FF)),
+              foregroundColor: AetherColors.primary),
         ),
       ],
     ]),

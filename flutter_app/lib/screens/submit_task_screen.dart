@@ -6,6 +6,8 @@
 import 'package:flutter/material.dart';
 import '../api/aetheros_api.dart';
 import 'task_list_screen.dart';
+import '../core/app_error.dart';
+import '../core/app_theme.dart';
 
 class SubmitTaskScreen extends StatefulWidget {
   final String? prefilledHash;
@@ -55,7 +57,7 @@ class _SubmitTaskScreenState extends State<SubmitTaskScreen> {
       setState(() => _result = taskId);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.toString());
+      setState(() => _error = userFacingError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -64,9 +66,9 @@ class _SubmitTaskScreenState extends State<SubmitTaskScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F1A),
+      backgroundColor: AetherColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F0F1A),
+        backgroundColor: AetherColors.background,
         title: const Text('Task Gönder', style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white70),
       ),
@@ -111,7 +113,7 @@ class _SubmitTaskScreenState extends State<SubmitTaskScreen> {
             width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF6C63FF),
+                backgroundColor: AetherColors.primary,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -133,15 +135,15 @@ class _SubmitTaskScreenState extends State<SubmitTaskScreen> {
             _ResultBox(
               label: '✓ Task kabul edildi',
               content: _result!,
-              color: const Color(0xFF4CAF50),
+              color: AetherColors.success,
             ),
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF6C63FF),
-                  side: const BorderSide(color: Color(0xFF6C63FF)),
+                  foregroundColor: AetherColors.primary,
+                  side: const BorderSide(color: AetherColors.primary),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
@@ -160,7 +162,7 @@ class _SubmitTaskScreenState extends State<SubmitTaskScreen> {
             _ResultBox(
               label: '✗ Hata',
               content: _error!,
-              color: const Color(0xFFEF5350),
+              color: AetherColors.danger,
             ),
         ]),
       ),
@@ -180,16 +182,16 @@ class _SubmitTaskScreenState extends State<SubmitTaskScreen> {
           hintText: hint,
           hintStyle: const TextStyle(color: Colors.white24),
           filled: true,
-          fillColor: const Color(0xFF1A1A2E),
+          fillColor: AetherColors.surface,
           border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFF6C63FF), width: 0.5)),
+              borderSide: const BorderSide(color: AetherColors.primary, width: 0.5)),
           enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: const BorderSide(color: Colors.white12)),
           focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFF6C63FF))),
+              borderSide: const BorderSide(color: AetherColors.primary)),
         ),
       );
 
@@ -200,14 +202,14 @@ class _SubmitTaskScreenState extends State<SubmitTaskScreen> {
   }) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12),
     decoration: BoxDecoration(
-      color: const Color(0xFF1A1A2E),
+      color: AetherColors.surface,
       borderRadius: BorderRadius.circular(10),
       border: Border.all(color: Colors.white12),
     ),
     child: DropdownButtonHideUnderline(
       child: DropdownButton<int>(
         value: options.contains(value) ? value : options.first,
-        dropdownColor: const Color(0xFF1A1A2E),
+        dropdownColor: AetherColors.surface,
         style: const TextStyle(color: Colors.white),
         items: options.map((o) => DropdownMenuItem(value: o, child: Text('$o'))).toList(),
         onChanged: (v) => v != null ? onChanged(v) : null,
@@ -224,10 +226,10 @@ class _PrioritySelector extends StatelessWidget {
   const _PrioritySelector({required this.value, required this.onChanged});
 
   static const _opts = [
-    ('critical', '🔴 Critical', Color(0xFFEF5350)),
+    ('critical', '🔴 Critical', AetherColors.danger),
     ('high',     '🟠 High',     Color(0xFFFF9800)),
-    ('normal',   '🟢 Normal',   Color(0xFF4CAF50)),
-    ('low',      '🔵 Low',      Color(0xFF42A5F5)),
+    ('normal',   '🟢 Normal',   AetherColors.success),
+    ('low',      '🔵 Low',      AetherColors.info),
   ];
 
   @override
@@ -236,13 +238,13 @@ class _PrioritySelector extends StatelessWidget {
       final (key, label, color) = o;
       final sel = value == key;
       return Expanded(
-        child: GestureDetector(
+        child: InkWell(
           onTap: () => onChanged(key),
           child: Container(
             margin: const EdgeInsets.only(right: 6),
             padding: const EdgeInsets.symmetric(vertical: 8),
             decoration: BoxDecoration(
-              color: sel ? color.withOpacity(0.15) : const Color(0xFF1A1A2E),
+              color: sel ? color.withOpacity(0.15) : AetherColors.surface,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: sel ? color : Colors.white12),
             ),

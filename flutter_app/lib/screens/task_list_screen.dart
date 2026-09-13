@@ -3,11 +3,13 @@
 // Sprint 2: filtreler, canlı dot, detay modal, retry, ikon fix
 // ============================================================
 
-import 'dart:async';
+import '../core/lifecycle_poller.dart';
+import '../core/app_error.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../api/aetheros_api.dart';
 import '../src/rust/api/aetheros.dart' as rust;
+import '../core/app_theme.dart';
 
 enum _Filter { all, active, failed, completed }
 
@@ -30,18 +32,19 @@ class _TaskListScreenState extends State<TaskListScreen> {
   List<rust.TaskStatusResponse> _tasks = [];
   bool _loading = true;
   bool _refreshing = false;
-  Timer? _timer;
+  late final LifecyclePoller _poller;
   _Filter _filter = _Filter.all;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) => _load(silent: true));
+    _poller = LifecyclePoller(interval: const Duration(seconds: 3), onTick: () => _load(silent: true));
+    _poller.start();
   }
 
   @override
-  void dispose() { _timer?.cancel(); super.dispose(); }
+  void dispose() { _poller.stop(); super.dispose(); }
 
   Future<void> _load({bool silent = false}) async {
     if (!silent && mounted) setState(() => _refreshing = true);
@@ -70,9 +73,9 @@ class _TaskListScreenState extends State<TaskListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F1A),
+      backgroundColor: AetherColors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F0F1A),
+        backgroundColor: AetherColors.background,
         title: Row(children: [
           const Text('Task Listesi', style: TextStyle(color: Colors.white)),
           const SizedBox(width: 8),
@@ -84,7 +87,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
               ? const Padding(
                   padding: EdgeInsets.all(14),
                   child: SizedBox(width: 18, height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF6C63FF))),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AetherColors.primary)),
                 )
               : IconButton(icon: const Icon(Icons.refresh, color: Colors.white70), onPressed: _load),
         ],
@@ -97,12 +100,12 @@ class _TaskListScreenState extends State<TaskListScreen> {
         ),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator(color: Color(0xFF6C63FF)))
+              ? const Center(child: CircularProgressIndicator(color: AetherColors.primary))
               : _filtered.isEmpty
                   ? _EmptyState(filter: _filter)
                   : RefreshIndicator(
-                      color: const Color(0xFF6C63FF),
-                      backgroundColor: const Color(0xFF1A1A2E),
+                      color: AetherColors.primary,
+                      backgroundColor: AetherColors.surface,
                       onRefresh: _load,
                       child: ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -138,7 +141,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Task yeniden kuyruğa alındı: ${newTaskId.substring(0, 8)}…'),
-        backgroundColor: const Color(0xFF6C63FF),
+        backgroundColor: AetherColors.primary,
         duration: const Duration(seconds: 2),
       ));
       await _load();
@@ -146,7 +149,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Yeniden deneme başarısız: $e'),
-        backgroundColor: const Color(0xFFEF5350),
+        backgroundColor: AetherColors.danger,
         duration: const Duration(seconds: 3),
       ));
     }
@@ -165,23 +168,23 @@ class _FilterBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 44,
-      color: const Color(0xFF0F0F1A),
+      color: AetherColors.background,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         children: _Filter.values.map((f) {
           final sel = f == selected;
           final cnt = counts[f] ?? 0;
-          return GestureDetector(
+          return InkWell(
             onTap: () => onSelected(f),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               margin: const EdgeInsets.only(right: 8),
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
-                color: sel ? const Color(0xFF6C63FF) : const Color(0xFF1A1A2E),
+                color: sel ? AetherColors.primary : AetherColors.surface,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: sel ? const Color(0xFF6C63FF) : Colors.white12),
+                border: Border.all(color: sel ? AetherColors.primary : Colors.white12),
               ),
               child: Row(children: [
                 Text(f.label,
@@ -194,7 +197,7 @@ class _FilterBar extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                     decoration: BoxDecoration(
-                      color: sel ? Colors.white24 : const Color(0xFF6C63FF).withOpacity(0.3),
+                      color: sel ? Colors.white24 : AetherColors.primary.withOpacity(0.3),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text('$cnt',
@@ -243,7 +246,7 @@ class _LiveDotState extends State<_LiveDot> with SingleTickerProviderStateMixin 
       opacity: _anim,
       child: Container(
         width: 6, height: 6,
-        decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF4CAF50)),
+        decoration: const BoxDecoration(shape: BoxShape.circle, color: AetherColors.success),
       ),
     );
   }
@@ -278,12 +281,12 @@ class _TaskCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = _style(task.state);
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A2E),
+          color: AetherColors.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: s.color.withOpacity(0.22)),
         ),
@@ -319,20 +322,20 @@ class _TaskCard extends StatelessWidget {
             if (task.errorMessage != null) ...[
               const SizedBox(height: 3),
               Text(task.errorMessage!,
-                  style: const TextStyle(color: Color(0xFFEF5350), fontSize: 11),
+                  style: const TextStyle(color: AetherColors.danger, fontSize: 11),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
             ],
           ])),
           if (task.state == 'Failed')
-            GestureDetector(
+            InkWell(
               onTap: onRetry,
               child: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF6C63FF).withOpacity(0.12),
+                  color: AetherColors.primary.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.refresh, color: Color(0xFF6C63FF), size: 18),
+                child: const Icon(Icons.refresh, color: AetherColors.primary, size: 18),
               ),
             ),
         ]),
@@ -341,13 +344,13 @@ class _TaskCard extends StatelessWidget {
   }
 
   _S _style(String state) => switch (state) {
-    'Completed' => _S(const Color(0xFF4CAF50), Icons.check_circle_outline),
-    'Failed'    => _S(const Color(0xFFEF5350), Icons.cancel_outlined),
-    'Executing' => _S(const Color(0xFF6C63FF), Icons.play_circle_outline),
-    'Queued'    => _S(const Color(0xFFFFB74D), Icons.schedule),
+    'Completed' => _S(AetherColors.success, Icons.check_circle_outline),
+    'Failed'    => _S(AetherColors.danger, Icons.cancel_outlined),
+    'Executing' => _S(AetherColors.primary, Icons.play_circle_outline),
+    'Queued'    => _S(AetherColors.warning, Icons.schedule),
     'Retrying'  => _S(const Color(0xFF7E57C2), Icons.refresh),
     'Cancelled' => _S(Colors.white38,           Icons.do_not_disturb),
-    'Created'   => _S(const Color(0xFF42A5F5), Icons.fiber_new),
+    'Created'   => _S(AetherColors.info, Icons.fiber_new),
     _           => _S(Colors.white38,           Icons.radio_button_unchecked),
   };
 
@@ -390,7 +393,7 @@ class _TaskDetailSheet extends StatelessWidget {
       expand: false,
       builder: (_, ctrl) => Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF1A1A2E),
+          color: AetherColors.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: ListView(controller: ctrl, padding: const EdgeInsets.all(20), children: [
@@ -410,12 +413,12 @@ class _TaskDetailSheet extends StatelessWidget {
           const SizedBox(height: 16),
           _Row(label: 'Task ID', value: task.taskId, mono: true,
               trailing: IconButton(
-                icon: const Icon(Icons.copy, color: Color(0xFF6C63FF), size: 16),
+                icon: const Icon(Icons.copy, color: AetherColors.primary, size: 16),
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: task.taskId));
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                     content: Text('UUID kopyalandı'),
-                    backgroundColor: Color(0xFF6C63FF),
+                    backgroundColor: AetherColors.primary,
                     duration: Duration(seconds: 1),
                   ));
                 },
@@ -438,7 +441,7 @@ class _TaskDetailSheet extends StatelessWidget {
               width: double.infinity,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF6C63FF),
+                  backgroundColor: AetherColors.primary,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
@@ -467,16 +470,16 @@ class _Row extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
     decoration: BoxDecoration(
-      color: error ? const Color(0xFFEF5350).withOpacity(0.07) : Colors.white.withOpacity(0.04),
+      color: error ? AetherColors.danger.withOpacity(0.07) : Colors.white.withOpacity(0.04),
       borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: error ? const Color(0xFFEF5350).withOpacity(0.2) : Colors.white12),
+      border: Border.all(color: error ? AetherColors.danger.withOpacity(0.2) : Colors.white12),
     ),
     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       SizedBox(width: 90, child: Text(label,
           style: const TextStyle(color: Colors.white38, fontSize: 11, letterSpacing: 0.5))),
       Expanded(child: Text(value,
           style: TextStyle(
-            color: error ? const Color(0xFFEF5350) : Colors.white70,
+            color: error ? AetherColors.danger : Colors.white70,
             fontSize: 12, fontFamily: mono ? 'monospace' : null))),
       if (trailing != null) trailing!,
     ]),
