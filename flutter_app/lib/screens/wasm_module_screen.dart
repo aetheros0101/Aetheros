@@ -389,7 +389,7 @@ class _ModuleCard extends StatelessWidget {
         DateTime.fromMillisecondsSinceEpoch(module.uploadedAt).toLocal();
     final dateStr =
         '${dt.day.toString().padLeft(2,'0')}.${dt.month.toString().padLeft(2,'0')}.${dt.year}  '
-        '${dt.hour.toString().padLeft(2,'0')}:${dt.minutuserFacingError(e).padLeft(2,'0')}';
+        '${dt.hour.toString().padLeft(2,'0')}:${dt.minute.padLeft(2,'0')}';
 
     return Container(
       padding: const EdgeInsets.all(14),

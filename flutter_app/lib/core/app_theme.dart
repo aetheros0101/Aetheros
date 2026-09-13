@@ -48,7 +48,7 @@ ThemeData buildAetherTheme() {
       foregroundColor: AetherColors.text,
       elevation: 0,
     ),
-    cardTheme: CardThemeData(
+    cardTheme: CardTheme(
       color: AetherColors.surface,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

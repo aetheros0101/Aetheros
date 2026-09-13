@@ -11,6 +11,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/ai_provider_service.dart';
+import '../services/ai_model.dart';
 import '../core/app_error.dart';
 import '../core/app_theme.dart';
 
@@ -571,7 +572,7 @@ class _ProviderCardState extends State<_ProviderCard> {
                     isExpanded: true,
                     style: const TextStyle(color: Colors.white, fontSize: 13),
                     items: _modelOptions
-                        .map((m) => DropdownMenuItem(
+                        .map((m) => DropdownMenuItem<String>(
                               value: m.value,
                               child: Text(m.label,
                                   style: const TextStyle(color: Colors.white, fontSize: 13)),

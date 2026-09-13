@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
@@ -84,7 +85,7 @@ class _BackupScreenState extends State<BackupScreen> {
       final path = await FilePicker.platform.saveFile(
         dialogTitle: 'AetherOS Yedeğini Kaydet',
         fileName: name,
-        bytes: bytes,
+        bytes: Uint8List.fromList(bytes),
       );
       if (!mounted) return;
       setState(() {
