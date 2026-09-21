@@ -168,6 +168,7 @@ async fn submitted_task_persists_to_db() {
         created_at: Utc::now(),
         updated_at: Utc::now(),
         attempts: 0,
+        last_error: None,
     };
     db.persist_task(&persisted).unwrap();
 
@@ -201,6 +202,7 @@ async fn task_state_lifecycle_persists_correctly() {
         created_at: Utc::now(),
         updated_at: Utc::now(),
         attempts: 0,
+        last_error: None,
     };
     db.persist_task(&persisted).unwrap();
 

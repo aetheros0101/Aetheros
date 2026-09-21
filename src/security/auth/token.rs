@@ -13,7 +13,7 @@ pub struct AuthToken {
     pub expires_in: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Claims {
     pub sub: String,
     pub role: Role,

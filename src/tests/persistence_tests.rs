@@ -69,6 +69,7 @@ fn make_persisted(state: TaskState, attempts: u32) -> PersistedTask {
         created_at: Utc::now(),
         updated_at: Utc::now(),
         attempts,
+        last_error: None,
     }
 }
 

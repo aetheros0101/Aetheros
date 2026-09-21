@@ -392,6 +392,96 @@ pub fn check_module_exists(hash_hex: String) -> Result<bool, String> {
     Ok(rt.module_store.contains(&hash))
 }
 
+// ── V10 Sprint 1b: Agent Tool Script Registry ──────────────
+//
+// Akış: önce upload_wasm_module() / compile_wat_to_wasm() ile binary
+// yüklenir (hash döner), sonra bu hash burada isimlendirilerek agent
+// tool'u olarak kaydedilir. start_agent() her çağrıda script_registry'
+// deki TÜM script'leri agent'ın araç kutusuna (tools) ekler — hangi
+// script'lerin çalışabileceğini CapabilityEngine (WasmExecution grant'ı)
+// belirler, registry'de olmak tek başına yeterli değildir.
+
+/// Daha önce upload edilmiş bir WASM modülünü, agent'ların
+/// çağırabileceği isimlendirilmiş bir tool olarak kaydet.
+pub fn register_agent_script(
+    name: String,
+    wasm_module_hash_hex: String,
+    entrypoint: String,
+    timeout_ms: u64,
+) -> Result<(), String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    let hash = crate::wasm::module_store::ModuleStore::hex_to_hash(&wasm_module_hash_hex)
+        .map_err(|e| format!("Geçersiz hash: {e}"))?;
+
+    let binary = rt
+        .module_store
+        .get(&hash)
+        .map_err(|e| format!("Modül bulunamadı: {e}"))?;
+
+    let script = crate::scripting::definition::ScriptDefinition::from_binary(
+        name.clone(),
+        (*binary).clone(),
+        entrypoint,
+        timeout_ms,
+    );
+
+    rt.script_registry.register(script);
+
+    info!(name = %name, hash = %wasm_module_hash_hex, "Agent script kaydedildi");
+    Ok(())
+}
+
+/// Şu an kayıtlı, agent'ların potansiyel olarak erişebileceği
+/// script isimlerini listele (UI'da göstermek için).
+pub fn list_agent_scripts() -> Result<Vec<String>, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    Ok(rt
+        .script_registry
+        .list()
+        .into_iter()
+        .map(|s| s.name)
+        .collect())
+}
+
+/// Bir agent'a tek bir capability grant et.
+///
+/// `capability`: "wasm_execution" | "workflow_execution" | "ai_reasoning" | "remote_execution"
+///
+/// BİLİNEN SINIRLAMA: start_agent() agent_id'yi execution'ı hemen
+/// spawn ederken üretir. Bu fonksiyonu start_agent'ın DÖNDÜĞÜ agent_id
+/// ile, execution ilk tool adımına gelmeden önce çağırman gerekir.
+/// Bu yarış durumu kabul edilebilir (planning genelde tool adımından
+/// önce bir miktar zaman alır) ama sağlam bir çözüm değil — gerçek
+/// çözüm Approval Engine'in agent'ı "grant bekliyor" durumunda
+/// başlatıp ilk adımdan önce durdurmasıdır (gelecek sprint).
+pub fn grant_agent_capability(
+    agent_id_hex: String,
+    capability: String,
+) -> Result<(), String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+
+    let agent_id = uuid::Uuid::parse_str(&agent_id_hex)
+        .map_err(|e| format!("Geçersiz agent_id: {e}"))?;
+
+    let cap = match capability.as_str() {
+        "wasm_execution" => crate::agents::capabilities::AgentCapability::WasmExecution,
+        "workflow_execution" => crate::agents::capabilities::AgentCapability::WorkflowExecution,
+        "ai_reasoning" => crate::agents::capabilities::AgentCapability::AiReasoning,
+        "remote_execution" => crate::agents::capabilities::AgentCapability::RemoteExecution,
+        other => return Err(format!("Bilinmeyen capability: '{other}'")),
+    };
+
+    rt.capability_engine.grant_capability(agent_id, cap);
+
+    info!(agent_id = %agent_id, capability = %capability, "Agent capability grant edildi");
+    Ok(())
+}
+
 // ── Task yeniden gönderme ──────────────────────────────────
 
 /// Mevcut bir task'ı orijinal ayarlarıyla (hash, entrypoint,
@@ -577,10 +667,27 @@ pub async fn start_agent(
         max_tokens, max_steps, max_runtime_seconds: 300,
     };
     let ai_router = rt.ai_router.clone();
+    let capability_engine = rt.capability_engine.clone();
+
+    // V10 Sprint 1b: agent'ın araç kutusu artık boş değil — registry'de
+    // kayıtlı her script bir ScriptTool olarak agent'a sunuluyor.
+    // Hangisinin GERÇEKTEN çalışabileceğine CapabilityEngine karar verir
+    // (bkz. grant_agent_capability) — burada listelenmek izin vermez.
+    let tools: Vec<std::sync::Arc<dyn crate::types::agent_tool::AgentTool>> = rt
+        .script_registry
+        .list()
+        .into_iter()
+        .map(|def| {
+            std::sync::Arc::new(crate::scripting::tool::ScriptTool::new(
+                def,
+                rt.script_engine.clone(),
+            )) as std::sync::Arc<dyn crate::types::agent_tool::AgentTool>
+        })
+        .collect();
 
     tokio::spawn(async move {
         let result      = crate::agents::executor::AgentExecutor
-            ::execute(context, objective_c, budget, vec![], Some(ai_router)).await;
+            ::execute(context, objective_c, budget, tools, Some(ai_router), Some(capability_engine)).await;
         let finished_at = chrono::Utc::now();
         if let Some(mut entry) = registry.get_mut(&execution_id) {
             match result {
@@ -902,7 +1009,7 @@ pub async fn test_ai_provider(provider_id: String) -> Result<String, String> {
 
     let request = crate::ai::inference::request::InferenceRequest::new(
         "Tek kelimeyle selam ver.",
-        256,
+        16,
     );
 
     let response = provider

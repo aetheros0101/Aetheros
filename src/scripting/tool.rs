@@ -41,6 +41,13 @@ impl AgentTool for ScriptTool {
         Box::leak(self.script.name.clone().into_boxed_str())
     }
 
+    /// ScriptTool, keyfi WASM binary çalıştırır — bu yüzden agent'ın
+    /// WasmExecution capability'sine sahip olması şart. Grant edilmemişse
+    /// CapabilityEngine bu çağrıyı invoke()'a hiç ulaşmadan reddeder.
+    fn required_capability(&self) -> Option<crate::agents::capabilities::AgentCapability> {
+        Some(crate::agents::capabilities::AgentCapability::WasmExecution)
+    }
+
     async fn invoke(
         &self,
         _args: Vec<String>,

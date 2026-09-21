@@ -160,12 +160,15 @@ impl WorkflowExecutor {
                     max_runtime_seconds: 300,
                 };
 
+                // TODO(V10 Sprint 1): None yerine gerçek bir CapabilityEngine
+                // bağlanınca bu workflow düğümü de enforcement'a tabi olur.
                 AgentExecutor::execute(
                     context,
                     name.to_string(),
                     budget,
                     vec![],
                     Some(self.ai_router.clone()),
+                    None,
                 )
                 .await?;
 

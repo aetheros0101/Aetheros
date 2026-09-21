@@ -1,4 +1,7 @@
 pub mod helpers;
+pub mod capability_engine_tests;
+pub mod script_capability_integration_tests;
+pub mod tool_call_protocol_tests;
 pub mod cluster_tests;
 pub mod dashboard_tests;
 pub mod integration;

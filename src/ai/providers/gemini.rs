@@ -64,14 +64,10 @@ struct GeminiResponse {
 #[derive(Debug, Deserialize)]
 struct GeminiCandidate {
     content: Option<GeminiResponseContent>,
-    #[serde(rename = "finishReason", default)]
-        finish_reason: Option<String>,
-    
 }
 
 #[derive(Debug, Deserialize)]
 struct GeminiResponseContent {
-#[serde(default)]
     parts: Vec<GeminiResponsePart>,
 }
 
@@ -195,37 +191,18 @@ impl ModelProvider for GeminiProvider {
             })?;
 
         let status = response.status();
-        
+
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
             warn!("Gemini rate limit aşıldı");
             return Err(AiError::RateLimited);
         }
-        
-        let body_text = response.text().await.map_err(|e| AiError::ProviderFailure {
-            message: format!("Yanıt gövdesi okunamadı: {e}"),
-        })?;
-        
-        let gemini_resp: GeminiResponse = match serde_json::from_str::<GeminiResponse>(&body_text) {
-            Ok(r) => r,
-            Err(obj_err) => match serde_json::from_str::<Vec<GeminiResponse>>(&body_text) {
-                Ok(mut arr) if !arr.is_empty() => arr.remove(0),
-                _ => {
-                    let snippet: String = body_text.chars().take(300).collect();
-                    warn!(http_status = %status, body = %snippet, "Gemini yanıtı parse edilemedi");
-                    return Err(AiError::ProviderFailure {
-                        message: format!(
-                            "JSON parse hatası: {obj_err} (HTTP {status}) — gövde: {snippet}"
-                        ),
-                    });
-                }
-            },
-        };
-        
-        if !status.is_success() && gemini_resp.error.is_none() {
-            return Err(AiError::ProviderFailure {
-                message: format!("Gemini HTTP {status} döndü (detay yok)"),
-            });
-        }
+
+        let gemini_resp: GeminiResponse = response
+            .json()
+            .await
+            .map_err(|e| AiError::ProviderFailure {
+                message: format!("JSON parse hatası: {e}"),
+            })?;
 
         // API hata yanıtı
         if let Some(err) = gemini_resp.error {
@@ -247,18 +224,6 @@ impl ModelProvider for GeminiProvider {
             .and_then(|c| c.parts.first())
             .and_then(|p| p.text.clone())
             .unwrap_or_default();
-
-        let finish_reason = gemini_resp.candidates.as_ref()
-            .and_then(|c| c.first())
-            .and_then(|c| c.finish_reason.clone());
-
-        if output.is_empty() && finish_reason.as_deref() == Some("MAX_TOKENS") {
-            return Err(AiError::ProviderFailure {
-                message: "Gemini yanıtı 'thinking' için token bütçesini tükettiği \
-                          için boş döndü (finishReason=MAX_TOKENS) — max_tokens \
-                          değerini artırın.".to_string(),
-            });
-        }
 
         let tokens_used = gemini_resp
             .usage_metadata

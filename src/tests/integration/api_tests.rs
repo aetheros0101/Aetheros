@@ -112,6 +112,7 @@ async fn api_task_state_query_returns_correct_state() {
         created_at: Utc::now(),
         updated_at: Utc::now(),
         attempts: 0,
+        last_error: None,
     };
     db.persist_task(&persisted).unwrap();
 
@@ -137,6 +138,7 @@ async fn api_cancel_marks_task_cancelled() {
         created_at: Utc::now(),
         updated_at: Utc::now(),
         attempts: 0,
+        last_error: None,
     };
     db.persist_task(&persisted).unwrap();
 

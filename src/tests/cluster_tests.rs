@@ -136,7 +136,6 @@ fn cluster_leader_set_and_get() {
 }
 
 #[test]
-#[test]
 fn cluster_leader_cleared_on_remove() {
     let cluster = ClusterState::new();
     let node = healthy_node();

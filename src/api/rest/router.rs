@@ -131,6 +131,9 @@ pub struct AppState {
     /// Sunucu/server dağıtımında ortam değişkenlerinden (ANTHROPIC_API_KEY
     /// vb.) doldurulur — bkz. ApiServer::new() (src/api/mod.rs).
     pub ai_router:         Arc<ProviderRouter>,
+    /// V10 Sprint 1: agent tool çağrılarını denetleyen Capability Engine.
+    /// Deny-by-default — grant edilmemiş capability gerektiren tool'lar reddedilir.
+    pub capability_engine: Arc<crate::security::capability_engine::CapabilityEngine>,
 }
 
 // ── Router ────────────────────────────────────────────────
@@ -422,9 +425,10 @@ async fn start_agent_handler(
         max_runtime_seconds: 300,
     };
     let ai_router = state.ai_router.clone();
+    let capability_engine = state.capability_engine.clone();
 
     tokio::spawn(async move {
-        let result      = AgentExecutor::execute(context, objective, budget, vec![], Some(ai_router)).await;
+        let result      = AgentExecutor::execute(context, objective, budget, vec![], Some(ai_router), Some(capability_engine)).await;
         let finished_at = Utc::now();
         if let Some(mut entry) = registry.get_mut(&execution_id) {
             match result {

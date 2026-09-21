@@ -33,7 +33,20 @@ use crate::persistence::engine::PersistenceEngine;
 use crate::runtime::api::RuntimeHandle;
 use crate::runtime::bootstrap::RuntimeBootstrap;
 use crate::runtime::config::RuntimeConfig;
+use crate::scripting::engine::ScriptEngine;
+use crate::scripting::registry::ScriptRegistry;
+use crate::security::capability_engine::CapabilityEngine;
 use crate::wasm::module_store::ModuleStore;
+
+// ── Backend import'ları (agent tool WASM execution için) ───
+// runtime/runtime.rs ile aynı desen: derleme zamanında seçilir.
+#[cfg(feature = "backend-wasmtime")]
+use crate::wasm::engine::WasmEngine;
+#[cfg(feature = "backend-wasmtime")]
+use crate::wasm::sandbox::SandboxLimits;
+
+#[cfg(feature = "backend-wasmi")]
+use crate::wasm::wasmi_engine::{WasmiEngine, WasmiSandboxLimits};
 
 // ── Global state ─────────────────────────────────────────
 
@@ -59,6 +72,19 @@ pub struct MobileRuntime {
     /// initialize_runtime() sonrası configure_ai_provider() ile
     /// tek tek bu router'a kaydeder.
     pub ai_router:         Arc<ProviderRouter>,
+    /// V10 Sprint 1: agent'lara verilmiş capability grant'leri.
+    /// Deny-by-default: hiçbir agent, burada açıkça grant edilmemiş
+    /// bir capability'yi gerektiren tool'u çalıştıramaz. Grant etme
+    /// mekanizması (Ayarlar / Approval Engine) henüz yok — bu yüzden
+    /// şu an tüm agent'lar en güvenli (kısıtlı) durumda başlıyor.
+    pub capability_engine: Arc<CapabilityEngine>,
+    /// V10 Sprint 1b: agent'ların çağırabileceği isimlendirilmiş
+    /// WASM script'lerinin kaydı — bkz. register_agent_script().
+    pub script_registry:   Arc<ScriptRegistry>,
+    /// ScriptTool'ların paylaştığı gerçek WASM çalıştırıcı.
+    /// module_store ile aynı KV deposunu kullanır — task execution
+    /// engine'inden bağımsız, ayrı bir Arc<dyn WasmExecutor> örneği.
+    pub script_engine:     Arc<ScriptEngine>,
     pub tokio:             TokioRuntime,
 }
 
@@ -114,6 +140,36 @@ pub fn init_mobile_runtime(
     // ── Önceki oturumdan kalan WASM binary'lerini restore et ─
     restore_modules_from_disk(&modules_dir, &module_store);
 
+    // ── Agent Tool WASM Engine (V10 Sprint 1b) ───────────────
+    // Task execution engine'inden bağımsız, ScriptTool'lar için ayrı
+    // bir Arc<dyn WasmExecutor>. Aynı module_store'u paylaşır (aynı
+    // hash → aynı binary), ama ayrı bir örnek — task worker'larının
+    // fuel/timeout bütçesini agent script'leriyle karıştırmaz.
+    #[cfg(feature = "backend-wasmtime")]
+    let script_wasm_executor: Arc<dyn crate::wasm::WasmExecutor> = Arc::new(
+        WasmEngine::new(
+            SandboxLimits {
+                memory_limit_bytes: 64 * 1024 * 1024,
+                execution_timeout: std::time::Duration::from_secs(30),
+                fuel_limit: 10_000_000,
+            },
+            module_store.clone(),
+        )
+        .map_err(|e| format!("Agent script WASM engine kurulamadı: {e}"))?,
+    );
+
+    #[cfg(feature = "backend-wasmi")]
+    let script_wasm_executor: Arc<dyn crate::wasm::WasmExecutor> = Arc::new(WasmiEngine::new(
+        WasmiSandboxLimits {
+            fuel_limit: 10_000_000,
+            execution_timeout: std::time::Duration::from_secs(30),
+        },
+        module_store.clone(),
+    ));
+
+    let script_engine = Arc::new(ScriptEngine::new(script_wasm_executor));
+    let script_registry = Arc::new(ScriptRegistry::new());
+
     // ── Metrics collector ────────────────────────────────
     let metrics = Arc::new(RuntimeMetrics::new());
     metrics.clone().start_collecting(events.clone());
@@ -143,6 +199,9 @@ pub fn init_mobile_runtime(
         workflow_registry: Arc::new(dashmap::DashMap::new()),
         cluster:           Arc::new(crate::remote::cluster::ClusterState::new()),
         ai_router:         Arc::new(ProviderRouter::new()),
+        capability_engine: Arc::new(CapabilityEngine::new()),
+        script_registry,
+        script_engine,
         tokio,
     };
 

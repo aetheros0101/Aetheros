@@ -6,6 +6,7 @@
 
 pub mod audit;
 pub mod capabilities;
+pub mod capability_engine;
 pub mod identity;      // ← aktif edildi
 pub mod isolation;
 pub mod rbac;
@@ -19,6 +20,7 @@ pub mod auth;
 
 // Sık kullanılan tipler — tek import'la erişim
 pub use rbac::{Action, AuthzError, RbacGuard, Role};
+pub use capability_engine::{CapabilityDecision, CapabilityEngine};
 pub use auth::token::{
     ApiKey,
     ApiKeyStore,

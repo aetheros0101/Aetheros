@@ -16,6 +16,7 @@ use crate::agents::runtime::AgentRuntime;
 use crate::agents::tools::AgentTool;
 use crate::ai::routing::router::ProviderRouter;
 use crate::errors::runtime::RuntimeError;
+use crate::security::capability_engine::CapabilityEngine;
 
 pub struct AgentExecutor;
 
@@ -26,6 +27,7 @@ impl AgentExecutor {
         budget: AgentExecutionBudget,
         tools: Vec<Arc<dyn AgentTool>>,
         ai_router: Option<Arc<ProviderRouter>>,
+        capability_engine: Option<Arc<CapabilityEngine>>,
     ) -> Result<Uuid, RuntimeError> {
         AgentRuntime::execute(
             context,
@@ -33,6 +35,7 @@ impl AgentExecutor {
             budget,
             tools,
             ai_router,
+            capability_engine,
         )
         .await
     }
