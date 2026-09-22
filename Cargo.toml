@@ -82,7 +82,15 @@ semver      = { version = "1.0.28", features = ["serde"] }
 hex         = "0.4.3"
 # default-features = false → native-tls (OpenSSL) devre dışı
 # rustls-tls → saf Rust TLS, Android cross-compile'da OpenSSL gerekmez
-reqwest     = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "hickory-dns"] }
+#
+# NOT (V10): hickory-dns BİLEREK kaldırıldı. hickory-dns, DNS config'i
+# /etc/resolv.conf'tan okuyor — bu dosya Android APK sandbox'ında yok/
+# erişilemez, bu yüzden DNS çözümü ağa hiç çıkmadan anında hata veriyor
+# ("Bağlantı kurulamadı" — gerçekte hiç denenmemiş). hickory-dns olmadan
+# reqwest, sistemin kendi getaddrinfo() mekanizmasına düşüyor — bu,
+# Android'de doğru çalışan tek yol. Masaüstü/sunucu derlemesinde de
+# fark yaratmaz, sistem resolver zaten oradan kullanılabilir.
+reqwest     = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 wat         = "1"
 rmp-serde   = "1.3"
 
