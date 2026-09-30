@@ -132,6 +132,40 @@ pub struct AgentStatusResponse {
     /// Unix ms
     pub started_at:   i64,
     pub finished_at:  Option<i64>,
+    /// V10 Sprint 5: status "pending_approval" ise dolu — respond_to_approval()'a geçilir.
+    pub pending_approval_id: Option<String>,
+}
+
+/// V10 Sprint 6: tek bir denetim olayı — "Denetim Kayıtları" ekranı
+/// bunu listeler. `summary`, hızlı okunabilir tek satır; `details_json`,
+/// AuditEventKind'ın tam (kayıp bilgisiz) JSON temsili — ayrıntı
+/// görünümü isteyen bir UI için.
+pub struct AuditEventResponse {
+    pub id:           String,
+    pub agent_id:     String,
+    pub execution_id: String,
+    /// "governor_decision" | "tool_invoked" | "execution_paused" |
+    /// "execution_resumed" | "approval_denied" | "execution_completed" |
+    /// "execution_failed"
+    pub kind_label:   String,
+    pub summary:      String,
+    pub details_json: String,
+    /// Unix ms
+    pub created_at:   i64,
+}
+
+/// V10 Sprint 5: SecurityGovernor'ın RequiresApproval dediği, kullanıcı
+/// onayı bekleyen bir tool çağrısı. "Bekleyen Onaylar" ekranı bunu listeler.
+pub struct PendingApprovalResponse {
+    pub id:           String,
+    pub execution_id: String,
+    pub agent_id:     String,
+    pub objective:    String,
+    pub tool_name:    String,
+    pub arguments:    Vec<String>,
+    pub reason:       String,
+    /// Unix ms
+    pub created_at:   i64,
 }
 
 // ── Workflow tipleri (FRB bridge) ─────────────────────────────────────────────

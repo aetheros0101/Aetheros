@@ -69,7 +69,7 @@ async fn denies_tool_when_agent_has_no_grant() {
 
     // Hiç grant yapılmamış CapabilityEngine — deny-by-default.
     let engine = Arc::new(CapabilityEngine::new());
-    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, Some(engine));
+    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, Some(engine), None, None, None);
 
     let result = runtime.invoke_best_tool(agent_id, "risky_tool").await;
 
@@ -101,7 +101,7 @@ async fn allows_tool_when_agent_has_matching_grant() {
             remote_execution: false,
         },
     );
-    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, Some(engine));
+    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, Some(engine), None, None, None);
 
     let result = runtime.invoke_best_tool(agent_id, "risky_tool").await;
 
@@ -124,7 +124,7 @@ async fn missing_capability_engine_preserves_pre_v10_behavior() {
     let agent_id = Uuid::new_v4();
 
     // capability_engine = None → eski (V9) davranış: kontrol atlanır.
-    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, None);
+    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, None, None, None, None);
 
     let result = runtime.invoke_best_tool(agent_id, "risky_tool").await;
 

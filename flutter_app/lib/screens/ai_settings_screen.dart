@@ -237,6 +237,34 @@ class _ProviderCardState extends State<_ProviderCard> {
     }
   }
 
+  /// Model listesi alfabetik sıralı geliyor (bkz. AiModelCatalog._dedupeAndSort)
+  /// — bu yüzden ilk sırada isim olarak "A" ile başlayan deneysel/preview
+  /// bir model çıkabilir (gözlemlenen gerçek örnek: Gemini'nin
+  /// "Antigravity..." modeli). `models.first` yerine "hızlı/genel" katman
+  /// isimlerini (flash/mini/haiku) tercih eden, deneysel görünenleri
+  /// (preview/exp) eleyen bir varsayılan seçiyoruz. Hiçbiri uymazsa
+  /// eski davranışa (ilk model) düşülür.
+  AiModelOption _pickDefaultModel(List<AiModelOption> models) {
+    bool looksExperimental(AiModelOption m) {
+      final id = m.value.toLowerCase();
+      return id.contains('preview') || id.contains('exp');
+    }
+
+    bool isFastTier(AiModelOption m) {
+      final id = m.value.toLowerCase();
+      return id.contains('flash') || id.contains('mini') || id.contains('haiku');
+    }
+
+    final stableFast =
+        models.where((m) => isFastTier(m) && !looksExperimental(m));
+    if (stableFast.isNotEmpty) return stableFast.first;
+
+    final anyStable = models.where((m) => !looksExperimental(m));
+    if (anyStable.isNotEmpty) return anyStable.first;
+
+    return models.first;
+  }
+
   Future<void> _fetchCloudModels({bool silent = false}) async {
     final key = _keyCtrl.text.trim();
     if (key.isEmpty) {
@@ -256,7 +284,7 @@ class _ProviderCardState extends State<_ProviderCard> {
         _modelOptions = models;
         if (models.isNotEmpty &&
             (_model.isEmpty || !models.any((m) => m.value == _model))) {
-          _model = models.first.value;
+          _model = _pickDefaultModel(models).value;
           _modelCtrl.text = _model;
         }
         _fetchingModels = false;

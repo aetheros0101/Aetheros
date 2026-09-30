@@ -18,10 +18,13 @@ pub struct AgentEntry {
     pub execution_id: Uuid,
     pub agent_id:     Uuid,
     pub objective:    String,
-    pub status:       String,   // "running" | "completed" | "failed"
+    pub status:       String,   // "running" | "completed" | "failed" | "pending_approval"
     pub error:        Option<String>,
     pub started_at:   DateTime<Utc>,
     pub finished_at:  Option<DateTime<Utc>>,
+    /// V10 Sprint 5: status "pending_approval" olduğunda dolu —
+    /// respond_to_approval()'a geçilecek kimlik.
+    pub pending_approval_id: Option<Uuid>,
 }
 
 pub type AgentRegistry = Arc<DashMap<Uuid, AgentEntry>>;

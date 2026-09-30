@@ -134,6 +134,7 @@ pub struct AppState {
     /// V10 Sprint 1: agent tool çağrılarını denetleyen Capability Engine.
     /// Deny-by-default — grant edilmemiş capability gerektiren tool'lar reddedilir.
     pub capability_engine: Arc<crate::security::capability_engine::CapabilityEngine>,
+    pub risk_engine: Arc<crate::security::risk_engine::RiskEngine>,
 }
 
 // ── Router ────────────────────────────────────────────────
@@ -426,13 +427,32 @@ async fn start_agent_handler(
     };
     let ai_router = state.ai_router.clone();
     let capability_engine = state.capability_engine.clone();
+    let risk_engine = state.risk_engine.clone();
 
     tokio::spawn(async move {
-        let result      = AgentExecutor::execute(context, objective, budget, vec![], Some(ai_router), Some(capability_engine)).await;
+        // V10 Sprint 5: approval_store=None BİLEREK — REST tarafında
+        // henüz respond_to_approval karşılığı bir endpoint yok, bu
+        // yüzden gerçek bir store bağlasak bile kimse onaylayamazdı.
+        // RequiresApproval çıkan bir REST agent'ı şimdilik kalıcı
+        // olarak duraklamış (fiilen reddedilmiş) sayılır.
+        let result      = AgentExecutor::execute(context, objective, budget, vec![], Some(ai_router), Some(capability_engine), Some(risk_engine), None, None).await;
         let finished_at = Utc::now();
         if let Some(mut entry) = registry.get_mut(&execution_id) {
             match result {
-                Ok(_)  => { entry.status = "completed".into(); entry.finished_at = Some(finished_at); }
+                Ok(crate::agents::runtime::AgentOutcome::Completed) => {
+                    entry.status = "completed".into();
+                    entry.finished_at = Some(finished_at);
+                }
+                Ok(crate::agents::runtime::AgentOutcome::PendingApproval { approval_id }) => {
+                    // approval_store=None geçildi (yukarıdaki not) — bu
+                    // yüzden approval_id hiçbir yerde saklanmadı, kimse
+                    // onaylayamaz. REST için şimdilik "failed" gibi işliyoruz.
+                    entry.status = "failed".into();
+                    entry.error = Some(format!(
+                        "Yüksek riskli işlem onay gerektiriyor (approval_id: {approval_id}), ama REST için onay akışı henüz yok"
+                    ));
+                    entry.finished_at = Some(finished_at);
+                }
                 Err(e) => { entry.status = "failed".into(); entry.error = Some(format!("{e:?}")); entry.finished_at = Some(finished_at); }
             }
         }

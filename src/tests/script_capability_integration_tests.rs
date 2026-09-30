@@ -50,6 +50,25 @@ fn test_budget() -> AgentExecutionBudget {
 fn make_real_script_tool() -> Arc<dyn AgentTool> {
     let module_store = Arc::new(ModuleStore::new());
 
+    // ScriptEngine::to_task() hash'i script.wasm_binary'den hesaplayıp
+    // WasmExecutor'a "bu hash'i module_store'da bul, çalıştır" der —
+    // yani binary'nin GERÇEKTEN aynı module_store'da kayıtlı olması
+    // şart, yoksa "module not found in store" hatası alınır (bu tam
+    // olarak bu düzeltmeden önce bu testin kendisinde patladığı yer).
+    // Üretimde bu sorun yaşanmıyor çünkü register_agent_script,
+    // compile_wat_to_wasm'ın ZATEN o store'a yazdığı bytes'ı kullanıyor.
+    let script = ScriptDefinition::from_wat(
+        "noop_script",
+        r#"(module (func (export "main")))"#,
+        "main",
+        1_000,
+    )
+    .expect("minimal WAT geçerli olmalı");
+
+    module_store
+        .store(script.wasm_binary.clone())
+        .expect("derlenmiş binary module_store'a yazılabilmeli");
+
     #[cfg(feature = "backend-wasmtime")]
     let wasm_executor: Arc<dyn crate::wasm::WasmExecutor> = Arc::new(
         WasmEngine::new(
@@ -74,14 +93,6 @@ fn make_real_script_tool() -> Arc<dyn AgentTool> {
 
     let script_engine = Arc::new(ScriptEngine::new(wasm_executor));
 
-    let script = ScriptDefinition::from_wat(
-        "noop_script",
-        r#"(module (func (export "main")))"#,
-        "main",
-        1_000,
-    )
-    .expect("minimal WAT geçerli olmalı");
-
     Arc::new(ScriptTool::new(script, script_engine))
 }
 
@@ -91,7 +102,7 @@ async fn real_script_tool_is_denied_without_grant() {
     let agent_id = Uuid::new_v4();
     let engine = Arc::new(CapabilityEngine::new()); // hiç grant yok
 
-    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, Some(engine));
+    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, Some(engine), None, None, None);
     let result = runtime.invoke_best_tool(agent_id, "noop_script").await;
 
     assert!(
@@ -107,7 +118,7 @@ async fn real_script_tool_actually_runs_on_wasmtime_when_granted() {
     let engine = Arc::new(CapabilityEngine::new());
     engine.grant_capability(agent_id, AgentCapability::WasmExecution);
 
-    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, Some(engine));
+    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, Some(engine), None, None, None);
     let result = runtime.invoke_best_tool(agent_id, "noop_script").await;
 
     assert!(

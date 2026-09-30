@@ -173,6 +173,7 @@ fn task_has_module_true_when_real_hash() {
 fn task_serializes_hash_as_hex() {
     use crate::tests::helpers::make_task_with_hash;
     use crate::task::priority::TaskPriority;
+    use crate::task::task::TaskDefinition;
 
     let store = ModuleStore::new();
     let hash = store.store(fake_binary(7, 64)).unwrap();
@@ -180,11 +181,15 @@ fn task_serializes_hash_as_hex() {
 
     let json = serde_json::to_string(&task).unwrap();
 
-    // wasm_module_hash hex string olarak görünmeli
+    // NOT: özel bir hex serde katmanı BİLEREK kaldırıldı (bkz.
+    // task/task.rs'teki yorum — persist/load round-trip'inde
+    // wasm_module_hash'in sıfırlanmasına yol açan hatanın kaynağıydı).
+    // Bu yüzden burada JSON metninde hex string aramak yerine, alanın
+    // gerçekten var olduğunu ve 32 baytın bozulmadan geri geldiğini
+    // doğruluyoruz — asıl önemli olan bu, temsil biçimi değil.
     assert!(json.contains("wasm_module_hash"));
-    // 64 karakter hex
-    let hex = ModuleStore::hash_to_hex(&hash);
-    assert!(json.contains(&hex));
+    let recovered: TaskDefinition = serde_json::from_str(&json).unwrap();
+    assert_eq!(recovered.wasm_module_hash, hash);
 }
 
 #[test]

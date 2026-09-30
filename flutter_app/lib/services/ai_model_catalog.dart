@@ -97,6 +97,23 @@ class AiModelCatalog {
     return !excluded.any(lower.contains);
   }
 
+  /// `supportedGenerationMethods` alanı `generateContent` içerse bile,
+  /// bazı deneysel/preview Google model'leri gerçekte standart chat
+  /// akışını (system_instruction dahil) desteklemiyor — Google'ın kendi
+  /// metadata'sı burada yanıltıcı. Gözlemlenen somut örnek: "antigravity"
+  /// ailesi generateContent'i bildiriyor ama "Developer instruction is
+  /// not enabled" / "only supports Interactions API" hatası veriyor.
+  /// OpenAI tarafındaki gibi: pozitif bir allowlist değil, bilinen
+  /// bozuk/non-chat aileler için küçük bir denylist.
+  static bool _isGeminiChatCandidate(String id) {
+    final lower = id.toLowerCase();
+    const excluded = [
+      'embedding', 'aqa', 'imagen', 'veo', 'antigravity', 'agent',
+      'learnlm',
+    ];
+    return !excluded.any(lower.contains);
+  }
+
   static Future<List<AiModelOption>> _anthropic(
     String key,
     Duration timeout,
@@ -177,7 +194,7 @@ class AiModelCatalog {
         final id = rawName.startsWith('models/')
             ? rawName.substring('models/'.length)
             : rawName;
-        if (id.isEmpty) continue;
+        if (id.isEmpty || !_isGeminiChatCandidate(id)) continue;
 
         final label = item['displayName']?.toString();
         final inputLimit = (item['inputTokenLimit'] as num?)?.toInt();

@@ -60,7 +60,7 @@ async fn invoke_tool_call_routes_to_matching_tool_with_its_arguments() {
     });
     let agent_id = Uuid::new_v4();
 
-    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, None);
+    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, None, None, None, None);
     let call = ToolCall {
         tool_name: "echo_tool".to_string(),
         arguments: vec!["a".to_string(), "b".to_string()],
@@ -82,7 +82,7 @@ async fn invoke_tool_call_errors_on_unknown_tool_name() {
     });
     let agent_id = Uuid::new_v4();
 
-    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, None);
+    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, None, None, None, None);
     let call = ToolCall {
         tool_name: "does_not_exist".to_string(),
         arguments: vec![],
@@ -123,7 +123,7 @@ async fn invoke_tool_call_still_respects_capability_engine() {
     let agent_id = Uuid::new_v4();
     let engine = Arc::new(CapabilityEngine::new()); // grant yok
 
-    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, Some(engine));
+    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, Some(engine), None, None, None);
     let call = ToolCall {
         tool_name: "risky_echo".to_string(),
         arguments: vec![],

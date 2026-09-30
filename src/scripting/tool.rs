@@ -48,6 +48,13 @@ impl AgentTool for ScriptTool {
         Some(crate::agents::capabilities::AgentCapability::WasmExecution)
     }
 
+    /// Keyfi WASM binary çalıştırmak, ilkesel olarak High risk —
+    /// script içeriği ne yaptığını beyan etmiyor, kod sandbox içinde
+    /// olsa bile davranışı önceden bilinmiyor.
+    fn risk_level(&self) -> crate::types::agent_tool::RiskLevel {
+        crate::types::agent_tool::RiskLevel::High
+    }
+
     async fn invoke(
         &self,
         _args: Vec<String>,

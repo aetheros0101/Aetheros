@@ -24,9 +24,11 @@ use std::sync::{Arc, OnceLock};
 use tokio::runtime::Runtime as TokioRuntime;
 use tracing::info;
 
+use crate::agents::approval::ApprovalStore;
 use crate::ai::routing::router::ProviderRouter;
 use crate::bridge::agent::{AgentRegistry, WorkflowRegistry};
 use crate::events::bus::EventBus;
+use crate::logging::audit::AuditLog;
 use crate::logging::buffer::{LogBuffer, log_collector};
 use crate::metrics::runtime::RuntimeMetrics;
 use crate::persistence::engine::PersistenceEngine;
@@ -36,6 +38,7 @@ use crate::runtime::config::RuntimeConfig;
 use crate::scripting::engine::ScriptEngine;
 use crate::scripting::registry::ScriptRegistry;
 use crate::security::capability_engine::CapabilityEngine;
+use crate::security::risk_engine::RiskEngine;
 use crate::wasm::module_store::ModuleStore;
 
 // ── Backend import'ları (agent tool WASM execution için) ───
@@ -78,6 +81,18 @@ pub struct MobileRuntime {
     /// mekanizması (Ayarlar / Approval Engine) henüz yok — bu yüzden
     /// şu an tüm agent'lar en güvenli (kısıtlı) durumda başlıyor.
     pub capability_engine: Arc<CapabilityEngine>,
+    /// V10 Sprint 3: her tool çağrısına tool-bazlı bir risk seviyesi
+    /// atayan Risk Engine. Sadece değerlendirir — bloklama kararı
+    /// AgentRuntime'ın (geçici) HighRiskPolicy'sinde.
+    pub risk_engine:       Arc<RiskEngine>,
+    /// V10 Sprint 5: RequiresApproval durumunda duraklatılan
+    /// execution'ların kaydı. respond_to_approval() bunu okuyup
+    /// AgentRuntime::resume() ile devam ettirir ya da kalıcı olarak
+    /// reddeder.
+    pub approval_store:    Arc<ApprovalStore>,
+    /// V10 Sprint 6: Governor kararlarının, tool çağrılarının ve
+    /// pause/resume olaylarının kaydedildiği denetim izi.
+    pub audit_log:         Arc<AuditLog>,
     /// V10 Sprint 1b: agent'ların çağırabileceği isimlendirilmiş
     /// WASM script'lerinin kaydı — bkz. register_agent_script().
     pub script_registry:   Arc<ScriptRegistry>,
@@ -172,6 +187,15 @@ pub fn init_mobile_runtime(
 
     // ── Metrics collector ────────────────────────────────
     let metrics = Arc::new(RuntimeMetrics::new());
+    // NOT: start_collecting() içeride bare tokio::spawn() kullanıyor,
+    // ki bu ortam ("reactor") gerektirir. Bu noktada tokio.block_on()
+    // zaten bitmiş olduğundan, çağıran taraf (örn. bir test) kendi
+    // ortamını sağlamıyorsa "there is no reactor running" ile panikler.
+    // Üretimde bu şimdiye dek hiç görünmedi çünkü Flutter Rust Bridge
+    // her çağrıyı zaten kendi Tokio ortamında yapıyor — ama buna
+    // ÖRTÜK olarak güvenmek kırılgan. `tokio.enter()` ile KENDİ
+    // ortamımızı garanti ediyoruz, çağıranın ortamına bağımlı kalmadan.
+    let _enter = tokio.enter();
     metrics.clone().start_collecting(events.clone());
 
     // ── Log collector ─────────────────────────────────────
@@ -200,6 +224,9 @@ pub fn init_mobile_runtime(
         cluster:           Arc::new(crate::remote::cluster::ClusterState::new()),
         ai_router:         Arc::new(ProviderRouter::new()),
         capability_engine: Arc::new(CapabilityEngine::new()),
+        risk_engine:       Arc::new(RiskEngine::new()),
+        approval_store:    Arc::new(ApprovalStore::new()),
+        audit_log:         Arc::new(AuditLog::default()),
         script_registry,
         script_engine,
         tokio,

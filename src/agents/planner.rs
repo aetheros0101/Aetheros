@@ -44,6 +44,36 @@ struct PlanStepResponse {
     arguments: Vec<String>,
 }
 
+/// V10 Sprint 7: `plan_next`'e geçmişte atılmış bir adımın SONUCUNU
+/// bildirmek için. `AgentRuntime` her adımdan sonra bunu doldurup
+/// history'ye ekler.
+#[derive(Debug, Clone)]
+pub struct StepRecord {
+    pub step_name: String,
+    pub success: bool,
+    pub output: String,
+}
+
+/// `plan_next`'in kararı: ya yeni bir adım, ya da "hedef tamamlandı".
+#[derive(Debug, Clone)]
+pub enum NextStepDecision {
+    Step(AgentPlanStep),
+    Done,
+}
+
+#[derive(Debug, Deserialize)]
+struct NextStepResponse {
+    done: bool,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    retryable: bool,
+    #[serde(default)]
+    tool_name: Option<String>,
+    #[serde(default)]
+    arguments: Vec<String>,
+}
+
 pub struct AgentPlanner;
 
 impl AgentPlanner {
@@ -171,6 +201,115 @@ Output ONLY valid JSON, no explanation."#,
             objective,
             planned_steps: steps,
         })
+    }
+
+    /// V10 Sprint 7 (Autonomous Agent Loop): önceki adımın SONUCUNA
+    /// bakarak tek bir sonraki adımı üretir. `plan()`'ın aksine tüm
+    /// planı bir kerede vermez — her çağrı, geçmişteki gözlemlere göre
+    /// yeniden düşünür. Sadece gerçek bir AI provider varken anlamlı;
+    /// yoksa None döner (çağıran taraf sabit fallback_plan'a düşer —
+    /// otonom döngü, uyarlanabilir bir planlayıcı olmadan zaten yapılamaz).
+    pub async fn plan_next(
+        objective: &str,
+        history: &[StepRecord],
+        router: &Arc<ProviderRouter>,
+        tools: &[Arc<dyn AgentTool>],
+    ) -> Option<NextStepDecision> {
+        let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
+
+        let history_text = if history.is_empty() {
+            "(henüz hiçbir adım atılmadı)".to_string()
+        } else {
+            history
+                .iter()
+                .enumerate()
+                .map(|(i, r)| {
+                    let status = if r.success { "başarılı" } else { "başarısız" };
+                    let output_preview: String = r.output.chars().take(200).collect();
+                    if output_preview.is_empty() {
+                        format!("{}. {} → {status}", i + 1, r.step_name)
+                    } else {
+                        format!("{}. {} → {status}: {output_preview}", i + 1, r.step_name)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+
+        let tools_section = if tool_names.is_empty() {
+            "No tools are available right now — never set \"tool_name\".".to_string()
+        } else {
+            format!(
+                "Available tools (use ONLY these exact names in \"tool_name\"):\n{}",
+                tool_names.iter().map(|n| format!("- {n}")).collect::<Vec<_>>().join("\n")
+            )
+        };
+
+        let system = format!(
+            r#"You are an AetherOS autonomous agent. Given an objective and the steps
+taken so far (with their results), decide the SINGLE next step — or
+say the objective is already complete.
+
+Output ONLY valid JSON, no explanation, in exactly one of these two forms:
+{{"done": true}}
+{{"done": false, "name": "step_name", "retryable": true, "tool_name": "...", "arguments": ["..."]}}
+
+{tools_section}
+
+Only include "tool_name" if this specific step should invoke that tool."#
+        );
+
+        let prompt = format!(
+            "Objective: {objective}\n\nSteps so far:\n{history_text}\n\nWhat is the next step?"
+        );
+
+        let request = InferenceRequest::new(prompt, 512)
+            .with_system(system)
+            .with_temperature(0.3);
+
+        let response = router.infer_active(request).await.ok()?;
+
+        debug!(tokens = response.tokens_used, "AI plan_next response received");
+
+        let cleaned = response
+            .output
+            .trim()
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim();
+
+        let parsed: NextStepResponse = serde_json::from_str(cleaned).ok()?;
+
+        if parsed.done {
+            return Some(NextStepDecision::Done);
+        }
+
+        let name = parsed.name?;
+
+        // Aynı güvenlik ilkesi: AI'nin ürettiği tool_name'e körü körüne
+        // güvenilmiyor, sadece gerçek tool listesindeyse ToolCall'a çevrilir.
+        let tool_call = parsed.tool_name.and_then(|tn| {
+            if tool_names.contains(&tn.as_str()) {
+                Some(ToolCall {
+                    tool_name: tn,
+                    arguments: parsed.arguments,
+                })
+            } else {
+                tracing::warn!(
+                    hallucinated_tool = %tn,
+                    "plan_next: AI, tool listesinde olmayan bir tool ismi üretti — göz ardı edildi"
+                );
+                None
+            }
+        });
+
+        Some(NextStepDecision::Step(AgentPlanStep {
+            id: Uuid::new_v4(),
+            name,
+            retryable: parsed.retryable,
+            tool_call,
+        }))
     }
 
     /// API'siz çalışabilen minimal fallback plan.

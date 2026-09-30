@@ -29,6 +29,7 @@ use crate::metrics::runtime::RuntimeMetrics;
 use crate::persistence::engine::PersistenceEngine;
 use crate::runtime::api::RuntimeHandle;
 use crate::security::capability_engine::CapabilityEngine;
+use crate::security::risk_engine::RiskEngine;
 use crate::wasm::module_store::ModuleStore;
 
 pub struct ApiServer {
@@ -51,6 +52,7 @@ impl ApiServer {
         let cluster                             = Arc::new(ClusterState::new());
         let ai_router                           = Arc::new(Self::ai_router_from_env());
         let capability_engine                   = Arc::new(CapabilityEngine::new());
+        let risk_engine                         = Arc::new(RiskEngine::new());
 
         Self {
             state: AppState {
@@ -65,6 +67,7 @@ impl ApiServer {
                 cluster,
                 ai_router,
                 capability_engine,
+                risk_engine,
             },
             addr,
         }
