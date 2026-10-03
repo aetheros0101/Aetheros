@@ -385,15 +385,20 @@ class NodeRegistrationResponse {
 
 // ── Agent fonksiyonları ───────────────────────────────────────
 
+/// `capabilities`: agent'a BAŞLANGIÇTA verilecek yetkiler (B11) —
+/// "terminal_execution", "wasm_execution", … (bkz. core/agent_capabilities.dart).
+/// Boş = yetkisiz. Rust, bilinmeyen bir ad için hata verir.
 Future<AgentStartResponse> startAgent({
   required String objective,
   required int maxSteps,
   required int maxTokens,
+  List<String> capabilities = const [],
 }) async {
   final r = await _bridge.startAgent(
     objective: objective,
     maxSteps:  BigInt.from(maxSteps),    // usize → BigInt
     maxTokens: BigInt.from(maxTokens),   // usize → BigInt
+    capabilities: capabilities,
   );
   return AgentStartResponse(
     executionId: r.executionId,
@@ -601,3 +606,55 @@ Future<String> aiChat({
     maxTokens: BigInt.from(maxTokens), // usize → BigInt
   );
 }
+
+// ── Bekleyen onaylar (B5) ────────────────────────────────────
+//
+// Rust: bridge::api::list_pending_approvals / respond_to_approval.
+// SecurityGovernor "RequiresApproval" dediğinde agent duraklar ve burada
+// görünür; kullanıcı onaylarsa kalan adımlarla devam eder, reddederse
+// execution kalıcı olarak reddedilir. Onaylar uygulama yeniden
+// başlatılsa da korunur ve ~60 dk sonra (TTL) otomatik reddedilir.
+
+class PendingApproval {
+  final String id;
+  final String executionId;
+  final String agentId;
+  final String objective;
+  final String toolName;
+  final List<String> arguments;
+  final String reason;
+  final int createdAt; // ms epoch
+
+  const PendingApproval({
+    required this.id,
+    required this.executionId,
+    required this.agentId,
+    required this.objective,
+    required this.toolName,
+    required this.arguments,
+    required this.reason,
+    required this.createdAt,
+  });
+}
+
+Future<List<PendingApproval>> listPendingApprovals() async {
+  final list = await _bridge.listPendingApprovals();
+  return list
+      .map((r) => PendingApproval(
+            id:          r.id,
+            executionId: r.executionId,
+            agentId:     r.agentId,
+            objective:   r.objective,
+            toolName:    r.toolName,
+            arguments:   List<String>.from(r.arguments),
+            reason:      r.reason,
+            createdAt:   r.createdAt.toInt(),
+          ))
+      .toList();
+}
+
+Future<void> respondToApproval({
+  required String approvalId,
+  required bool approved,
+}) =>
+    _bridge.respondToApproval(approvalId: approvalId, approved: approved);
