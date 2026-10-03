@@ -8,6 +8,7 @@
 // ============================================================
 
 import '../core/lifecycle_poller.dart';
+import '../core/agent_capabilities.dart';
 import '../core/app_error.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -123,6 +124,7 @@ class _NewAgentSheetState extends State<_NewAgentSheet> {
   int    _maxTokens  = 4096;
   bool   _submitting = false;
   String? _error;
+  final Set<String> _caps = {};
 
   @override
   void dispose() { _objCtrl.dispose(); super.dispose(); }
@@ -138,6 +140,7 @@ class _NewAgentSheetState extends State<_NewAgentSheet> {
         objective: _objCtrl.text.trim(),
         maxSteps:  _maxSteps,
         maxTokens: _maxTokens,
+        capabilities: normalizeCapabilities(_caps),
       );
       if (mounted) {
         Navigator.pop(context);
@@ -155,7 +158,7 @@ class _NewAgentSheetState extends State<_NewAgentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
           20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 20),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -208,6 +211,45 @@ class _NewAgentSheetState extends State<_NewAgentSheet> {
           _StepChip(label: '32K', value: 32768, selected: _maxTokens == 32768,
               onTap: () => setState(() => _maxTokens = 32768)),
         ]),
+
+        const SizedBox(height: 16),
+
+        // Yetkiler (B11) — agent başlamadan ÖNCE, atomik verilir.
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Text('Yetkiler:', style: TextStyle(color: Colors.white70)),
+        ),
+        const SizedBox(height: 6),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Wrap(spacing: 8, runSpacing: 4, children: [
+            for (final c in kAgentCapabilities)
+              FilterChip(
+                label: Text(c.label),
+                selected: _caps.contains(c.id),
+                onSelected: _submitting
+                    ? null
+                    : (on) => setState(() {
+                          if (on) { _caps.add(c.id); } else { _caps.remove(c.id); }
+                        }),
+              ),
+          ]),
+        ),
+        for (final c in kAgentCapabilities)
+          if (c.sensitive && _caps.contains(c.id))
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.warning_amber_rounded,
+                    size: 16, color: AetherColors.warning),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text('${c.label}: ${c.description}',
+                      style: const TextStyle(
+                          color: AetherColors.warning, fontSize: 11.5)),
+                ),
+              ]),
+            ),
 
         if (_error != null) ...[
           const SizedBox(height: 12),
