@@ -473,6 +473,7 @@ pub fn grant_agent_capability(
         "workflow_execution" => crate::agents::capabilities::AgentCapability::WorkflowExecution,
         "ai_reasoning" => crate::agents::capabilities::AgentCapability::AiReasoning,
         "remote_execution" => crate::agents::capabilities::AgentCapability::RemoteExecution,
+        "terminal_execution" => crate::agents::capabilities::AgentCapability::TerminalExecution,
         other => return Err(format!("Bilinmeyen capability: '{other}'")),
     };
 
@@ -677,7 +678,7 @@ pub async fn start_agent(
     // kayıtlı her script bir ScriptTool olarak agent'a sunuluyor.
     // Hangisinin GERÇEKTEN çalışabileceğine CapabilityEngine karar verir
     // (bkz. grant_agent_capability) — burada listelenmek izin vermez.
-    let tools: Vec<std::sync::Arc<dyn crate::types::agent_tool::AgentTool>> = rt
+    let mut tools: Vec<std::sync::Arc<dyn crate::types::agent_tool::AgentTool>> = rt
         .script_registry
         .list()
         .into_iter()
@@ -688,6 +689,11 @@ pub async fn start_agent(
             )) as std::sync::Arc<dyn crate::types::agent_tool::AgentTool>
         })
         .collect();
+    // V10 Faz 1: terminal her agent'a sunuluyor — listede olmak izin
+    // vermez, TerminalExecution capability + Governor onayı hâlâ şart.
+    tools.push(std::sync::Arc::new(
+        crate::agents::terminal_tool::TerminalAgentTool::new(),
+    ));
 
     tokio::spawn(async move {
         let result      = crate::agents::executor::AgentExecutor
@@ -752,6 +758,11 @@ pub fn list_pending_approvals() -> Result<Vec<PendingApprovalResponse>, String> 
     let rt = get_runtime()
         .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
+    // V10 B3: süresi dolmuş onaylar listede görünmesin (ve verilemesin).
+    crate::bridge::state::expire_stale_approvals(
+        &rt.approval_store, &rt.audit_log, &rt.agent_registry,
+    );
+
     Ok(rt
         .approval_store
         .list()
@@ -785,11 +796,16 @@ pub async fn respond_to_approval(
     let id = uuid::Uuid::parse_str(&approval_id)
         .map_err(|e| format!("Geçersiz approval_id: {e}"))?;
 
+    // V10 B3: TTL'i dolmuş onay verilemez — önce temizle.
+    crate::bridge::state::expire_stale_approvals(
+        &rt.approval_store, &rt.audit_log, &rt.agent_registry,
+    );
+
     // take(): kaydı çıkarır — aynı onaya iki kere cevap verilemez.
     let pending = rt
         .approval_store
         .take(&id)
-        .ok_or_else(|| format!("Onay kaydı bulunamadı (zaten işlenmiş olabilir): {approval_id}"))?;
+        .ok_or_else(|| format!("Onay kaydı bulunamadı (zaten işlenmiş ya da süresi dolmuş olabilir): {approval_id}"))?;
 
     let execution_id = pending.context.execution_id;
 
@@ -819,7 +835,7 @@ pub async fn respond_to_approval(
 
     // Resume anında GÜNCEL registry'den taze tool listesi kur —
     // start_agent'taki ile aynı desen (bkz. yukarısı).
-    let tools: Vec<std::sync::Arc<dyn crate::types::agent_tool::AgentTool>> = rt
+    let mut tools: Vec<std::sync::Arc<dyn crate::types::agent_tool::AgentTool>> = rt
         .script_registry
         .list()
         .into_iter()
@@ -830,6 +846,9 @@ pub async fn respond_to_approval(
             )) as std::sync::Arc<dyn crate::types::agent_tool::AgentTool>
         })
         .collect();
+    tools.push(std::sync::Arc::new(
+        crate::agents::terminal_tool::TerminalAgentTool::new(),
+    ));
 
     let ai_router         = rt.ai_router.clone();
     let capability_engine = rt.capability_engine.clone();
@@ -876,29 +895,43 @@ pub async fn respond_to_approval(
 
 // ── V10 Sprint 6: Audit Log ─────────────────────────────────
 
+/// Özet satırı için argümanları ` [a b c]` biçiminde yazar (boşsa "").
+/// Audit'e yazılırken zaten maskelenmiş/kırpılmış olarak gelir.
+fn fmt_call_args(arguments: &[String]) -> String {
+    if arguments.is_empty() {
+        String::new()
+    } else {
+        format!(" [{}]", arguments.join(" "))
+    }
+}
+
 /// `AuditEventKind`'ı ("governor_decision" gibi) kısa bir etikete ve
 /// tek satırlık okunabilir bir özete çevirir.
 fn describe_audit_event(kind: &crate::logging::audit::AuditEventKind) -> (&'static str, String) {
     use crate::logging::audit::AuditEventKind as K;
     match kind {
-        K::GovernorDecision { tool_name, decision, reason } => (
+        K::GovernorDecision { tool_name, decision, reason, arguments } => (
             "governor_decision",
             match reason {
-                Some(r) => format!("'{tool_name}' → {decision} ({r})"),
-                None => format!("'{tool_name}' → {decision}"),
+                Some(r) => format!("'{tool_name}'{} → {decision} ({r})", fmt_call_args(arguments)),
+                None => format!("'{tool_name}'{} → {decision}", fmt_call_args(arguments)),
             },
         ),
-        K::ToolInvoked { tool_name, success, error } => (
+        K::ToolInvoked { tool_name, success, error, arguments, .. } => (
             "tool_invoked",
             if *success {
-                format!("'{tool_name}' çalıştı")
+                format!("'{tool_name}'{} çalıştı", fmt_call_args(arguments))
             } else {
-                format!("'{tool_name}' başarısız: {}", error.clone().unwrap_or_default())
+                format!(
+                    "'{tool_name}'{} başarısız: {}",
+                    fmt_call_args(arguments),
+                    error.clone().unwrap_or_default()
+                )
             },
         ),
-        K::ExecutionPaused { tool_name, reason, .. } => (
+        K::ExecutionPaused { tool_name, reason, arguments, .. } => (
             "execution_paused",
-            format!("'{tool_name}' onay bekliyor: {reason}"),
+            format!("'{tool_name}'{} onay bekliyor: {reason}", fmt_call_args(arguments)),
         ),
         K::ExecutionResumed { approval_id } => (
             "execution_resumed",

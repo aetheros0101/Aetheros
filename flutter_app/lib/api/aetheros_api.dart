@@ -165,6 +165,23 @@ class AetherApi {
     return rust.listAgents(limit: limit);
   }
 
+  // ── Bekleyen onaylar (B5) ─────────────────────────────────
+
+  /// Onay bekleyen (duraklatılmış) çağrılar. Süresi dolanlar Rust
+  /// tarafında temizlenir ve listede görünmez.
+  static Future<List<rust.PendingApproval>> listPendingApprovals() async {
+    return rust.listPendingApprovals();
+  }
+
+  /// `approved: true` → çağrı çalışır, agent devam eder.
+  /// `approved: false` → execution kalıcı olarak reddedilir.
+  static Future<void> respondToApproval({
+    required String approvalId,
+    required bool approved,
+  }) async {
+    return rust.respondToApproval(approvalId: approvalId, approved: approved);
+  }
+
   // ── Workflow ────────────────────────────────────────────
 
   /// Workflow gönder → workflow_id döner.

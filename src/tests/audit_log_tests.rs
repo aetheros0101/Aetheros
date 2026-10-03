@@ -155,3 +155,77 @@ async fn denied_call_writes_governor_deny_and_execution_failed() {
         "bilinmeyen tool hatası ExecutionFailed olarak yazılmalı: {events:?}"
     );
 }
+
+#[tokio::test]
+async fn audit_records_arguments_masked_and_output_summary() {
+    let tool: Arc<dyn AgentTool> = Arc::new(EchoTool {
+        invoked: Arc::new(AtomicBool::new(false)),
+    });
+    let context = AgentContext {
+        agent_id: Uuid::new_v4(),
+        execution_id: Uuid::new_v4(),
+        workflow_id: None,
+    };
+    let audit_log = Arc::new(AuditLog::new(100));
+
+    let mut runtime = AgentRuntime::new(
+        test_budget(),
+        vec![tool],
+        None,
+        None,
+        None,
+        None,
+        Some(audit_log.clone()),
+    );
+
+    let steps = vec![AgentPlanStep {
+        id: Uuid::new_v4(),
+        name: "step1".to_string(),
+        retryable: false,
+        tool_call: Some(ToolCall {
+            tool_name: "echo_tool".to_string(),
+            arguments: vec![
+                "merhaba".to_string(),
+                "--password".to_string(),
+                "s3cret".to_string(),
+            ],
+        }),
+    }];
+
+    runtime
+        .run_steps(&context, &steps, 0, 0, "test")
+        .await
+        .expect("hatasız tamamlanmalı");
+
+    let events = audit_log.list_for_execution(context.execution_id);
+
+    // Governor kararı argümanlarıyla birlikte, sır maskeli yazılmalı.
+    let gov_args = events
+        .iter()
+        .find_map(|e| match &e.kind {
+            AuditEventKind::GovernorDecision { arguments, .. } => Some(arguments.clone()),
+            _ => None,
+        })
+        .expect("GovernorDecision olayı yok");
+    assert_eq!(gov_args, vec!["merhaba", "--password", "[REDACTED]"]);
+
+    // Tool çağrısı: argümanlar + çıktı özeti ("ok" → 2 bayt).
+    let (inv_args, out) = events
+        .iter()
+        .find_map(|e| match &e.kind {
+            AuditEventKind::ToolInvoked { arguments, output, success: true, .. } => {
+                Some((arguments.clone(), output.clone()))
+            }
+            _ => None,
+        })
+        .expect("başarılı ToolInvoked olayı yok");
+    assert_eq!(inv_args, vec!["merhaba", "--password", "[REDACTED]"]);
+    let out = out.expect("çıktı özeti yazılmalı");
+    assert_eq!(out.bytes, 2);
+    assert_eq!(out.sha256.len(), 64);
+    assert_eq!(out.preview, "ok");
+
+    // Ham sır hiçbir olayda görünmemeli.
+    let dump = format!("{events:?}");
+    assert!(!dump.contains("s3cret"), "sır audit'e sızdı: {dump}");
+}

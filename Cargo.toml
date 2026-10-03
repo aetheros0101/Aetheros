@@ -6,6 +6,17 @@ license = "Apache-2.0"
 authors = ["AetherOS"]
 description = "Production-grade async runtime orchestration system"
 
+# ── Workspace ─────────────────────────────────────────────
+# aetheros-terminal path-dependency olarak zaten kök dizinde; [workspace]
+# bildirimi onu otomatik üye yapar, böylece `cargo test -p aetheros-terminal`
+# çalışır (workspace YOKKEN kendi testleri hiçbir yerde koşmuyordu).
+# tools/context_builder kendi Cargo.lock'una sahip bağımsız bir araç:
+# dışlanmazsa içinde `cargo build` "workspace'e ait değil" hatası verir.
+# NOT: default-members BİLEREK verilmedi — `cargo ndk build --lib
+# --features ...` (APK hattı) çoklu paket seçimiyle karışmasın.
+[workspace]
+exclude = ["tools/context_builder"]
+
 # ── Features ──────────────────────────────────────────────
 #
 #  backend-wasmtime  →  JIT (Cranelift) — server/desktop varsayılan
@@ -46,6 +57,10 @@ harness = false
 
 # ── Dependencies ─────────────────────────────────────────
 [dependencies]
+# V10 Faz 1: terminal execution layer (bkz. aetheros-terminal/README.md).
+# Bilerek ayrı bir crate — PTY/session iç detayları AgentTool arayüzünü
+# kirletmesin diye; entegrasyon src/agents/tools/terminal_tool.rs'te.
+aetheros-terminal = { path = "aetheros-terminal" }
 tokio       = { version = "1", features = ["full", "signal"] }
 
 # ── WASM backend — sadece biri aktif olmalı ───────────────

@@ -269,9 +269,16 @@ fn quorum_policy_satisfied() {
 }
 
 // ── StaticDiscovery Testleri ──────────────────────────────
+//
+// Üç test de AETHEROS_SEEDS ortam değişkenini (süreç-genel) değiştiriyor.
+// Testler paralel koştuğu için biri set_var yaparken diğeri remove_var
+// yapıyor → `static_discovery_parses_seeds` ara sıra 0 görüyordu (flaky).
+// Ortak kilit bunları sıraya sokar. Poisoned olursa içeriği yine al.
+static SEEDS_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[test]
 fn static_discovery_empty_when_no_env() {
+    let _guard = SEEDS_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // AETHEROS_SEEDS set değilse boş dön
     unsafe { std::env::remove_var("AETHEROS_SEEDS"); }
     let seeds = StaticDiscovery::from_env();
@@ -280,6 +287,7 @@ fn static_discovery_empty_when_no_env() {
 
 #[test]
 fn static_discovery_parses_seeds() {
+    let _guard = SEEDS_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     unsafe { std::env::set_var("AETHEROS_SEEDS", "127.0.0.1:9001,127.0.0.1:9002,127.0.0.1:9003"); }
     let seeds = StaticDiscovery::from_env();
     assert_eq!(seeds.len(), 3);
@@ -289,6 +297,7 @@ fn static_discovery_parses_seeds() {
 
 #[test]
 fn static_discovery_trims_whitespace() {
+    let _guard = SEEDS_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     unsafe { std::env::set_var("AETHEROS_SEEDS", " 127.0.0.1:9001 , 127.0.0.1:9002 "); }
     let seeds = StaticDiscovery::from_env();
     assert_eq!(seeds.len(), 2);

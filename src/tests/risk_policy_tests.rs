@@ -54,7 +54,7 @@ fn test_budget() -> AgentExecutionBudget {
 }
 
 #[tokio::test]
-async fn default_policy_blocks_high_risk_tool_even_with_capability_granted() {
+async fn default_policy_still_refuses_high_risk_via_the_low_level_path() {
     let invoked = Arc::new(AtomicBool::new(false));
     let tool: Arc<dyn AgentTool> = Arc::new(RiskyTool {
         level: RiskLevel::High,
@@ -62,7 +62,11 @@ async fn default_policy_blocks_high_risk_tool_even_with_capability_granted() {
     });
     let agent_id = Uuid::new_v4();
 
-    // Capability GRANT EDİLMİŞ — ama tool High risk, politika varsayılan Block.
+    // Capability GRANT EDİLMİŞ — ama tool High risk. Varsayılan politika
+    // artık RequireApproval (V10 Faz 1) — ama bu test bilerek run_steps'in
+    // duraklat-ve-kaydet akışını ATLAYIP invoke_best_tool'u DOĞRUDAN
+    // çağırıyor; o çağrı yolunda onay mekanizması yok, bu yüzden
+    // RequiresApproval de (Deny gibi) hâlâ bir Err ile sonuçlanır.
     let cap_engine = Arc::new(CapabilityEngine::new());
     // risky_tool hiç required_capability() bildirmiyor (None), yani
     // capability kontrolü zaten geçer — asıl engel risk katmanı olacak.
@@ -82,7 +86,7 @@ async fn default_policy_blocks_high_risk_tool_even_with_capability_granted() {
 
     assert!(
         result.is_err(),
-        "varsayılan Block politikasında High risk bir tool çalışmamalı"
+        "onay akışı olmayan düşük seviye çağrı yolunda High risk bir tool çalışmamalı"
     );
     assert!(!invoked.load(Ordering::SeqCst));
 }

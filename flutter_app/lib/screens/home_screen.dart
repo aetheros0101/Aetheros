@@ -16,6 +16,7 @@ import 'ai_chat_screen.dart';
 import 'backup_screen.dart';
 import 'log_screen.dart';
 import 'agent_screen.dart';
+import 'approvals_screen.dart';
 import 'workflow_screen.dart';
 import 'remote_screen.dart';
 import 'settings_screen.dart';
@@ -28,6 +29,19 @@ final metricsProvider = StreamProvider<rust.MetricsSnapshot>((ref) {
       .asyncMap((f) => f);
 });
 
+/// B5: onay bekleyen çağrı sayısı (rozet için). Hata olursa 0 — rozet
+/// asla ana ekranı bozmasın.
+final pendingApprovalsProvider = StreamProvider.autoDispose<int>((ref) async* {
+  while (true) {
+    try {
+      yield (await AetherApi.listPendingApprovals()).length;
+    } catch (_) {
+      yield 0;
+    }
+    await Future<void>.delayed(const Duration(seconds: 3));
+  }
+});
+
 // ── Ekran ─────────────────────────────────────────────────────
 
 class HomeScreen extends ConsumerWidget {
@@ -36,6 +50,7 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final metrics = ref.watch(metricsProvider);
+    final pending = ref.watch(pendingApprovalsProvider).valueOrNull ?? 0;
 
     return Scaffold(
       backgroundColor: AetherColors.background,
@@ -52,6 +67,19 @@ class HomeScreen extends ConsumerWidget {
                   letterSpacing: 1.2)),
         ]),
         actions: [
+          IconButton(
+            icon: Badge(
+              isLabelVisible: pending > 0,
+              label: Text('$pending'),
+              child: Icon(
+                Icons.gpp_maybe_outlined,
+                color: pending > 0 ? AetherColors.warning : Colors.white70,
+              ),
+            ),
+            tooltip: 'Bekleyen onaylar',
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const ApprovalsScreen())),
+          ),
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.white70),
             tooltip: 'Ayarlar',

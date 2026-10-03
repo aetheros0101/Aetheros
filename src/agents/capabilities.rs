@@ -21,6 +21,11 @@ pub struct AgentCapabilities {
 
     pub remote_execution:
         bool,
+
+    /// V10 Faz 1: agent'ın gerçek bir shell komutu / süreç çalıştırıp
+    /// çalıştıramayacağı (bkz. agents::tools::terminal_tool::TerminalAgentTool).
+    pub terminal_execution:
+        bool,
 }
 
 #[derive(
@@ -39,4 +44,6 @@ pub enum AgentCapability {
     AiReasoning,
 
     RemoteExecution,
+
+    TerminalExecution,
 }

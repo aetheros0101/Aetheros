@@ -40,10 +40,23 @@ use crate::persistence::models::PersistedTask;
 use crate::task::task::TaskState;
 use crate::types::ids::TaskId;
 
+/// V10 B3: genel amaçlı, çağıran tarafından serileştirilen kayıt türleri.
+/// Task'lardan farklı olarak bu kayıtların şeması çağıranda (ApprovalStore,
+/// AuditLog); engine yalnızca saklar (+ at-rest şifreleme uygular).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecordKind {
+    /// Bekleyen onaylar (agents::approval::PendingApproval, JSON).
+    Approvals,
+    /// Denetim izi (logging::audit::AuditEvent, JSON).
+    Audit,
+}
+
 pub struct PersistenceEngine {
     database: Db,
     tasks: Tree,
     snapshots: Tree,
+    approvals: Tree,
+    audit: Tree,
     /// At-rest şifreleme kancası — bkz. src/persistence/encryption.rs.
     /// Şu an itibariyle NoopCipher (gerçek şifreleme yok, bkz. dosya
     /// dokümantasyonu), ama tüm okuma/yazma buradan geçtiği için ileride
@@ -66,12 +79,93 @@ impl PersistenceEngine {
             .open_tree("snapshots_v2")
             .map_err(|_| PersistenceError::StorageFailure)?;
 
+        let approvals = database
+            .open_tree("approvals_v1")
+            .map_err(|_| PersistenceError::StorageFailure)?;
+
+        let audit = database
+            .open_tree("audit_v1")
+            .map_err(|_| PersistenceError::StorageFailure)?;
+
         Ok(Self {
             database,
             tasks,
             snapshots,
+            approvals,
+            audit,
             cipher: cipher_from_env(),
         })
+    }
+
+    fn record_tree(&self, kind: RecordKind) -> &Tree {
+        match kind {
+            RecordKind::Approvals => &self.approvals,
+            RecordKind::Audit => &self.audit,
+        }
+    }
+
+    /// Bir kaydı (zaten serileştirilmiş baytlar) at-rest şifreleme
+    /// kancasından geçirip yazar. Aynı anahtar varsa üzerine yazar.
+    pub fn put_record(
+        &self,
+        kind: RecordKind,
+        key: &[u8],
+        value: &[u8],
+    ) -> Result<(), PersistenceError> {
+        let value = self.cipher.encrypt(value)?;
+        self.record_tree(kind)
+            .insert(key, value)
+            .map_err(|_| PersistenceError::StorageFailure)?;
+        Ok(())
+    }
+
+    pub fn delete_record(
+        &self,
+        kind: RecordKind,
+        key: &[u8],
+    ) -> Result<(), PersistenceError> {
+        self.record_tree(kind)
+            .remove(key)
+            .map_err(|_| PersistenceError::StorageFailure)?;
+        Ok(())
+    }
+
+    /// Bir türün tüm kayıtları, ANAHTAR sırasıyla (sled sıralıdır) —
+    /// `(anahtar, çözülmüş değer)`. Okunamayan/şifresi çözülemeyen tek bir
+    /// kayıt tüm listeyi mahvetmesin diye atlanır ve loglanır.
+    pub fn load_records(
+        &self,
+        kind: RecordKind,
+    ) -> Result<Vec<(Vec<u8>, Vec<u8>)>, PersistenceError> {
+        let mut out = Vec::new();
+        for entry in self.record_tree(kind).iter() {
+            let (key, value) = match entry {
+                Ok(kv) => kv,
+                Err(e) => {
+                    warn!(err = %e, ?kind, "Kayıt iter hatası, atlanıyor");
+                    continue;
+                }
+            };
+            match self.cipher.decrypt(&value) {
+                Ok(plain) => out.push((key.to_vec(), plain)),
+                Err(e) => {
+                    warn!(err = %e, ?kind, "Kayıt şifre çözme hatası, atlanıyor");
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// Onay/denetim kayıtlarını diske zorla yazar (onay kaydı kritik:
+    /// uygulama hemen ölse bile kaybolmamalı).
+    pub fn flush_records(&self) -> Result<(), PersistenceError> {
+        self.approvals
+            .flush()
+            .map_err(|_| PersistenceError::StorageFailure)?;
+        self.audit
+            .flush()
+            .map_err(|_| PersistenceError::StorageFailure)?;
+        Ok(())
     }
 
     /// Task'ı MessagePack formatında kaydet.

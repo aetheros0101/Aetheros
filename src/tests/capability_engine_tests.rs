@@ -99,6 +99,7 @@ async fn allows_tool_when_agent_has_matching_grant() {
             wasm_execution: true,
             ai_reasoning: false,
             remote_execution: false,
+            terminal_execution: false,
         },
     );
     let runtime = AgentRuntime::new(test_budget(), vec![tool], None, Some(engine), None, None, None);

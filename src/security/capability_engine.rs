@@ -58,12 +58,14 @@ impl CapabilityEngine {
             wasm_execution: false,
             ai_reasoning: false,
             remote_execution: false,
+            terminal_execution: false,
         });
         match capability {
             AgentCapability::WorkflowExecution => entry.workflow_execution = true,
             AgentCapability::WasmExecution => entry.wasm_execution = true,
             AgentCapability::AiReasoning => entry.ai_reasoning = true,
             AgentCapability::RemoteExecution => entry.remote_execution = true,
+            AgentCapability::TerminalExecution => entry.terminal_execution = true,
         }
     }
 
@@ -98,6 +100,7 @@ impl CapabilityEngine {
             AgentCapability::WasmExecution => caps.wasm_execution,
             AgentCapability::AiReasoning => caps.ai_reasoning,
             AgentCapability::RemoteExecution => caps.remote_execution,
+            AgentCapability::TerminalExecution => caps.terminal_execution,
         };
 
         if has {
@@ -148,6 +151,7 @@ mod tests {
                 wasm_execution: true,
                 ai_reasoning: false,
                 remote_execution: false,
+                terminal_execution: false,
             },
         );
         assert!(engine

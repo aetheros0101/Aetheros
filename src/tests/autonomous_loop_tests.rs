@@ -20,7 +20,7 @@ use uuid::Uuid;
 use crate::agents::budget::AgentExecutionBudget;
 use crate::agents::context::AgentContext;
 use crate::agents::executor::AgentExecutor;
-use crate::agents::planner::{AgentPlanner, NextStepDecision, StepRecord};
+use crate::agents::planner::{AgentPlanner, StepRecord};
 use crate::agents::runtime::AgentOutcome;
 use crate::ai::routing::router::ProviderRouter;
 

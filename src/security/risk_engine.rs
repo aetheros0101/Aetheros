@@ -9,12 +9,10 @@
 //      RiskAssessment döner. Blocking kararı kasıtlı olarak burada
 //      DEĞİL — bkz. AgentRuntime'daki HighRiskPolicy.
 //
-// Bu ayrım bilinçli: gelecekteki Security Governor'ın net bir yeri
-// olsun istiyoruz. Risk Engine "ne kadar riskli" sorusuna cevap verir;
-// Security Governor (henüz yok) "bu risk seviyesinde ne yapılır"
-// sorusuna cevap verecek. AgentRuntime'ın şu anki HighRiskPolicy'si,
-// Security Governor gelene kadarki geçici, güvenli-varsayılanlı
-// yer tutucudur.
+// Bu ayrım bilinçli: Risk Engine "ne kadar riskli" sorusuna cevap
+// verir; "bu risk seviyesinde ne yapılır" kararı SecurityGovernor'dadır
+// (bkz. security::governor, HighRiskPolicy). Argüman-bazlı karar ise
+// AgentTool::assess_call / security::command_policy üzerinden gelir.
 // ============================================================
 
 use std::sync::Arc;
@@ -42,7 +40,7 @@ impl RiskEngine {
         RiskAssessment {
             reason: format!(
                 "tool '{}' sabit risk seviyesi bildiriyor: {level:?} \
-                 (argüman analizi henüz yok)",
+                 (argüman analizi tool'un assess_call'ında)",
                 tool.name()
             ),
             level,

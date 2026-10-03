@@ -74,6 +74,24 @@ struct NextStepResponse {
     arguments: Vec<String>,
 }
 
+/// Tool listesini AI'ye gösterilecek satırlara çevirir: açıklaması
+/// olan tool'lar "- isim: açıklama", olmayanlar sadece "- isim".
+/// Hem `ai_plan` hem `plan_next` aynı formatı kullansın diye tek yerde.
+fn describe_tools(tools: &[Arc<dyn AgentTool>]) -> String {
+    tools
+        .iter()
+        .map(|t| {
+            let description = t.description();
+            if description.is_empty() {
+                format!("- {}", t.name())
+            } else {
+                format!("- {}: {}", t.name(), description)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 pub struct AgentPlanner;
 
 impl AgentPlanner {
@@ -128,11 +146,7 @@ Available tools (use ONLY these exact names in "tool_name", nothing else):
 Only include "tool_name" on a step if it should actually invoke that tool.
 Steps that are pure reasoning/bookkeeping should omit "tool_name" entirely.
 Output ONLY valid JSON, no explanation."#,
-                tool_names
-                    .iter()
-                    .map(|n| format!("- {n}"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
+                describe_tools(tools)
             )
         };
 
@@ -241,7 +255,7 @@ Output ONLY valid JSON, no explanation."#,
         } else {
             format!(
                 "Available tools (use ONLY these exact names in \"tool_name\"):\n{}",
-                tool_names.iter().map(|n| format!("- {n}")).collect::<Vec<_>>().join("\n")
+                describe_tools(tools)
             )
         };
 

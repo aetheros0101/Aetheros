@@ -211,6 +211,32 @@ pub fn init_mobile_runtime(
 
     info!(workers = worker_count, modules_dir = %modules_dir, "AetherOS mobile runtime başlatıldı");
 
+    // V10 B3: onay + denetim izi artık kalıcı (sled). Önceki oturumdan
+    // kalan bekleyen onaylar geri yüklenir; süresi dolanlar temizlenir.
+    let approval_store = Arc::new(ApprovalStore::with_persistence(persistence.clone()));
+    let audit_log = Arc::new(AuditLog::with_persistence(persistence.clone(), 10_000));
+    let agent_registry: AgentRegistry = Arc::new(dashmap::DashMap::new());
+
+    for p in approval_store.list() {
+        agent_registry.insert(
+            p.context.execution_id,
+            crate::bridge::agent::AgentEntry {
+                execution_id: p.context.execution_id,
+                agent_id: p.context.agent_id,
+                objective: p.objective.clone(),
+                status: "pending_approval".into(),
+                error: None,
+                started_at: p.created_at,
+                finished_at: None,
+                pending_approval_id: Some(p.id),
+            },
+        );
+    }
+    let expired = expire_stale_approvals(&approval_store, &audit_log, &agent_registry);
+    if expired > 0 {
+        info!(expired, "Önceki oturumdan kalan süresi dolmuş onaylar temizlendi");
+    }
+
     let mobile = MobileRuntime {
         handle,
         events,
@@ -219,14 +245,14 @@ pub fn init_mobile_runtime(
         module_store,
         log_buffer,
         modules_dir,
-        agent_registry:    Arc::new(dashmap::DashMap::new()),
+        agent_registry,
         workflow_registry: Arc::new(dashmap::DashMap::new()),
         cluster:           Arc::new(crate::remote::cluster::ClusterState::new()),
         ai_router:         Arc::new(ProviderRouter::new()),
         capability_engine: Arc::new(CapabilityEngine::new()),
         risk_engine:       Arc::new(RiskEngine::new()),
-        approval_store:    Arc::new(ApprovalStore::new()),
-        audit_log:         Arc::new(AuditLog::default()),
+        approval_store,
+        audit_log,
         script_registry,
         script_engine,
         tokio,
@@ -235,6 +261,45 @@ pub fn init_mobile_runtime(
     MOBILE_RUNTIME
         .set(mobile)
         .map_err(|_| "Runtime zaten başlatılmış (race)".into())
+}
+
+/// Süresi (TTL) dolmuş bekleyen onayları kaldırır; her biri için denetime
+/// `ApprovalDenied` yazar ve ilgili execution'ı "denied" işaretler.
+/// Kaldırılan sayıyı döner. Açılışta ve onay listelenirken/yanıtlanırken çağrılır.
+pub(crate) fn expire_stale_approvals(
+    store: &ApprovalStore,
+    audit: &AuditLog,
+    registry: &AgentRegistry,
+) -> usize {
+    let expired = store.purge_expired();
+    for p in &expired {
+        let message = format!("onay süresi doldu (TTL): {}", p.reason);
+        audit.record(
+            p.context.agent_id,
+            p.context.execution_id,
+            crate::logging::audit::AuditEventKind::ApprovalDenied {
+                approval_id: p.id,
+                reason: message.clone(),
+            },
+        );
+        let mut entry = registry
+            .entry(p.context.execution_id)
+            .or_insert_with(|| crate::bridge::agent::AgentEntry {
+                execution_id: p.context.execution_id,
+                agent_id: p.context.agent_id,
+                objective: p.objective.clone(),
+                status: "pending_approval".into(),
+                error: None,
+                started_at: p.created_at,
+                finished_at: None,
+                pending_approval_id: Some(p.id),
+            });
+        entry.status = "denied".into();
+        entry.error = Some(message);
+        entry.finished_at = Some(chrono::Utc::now());
+        entry.pending_approval_id = None;
+    }
+    expired.len()
 }
 
 /// Diske kaydedilmiş WASM binary'lerini ModuleStore'a yükle.

@@ -1,7 +1,9 @@
 target/
 aetheros.db/
 test.db/
-tools/
 .ai/
-benches/
-scripts/
+
+# Çalışma artıkları (pakete/repoya girmesin)
+*.log
+server.log
+stress-reports/

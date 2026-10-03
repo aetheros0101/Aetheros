@@ -147,8 +147,6 @@ jobs:
             { printf '#![cfg(feature = "backend-wasmtime")]\n'; \
               cat src/wasm/memory.rs; } > /tmp/mem.rs && mv /tmp/mem.rs src/wasm/memory.rs
           fi
-          # FRB eski fonksiyon kaldır
-          sed -i '/setup_default_user_code_handler/d' src/bridge/api.rs || true
           # frb_generated.rs lib.rs'e bağlı mı?
           if [ -f src/frb_generated.rs ]; then
             if ! grep -q "mod frb_generated" src/lib.rs; then

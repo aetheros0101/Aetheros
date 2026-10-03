@@ -19,11 +19,14 @@
 // ============================================================
 
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
+use tracing::{error, warn};
 use uuid::Uuid;
+
+use crate::persistence::engine::{PersistenceEngine, RecordKind};
 
 use crate::agents::budget::AgentExecutionBudget;
 use crate::agents::context::AgentContext;
@@ -46,18 +49,105 @@ pub struct PendingApproval {
     pub created_at: DateTime<Utc>,
 }
 
+/// Bir onayın, verilmeden bekleyebileceği varsayılan süre. Eski bir
+/// "git commit" onayının günler sonra hâlâ verilebilir olması istenmez.
+pub const DEFAULT_APPROVAL_TTL_MINUTES: i64 = 60;
+
 pub struct ApprovalStore {
     pending: RwLock<HashMap<Uuid, PendingApproval>>,
+    /// V10 B3: varsa her değişiklik diske de yazılır ve açılışta geri
+    /// yüklenir (Android süreci öldürse bile bekleyen onay kaybolmaz).
+    persistence: Option<Arc<PersistenceEngine>>,
+    ttl: Duration,
 }
 
 impl ApprovalStore {
     pub fn new() -> Self {
         Self {
             pending: RwLock::new(HashMap::new()),
+            persistence: None,
+            ttl: Duration::minutes(DEFAULT_APPROVAL_TTL_MINUTES),
+        }
+    }
+
+    /// Kalıcı depo: önceki oturumdan kalan bekleyen onayları geri yükler.
+    /// Okunamayan kayıtlar atlanır (loglanır). Süresi dolanları geri
+    /// yüklemeyi `purge_expired()` çağıran taraf halleder.
+    pub fn with_persistence(engine: Arc<PersistenceEngine>) -> Self {
+        let mut map = HashMap::new();
+        match engine.load_records(RecordKind::Approvals) {
+            Ok(records) => {
+                for (_key, bytes) in records {
+                    match serde_json::from_slice::<PendingApproval>(&bytes) {
+                        Ok(p) => {
+                            map.insert(p.id, p);
+                        }
+                        Err(e) => warn!(err = %e, "Bekleyen onay kaydı okunamadı, atlanıyor"),
+                    }
+                }
+            }
+            Err(e) => error!(err = %e, "Bekleyen onaylar diskten yüklenemedi"),
+        }
+        Self {
+            pending: RwLock::new(map),
+            persistence: Some(engine),
+            ttl: Duration::minutes(DEFAULT_APPROVAL_TTL_MINUTES),
+        }
+    }
+
+    pub fn with_ttl(mut self, ttl: Duration) -> Self {
+        self.ttl = ttl;
+        self
+    }
+
+    pub fn is_expired(&self, approval: &PendingApproval) -> bool {
+        Utc::now() - approval.created_at > self.ttl
+    }
+
+    /// Süresi dolan onayları bellekten VE diskten kaldırıp döndürür
+    /// (çağıran, ilgili execution'ı "reddedildi/süresi doldu" işaretler).
+    pub fn purge_expired(&self) -> Vec<PendingApproval> {
+        let expired_ids: Vec<Uuid> = self
+            .pending
+            .read()
+            .unwrap()
+            .values()
+            .filter(|p| self.is_expired(p))
+            .map(|p| p.id)
+            .collect();
+
+        expired_ids.iter().filter_map(|id| self.take(id)).collect()
+    }
+
+    fn persist(&self, approval: &PendingApproval) {
+        let Some(engine) = &self.persistence else { return };
+        match serde_json::to_vec(approval) {
+            Ok(bytes) => {
+                let written = engine
+                    .put_record(RecordKind::Approvals, approval.id.as_bytes(), &bytes)
+                    .and_then(|_| engine.flush_records());
+                if let Err(e) = written {
+                    error!(approval_id = %approval.id, err = %e,
+                        "Bekleyen onay diske yazılamadı — uygulama kapanırsa kaybolur");
+                }
+            }
+            Err(e) => error!(err = %e, "Bekleyen onay serileştirilemedi"),
+        }
+    }
+
+    fn forget(&self, id: &Uuid) {
+        let Some(engine) = &self.persistence else { return };
+        let removed = engine
+            .delete_record(RecordKind::Approvals, id.as_bytes())
+            .and_then(|_| engine.flush_records());
+        if let Err(e) = removed {
+            // Silinemezse yeniden başlatmada kayıt "hayalet" olarak döner.
+            error!(approval_id = %id, err = %e, "Onay kaydı diskten silinemedi");
         }
     }
 
     pub fn add(&self, approval: PendingApproval) {
+        self.persist(&approval);
         self.pending.write().unwrap().insert(approval.id, approval);
     }
 
@@ -72,7 +162,11 @@ impl ApprovalStore {
     /// Kaydı çıkar ve döndür — onaylanınca ya da reddedilince
     /// çağrılır; iki kere işlenmesin diye kaldırma atomik.
     pub fn take(&self, id: &Uuid) -> Option<PendingApproval> {
-        self.pending.write().unwrap().remove(id)
+        let taken = self.pending.write().unwrap().remove(id);
+        if taken.is_some() {
+            self.forget(id);
+        }
+        taken
     }
 }
 
@@ -128,5 +222,72 @@ mod tests {
         assert!(store.take(&id).is_some());
         assert!(store.take(&id).is_none(), "ikinci take None dönmeli");
         assert!(store.list().is_empty());
+    }
+
+    // ── B3: kalıcılık + TTL ─────────────────────────────────
+
+    fn engine_at(path: &std::path::Path) -> Arc<PersistenceEngine> {
+        Arc::new(PersistenceEngine::open(path.to_str().unwrap()).expect("db açılmalı"))
+    }
+
+    #[test]
+    fn pending_approval_survives_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = Uuid::new_v4();
+        {
+            let store = ApprovalStore::with_persistence(engine_at(dir.path()));
+            store.add(sample(id));
+            assert_eq!(store.list().len(), 1);
+        } // store + engine düşer → sled kilidi bırakılır
+
+        let store = ApprovalStore::with_persistence(engine_at(dir.path()));
+        let restored = store.get(&id).expect("onay yeniden açılışta geri gelmeli");
+        assert_eq!(restored.tool_call.tool_name, "risky_tool");
+        assert_eq!(restored.objective, "test");
+    }
+
+    #[test]
+    fn taken_approval_does_not_come_back_after_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = Uuid::new_v4();
+        {
+            let store = ApprovalStore::with_persistence(engine_at(dir.path()));
+            store.add(sample(id));
+            assert!(store.take(&id).is_some());
+        }
+        let store = ApprovalStore::with_persistence(engine_at(dir.path()));
+        assert!(store.list().is_empty(), "alınan (işlenen) onay hayalet olarak dönmemeli");
+    }
+
+    #[test]
+    fn purge_expired_removes_only_stale_from_memory_and_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let (stale_id, fresh_id) = (Uuid::new_v4(), Uuid::new_v4());
+        {
+            let store = ApprovalStore::with_persistence(engine_at(dir.path()))
+                .with_ttl(Duration::seconds(30));
+            let mut stale = sample(stale_id);
+            stale.created_at = Utc::now() - Duration::seconds(120);
+            store.add(stale);
+            store.add(sample(fresh_id));
+
+            let purged = store.purge_expired();
+            assert_eq!(purged.len(), 1);
+            assert_eq!(purged[0].id, stale_id);
+            assert!(store.get(&stale_id).is_none());
+            assert!(store.get(&fresh_id).is_some());
+        }
+        let store = ApprovalStore::with_persistence(engine_at(dir.path()));
+        assert!(store.get(&stale_id).is_none(), "süresi dolan diskten de silinmeli");
+        assert!(store.get(&fresh_id).is_some());
+    }
+
+    #[test]
+    fn is_expired_uses_ttl_against_created_at() {
+        let store = ApprovalStore::new().with_ttl(Duration::minutes(10));
+        let mut p = sample(Uuid::new_v4());
+        assert!(!store.is_expired(&p));
+        p.created_at = Utc::now() - Duration::minutes(11);
+        assert!(store.is_expired(&p));
     }
 }

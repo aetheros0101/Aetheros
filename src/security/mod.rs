@@ -17,6 +17,7 @@ pub mod policy;
 pub mod authentication;
 pub mod authorization;
 pub mod governor;
+pub mod command_policy;
 pub mod auth;
 
 // Sık kullanılan tipler — tek import'la erişim

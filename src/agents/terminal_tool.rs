@@ -1,0 +1,273 @@
+// ============================================================
+// src/agents/terminal_tool.rs
+//
+// V10 Faz 1: aetheros-terminal crate'ini, mevcut guarded AgentTool
+// hattına (Governor → Approval → Audit) bağlayan adaptör.
+//
+// TASARIM İLKESİ ("elmas"): terminal, sistemin şimdiye dek gördüğü en
+// tehlikeli yetenek — bu yüzden ne capability ne risk kararı burada
+// ATLANMIYOR. Adaptör sadece kendini dürüstçe tanıtır:
+//   - required_capability() → TerminalExecution (grant edilmeden çalışmaz)
+//   - risk_level()          → High (varsayılan politika Block; onay
+//                             akışı için HighRiskPolicy::RequireApproval)
+// Asıl kararı yine SecurityGovernor verir; bu dosya karar VERMEZ.
+//
+// ARGÜMAN SÖZLEŞMESİ (shell YOK): arguments[0] = program,
+// arguments[1..] = o programın argümanları. Örn. ["git", "status"].
+// Bir shell string'i ("ls && rm -rf /") ASLA yorumlanmaz — `&&`, `;`,
+// `$()` gibi meta-karakterler düz argüman olarak programa iletilir.
+// Bu, CommandSpec'in tasarımından gelen gerçek bir enjeksiyon savunması.
+//
+// BİLİNEN SINIRLAMALAR (dürüstçe):
+//   1. cwd kısıtlaması yok — komut, uygulama sürecinin çalışma
+//      dizininde koşar. Android'de bu uygulama sandbox'ı; Termux
+//      geliştirme build'inde kullanıcının Termux home'u. Workspace
+//      kök-hapsi (root confinement) workspace/ modülünün işi (sonraki adım).
+//   2. (B4 ile ÇÖZÜLDÜ) Karar artık argüman-bazlı: assess_call →
+//      security::command_policy (Deny > Allow > Ask). `sh -c` reddedilir,
+//      `git status` onaysız çalışır, `git commit` onay ister. Yol-bazlı
+//      kurallar (gizli dosya okuma) hâlâ yok — workspace kök hapsi işi.
+//   3. Sadece tek-seferlik komut çalıştırma (one-shot). PTY/interaktif
+//      oturumlar aetheros-terminal'de var ama bu adaptör onları
+//      bilerek açmıyor.
+// ============================================================
+
+use std::sync::Arc;
+
+use aetheros_terminal::{
+    AgentTerminalTool, CommandBuilder, Environment, TerminalToolRequest, TerminalToolResponse,
+};
+use async_trait::async_trait;
+
+use crate::agents::capabilities::AgentCapability;
+use crate::security::command_policy::CommandPolicy;
+use crate::types::agent_tool::{AgentTool, CallVerdict, RiskLevel};
+
+/// Çocuk sürece geçirilmesine İZİN verilen ortam değişkenleri.
+/// Geri kalan her şey (özellikle `*_API_KEY` gibi sırlar) temizlenir —
+/// aksi halde agent `env` çalıştırıp sırları çıktıya, oradan da AI
+/// provider'a geri gönderebilirdi.
+const ENV_ALLOWLIST: &[&str] = &["PATH", "HOME", "LANG", "TMPDIR", "TERM"];
+
+pub struct TerminalAgentTool {
+    inner: Arc<AgentTerminalTool>,
+    /// B4: argüman-bazlı karar (allow/ask/deny). Bkz. security::command_policy.
+    policy: CommandPolicy,
+}
+
+impl TerminalAgentTool {
+    pub fn new() -> Self {
+        Self::with_policy(CommandPolicy::load())
+    }
+
+    /// Belirli bir politikayla (testler / özel kurulum).
+    pub fn with_policy(policy: CommandPolicy) -> Self {
+        Self {
+            inner: Arc::new(AgentTerminalTool::local()),
+            policy,
+        }
+    }
+
+    /// Ortamı temizleyip sadece allowlist'teki değişkenleri geçirir.
+    fn sanitized_environment() -> Environment {
+        let mut env = Environment::new().clear();
+        for key in ENV_ALLOWLIST {
+            if let Ok(value) = std::env::var(key) {
+                env = env.set(*key, value);
+            }
+        }
+        env
+    }
+}
+
+impl Default for TerminalAgentTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl AgentTool for TerminalAgentTool {
+    fn name(&self) -> &'static str {
+        "terminal"
+    }
+
+    fn description(&self) -> &'static str {
+        "Runs ONE program (no shell). arguments[0] is the program, the rest are its \
+         arguments, e.g. [\"git\", \"status\"]. Shell syntax like && ; | is NOT interpreted."
+    }
+
+    fn required_capability(&self) -> Option<AgentCapability> {
+        Some(AgentCapability::TerminalExecution)
+    }
+
+    fn risk_level(&self) -> RiskLevel {
+        RiskLevel::High
+    }
+
+    /// B4: tool-bazlı sabit High yerine komutun KENDİSİNE göre karar:
+    /// `sh -c` → Deny, `git status` → Allow, `git commit` → Ask.
+    fn assess_call(&self, arguments: &[String]) -> Option<CallVerdict> {
+        Some(self.policy.assess(arguments))
+    }
+
+    async fn invoke(&self, arguments: Vec<String>) -> Result<String, String> {
+        let mut iter = arguments.into_iter();
+        let program = iter
+            .next()
+            .ok_or_else(|| "terminal: program belirtilmedi (arguments[0] boş)".to_string())?;
+        let args: Vec<String> = iter.collect();
+
+        let command = CommandBuilder::new(program)
+            .map_err(|e| e.to_string())?
+            .args(args)
+            .env(Self::sanitized_environment())
+            .build();
+
+        let session = match self
+            .inner
+            .call(TerminalToolRequest::Create { cwd: None })
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            TerminalToolResponse::SessionCreated(s) => s,
+            _ => return Err("terminal: beklenmeyen yanıt (oturum oluşturma)".to_string()),
+        };
+
+        let result = self
+            .inner
+            .call(TerminalToolRequest::Execute {
+                session_id: session.id,
+                command,
+            })
+            .await;
+
+        // Sonuç ne olursa olsun oturum temizlensin (sızıntı olmasın).
+        let _ = self
+            .inner
+            .call(TerminalToolRequest::Remove {
+                session_id: session.id,
+            })
+            .await;
+
+        match result {
+            Ok(TerminalToolResponse::Executed(process)) => {
+                if process.status.success() {
+                    Ok(process.output.stdout_string())
+                } else {
+                    let code = process
+                        .status
+                        .code()
+                        .map(|c| c.to_string())
+                        .unwrap_or_else(|| "sinyal".to_string());
+                    Err(format!(
+                        "komut {code} koduyla başarısız oldu: {}",
+                        process.output.stderr_string()
+                    ))
+                }
+            }
+            Ok(_) => Err("terminal: beklenmeyen yanıt (çalıştırma)".to_string()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn declares_high_risk_and_terminal_capability() {
+        let tool = TerminalAgentTool::new();
+        assert_eq!(tool.name(), "terminal");
+        assert_eq!(tool.risk_level(), RiskLevel::High);
+        assert_eq!(
+            tool.required_capability(),
+            Some(AgentCapability::TerminalExecution)
+        );
+        assert!(!tool.description().is_empty());
+    }
+
+    #[test]
+    fn assess_call_uses_the_argument_policy() {
+        let tool = TerminalAgentTool::with_policy(CommandPolicy::default_policy());
+        let a = |x: &[&str]| x.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(matches!(
+            tool.assess_call(&a(&["sh", "-c", "id"])),
+            Some(CallVerdict::Deny { .. })
+        ));
+        assert_eq!(tool.assess_call(&a(&["git", "status"])), Some(CallVerdict::Allow));
+        assert!(matches!(
+            tool.assess_call(&a(&["git", "commit"])),
+            Some(CallVerdict::Ask { .. })
+        ));
+        assert!(matches!(tool.assess_call(&[]), Some(CallVerdict::Deny { .. })));
+    }
+
+    #[tokio::test]
+    async fn empty_arguments_are_rejected() {
+        let tool = TerminalAgentTool::new();
+        let result = tool.invoke(vec![]).await;
+        assert!(result.is_err());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn runs_a_program_and_returns_stdout() {
+        let tool = TerminalAgentTool::new();
+        let out = tool
+            .invoke(vec!["echo".to_string(), "merhaba".to_string()])
+            .await
+            .expect("echo çalışmalı");
+        assert_eq!(out.trim(), "merhaba");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn failing_command_reports_exit_code() {
+        let tool = TerminalAgentTool::new();
+        let err = tool
+            .invoke(vec!["false".to_string()])
+            .await
+            .expect_err("`false` başarısız olmalı");
+        assert!(err.contains("koduyla başarısız"), "hata: {err}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn shell_metacharacters_are_not_interpreted() {
+        // `echo a && echo b` bir shell'e verilseydi iki satır basardı.
+        // Shell yok: "&&" düz bir argüman olarak echo'ya gider.
+        let tool = TerminalAgentTool::new();
+        let out = tool
+            .invoke(vec![
+                "echo".to_string(),
+                "a".to_string(),
+                "&&".to_string(),
+                "echo".to_string(),
+                "b".to_string(),
+            ])
+            .await
+            .unwrap();
+        assert_eq!(out.trim(), "a && echo b");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn secrets_in_environment_are_not_leaked_to_child() {
+        // SAFETY: test sürecinde tek başına ayarlanan, benzersiz isimli değişken.
+        unsafe {
+            std::env::set_var("AETHEROS_TEST_SECRET_API_KEY", "super-secret-value");
+        }
+
+        let tool = TerminalAgentTool::new();
+        // `env` çıktısında sır GÖRÜNMEMELİ (allowlist dışı → temizlendi).
+        let out = tool.invoke(vec!["env".to_string()]).await.unwrap();
+
+        assert!(
+            !out.contains("super-secret-value"),
+            "ortam sırrı çocuk sürece sızdı: {out}"
+        );
+        assert!(!out.contains("AETHEROS_TEST_SECRET_API_KEY"));
+    }
+}

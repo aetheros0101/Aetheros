@@ -182,9 +182,11 @@ async fn resume_after_approval_actually_invokes_the_tool_and_continues() {
 
 #[tokio::test]
 async fn block_policy_never_pauses_it_denies_immediately() {
-    // Karşılaştırma: Block politikasında (varsayılan, Sprint 3'ten beri)
-    // hiç duraklama olmaz — doğrudan reddedilir, ApprovalStore hiç
-    // kullanılmaz.
+    // Karşılaştırma: Block politikasında (V10 Faz 1'den beri artık
+    // VARSAYILAN DEĞİL, ama hâlâ geçerli bir seçenek) hiç duraklama
+    // olmaz — doğrudan reddedilir, ApprovalStore hiç kullanılmaz.
+    // Varsayılan davranış (RequireApproval) için bkz.
+    // require_approval_pauses_before_ever_invoking_the_tool.
     let invoked = Arc::new(AtomicBool::new(false));
     let tool: Arc<dyn AgentTool> = Arc::new(RiskyTool {
         invoked: invoked.clone(),
@@ -192,7 +194,6 @@ async fn block_policy_never_pauses_it_denies_immediately() {
     let context = test_context();
     let approval_store = Arc::new(ApprovalStore::new());
 
-    // high_risk_policy hiç değiştirilmedi — varsayılan Block.
     let mut runtime = AgentRuntime::new(
         test_budget(),
         vec![tool],
@@ -202,6 +203,8 @@ async fn block_policy_never_pauses_it_denies_immediately() {
         Some(approval_store.clone()),
         None,
     );
+    // Bilerek Block'a çekiyoruz — artık varsayılan bu değil.
+    runtime.set_high_risk_policy(HighRiskPolicy::Block);
 
     let steps = vec![risky_step()];
     let result = runtime.run_steps(&context, &steps, 0, 0, "test").await;

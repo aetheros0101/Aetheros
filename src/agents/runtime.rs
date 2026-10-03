@@ -47,7 +47,7 @@ use crate::agents::reasoning::ReasoningTrace;
 use crate::agents::tools::AgentTool;
 use crate::ai::routing::router::ProviderRouter;
 use crate::errors::runtime::RuntimeError;
-use crate::logging::audit::{AuditEventKind, AuditLog};
+use crate::logging::audit::{summarize_output, AuditEventKind, AuditLog};
 use crate::security::capability_engine::CapabilityEngine;
 use crate::security::governor::{GovernorDecision, SecurityGovernor};
 use crate::security::risk_engine::RiskEngine;
@@ -131,7 +131,8 @@ impl AgentRuntime {
     }
 
     /// Security Governor'ın high-risk politikasını değiştirir
-    /// (varsayılan Block — güvenli). bkz. security::governor::HighRiskPolicy.
+    /// (varsayılan RequireApproval — High riskli çağrı onay bekler). bkz. security::governor::HighRiskPolicy.
+    #[allow(dead_code)]
     pub(crate) fn set_high_risk_policy(&mut self, policy: HighRiskPolicy) {
         self.governor.set_high_risk_policy(policy);
     }
@@ -170,6 +171,8 @@ impl AgentRuntime {
             approval_store,
             audit_log,
         );
+        // B10: üretim giriş noktası — eksik motor "izin ver" demek değildir.
+        runtime.governor.set_fail_closed(true);
         runtime.run(context, objective).await
     }
 
@@ -211,15 +214,19 @@ impl AgentRuntime {
             audit_log,
         );
 
+        // B10: üretim giriş noktası — eksik motor "izin ver" demek değildir.
+        runtime.governor.set_fail_closed(true);
+
         runtime.audit(
             pending.context.agent_id,
             pending.context.execution_id,
             AuditEventKind::ExecutionResumed { approval_id: pending.id },
         );
 
-        // Onaylanan çağrıyı DOĞRUDAN invoke et — Governor'ı bilerek
-        // atlıyoruz: kullanıcının onayı, otomatik risk denetiminden
-        // daha güçlü bir yetkilendirme.
+        // Onaylanan çağrıyı invoke et. Governor'ı TAMAMEN atlamıyoruz (B7):
+        // kullanıcı onayı yalnızca "RequiresApproval"ı aşar; capability
+        // reddi (grant sonradan geri alınmış olabilir) ve argüman
+        // politikasının kesin reddi (Deny) onayla AŞILAMAZ.
         let tool = runtime
             .tools
             .iter()
@@ -227,7 +234,17 @@ impl AgentRuntime {
             .cloned();
 
         let result = match tool {
-            Some(tool) => tool.invoke(pending.tool_call.arguments.clone()).await,
+            Some(tool) => match runtime.governor.evaluate_call(
+                pending.context.agent_id,
+                &tool,
+                &pending.tool_call.arguments,
+            ) {
+                GovernorDecision::Deny { reason } => Err(format!(
+                    "onaylanan çağrı artık reddediliyor (capability/politika): {reason}"
+                )),
+                // Allow veya RequiresApproval → kullanıcı zaten onayladı.
+                _ => tool.invoke(pending.tool_call.arguments.clone()).await,
+            },
             None => Err(format!(
                 "onaylanan tool artık mevcut değil: '{}'",
                 pending.tool_call.tool_name
@@ -243,6 +260,8 @@ impl AgentRuntime {
                         tool_name: pending.tool_call.tool_name.clone(),
                         success: true,
                         error: None,
+                        arguments: pending.tool_call.arguments.clone(),
+                        output: Some(summarize_output(&output)),
                     },
                 );
                 runtime.memory.store(
@@ -258,6 +277,8 @@ impl AgentRuntime {
                         tool_name: pending.tool_call.tool_name.clone(),
                         success: false,
                         error: Some(e.clone()),
+                        arguments: pending.tool_call.arguments.clone(),
+                        output: None,
                     },
                 );
                 let message = format!("Onaylanan tool call başarısız oldu: {e}");
@@ -568,8 +589,16 @@ impl AgentRuntime {
 
         let tool_exists = self.tools.iter().any(|t| t.name() == tool_name_for_check);
 
+        // Denetim için: bu adımda tool'a GERÇEKTEN verilecek argümanlar
+        // (invoke_best_tool yolunda argüman adım adıdır). Audit'e
+        // yazılırken audit::sanitize_arguments ile maskelenir/kırpılır.
+        let call_args: Vec<String> = match &step.tool_call {
+            Some(tc) => tc.arguments.clone(),
+            None => vec![step.name.clone()],
+        };
+
         if let Some(tool) = self.tools.iter().find(|t| t.name() == tool_name_for_check) {
-            let decision = self.governor.evaluate(context.agent_id, tool);
+            let decision = self.governor.evaluate_call(context.agent_id, tool, &call_args);
 
             let (decision_label, decision_reason): (&str, Option<String>) = match &decision {
                 GovernorDecision::Allow => ("allow", None),
@@ -586,6 +615,7 @@ impl AgentRuntime {
                     tool_name: tool_name_for_check.to_string(),
                     decision: decision_label.to_string(),
                     reason: decision_reason,
+                    arguments: call_args.clone(),
                 },
             );
 
@@ -594,6 +624,8 @@ impl AgentRuntime {
                     tool_name: tool_name_for_check.to_string(),
                     arguments: vec![],
                 });
+
+                let paused_arguments = tool_call.arguments.clone();
 
                 let pending = PendingApproval {
                     id: Uuid::new_v4(),
@@ -627,6 +659,7 @@ impl AgentRuntime {
                         approval_id,
                         tool_name: tool_name_for_check.to_string(),
                         reason,
+                        arguments: paused_arguments,
                     },
                 );
 
@@ -659,6 +692,8 @@ impl AgentRuntime {
                             tool_name: tool_name_for_check.to_string(),
                             success: true,
                             error: None,
+                            arguments: call_args.clone(),
+                            output: Some(summarize_output(&output)),
                         },
                     );
                 }
@@ -686,6 +721,8 @@ impl AgentRuntime {
                             tool_name: tool_name_for_check.to_string(),
                             success: false,
                             error: Some(e.clone()),
+                            arguments: call_args.clone(),
+                            output: None,
                         },
                     );
                 }
@@ -722,7 +759,7 @@ impl AgentRuntime {
         tool: &Arc<dyn AgentTool>,
         arguments: Vec<String>,
     ) -> Result<String, String> {
-        match self.governor.evaluate(agent_id, tool) {
+        match self.governor.evaluate_call(agent_id, tool, &arguments) {
             GovernorDecision::Allow => tool.invoke(arguments).await,
             GovernorDecision::Deny { reason } => Err(format!(
                 "tool call denied for '{}': {}",

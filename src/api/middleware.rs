@@ -66,16 +66,27 @@ fn forbidden(message: &str) -> Response {
 /// Bilinmeyen/parse edilemeyen değerde en az yetkili role (Viewer) düşülür —
 /// asla sessizce Admin'e yükseltilmez.
 fn api_key_role() -> Role {
-    std::env::var("AETHEROS_API_KEY_ROLE")
-        .ok()
-        .and_then(|s| Role::parse(&s))
-        .unwrap_or_else(|| {
-            tracing::warn!(
-                "AETHEROS_API_KEY_ROLE ayarlanmamış/geçersiz — X-Api-Key ile \
-                 doğrulanan istekler varsayılan olarak Operator rolüyle çalışacak."
-            );
-            Role::Operator
-        })
+    let setting = std::env::var("AETHEROS_API_KEY_ROLE").ok();
+    let role = role_from_setting(setting.as_deref());
+    if setting.is_none() {
+        tracing::warn!(
+            "AETHEROS_API_KEY_ROLE ayarlanmamış — X-Api-Key istekleri geriye uyumluluk \
+             için Operator rolüyle çalışıyor. Üretimde açıkça 'viewer' ya da \
+             gereken en düşük rolü ayarlayın."
+        );
+    }
+    role
+}
+
+/// Saf karar mantığı (test edilebilir):
+///   - ayar YOK          → Operator (geriye uyumlu; uyarı loglanır)
+///   - ayar var, GEÇERSİZ → Viewer (en az yetki; yazım hatası yetki YÜKSELTMEZ)
+///   - ayar var, geçerli  → o rol
+fn role_from_setting(setting: Option<&str>) -> Role {
+    match setting {
+        None => Role::Operator,
+        Some(s) => Role::parse(s).unwrap_or(Role::Viewer),
+    }
 }
 
 /// Bir isteği X-Cluster-Token, X-Api-Key veya Authorization: Bearer
@@ -286,4 +297,27 @@ pub async fn issue_token_handler(Json(req): Json<IssueTokenRequest>) -> Response
     let manager = TokenManager::from_env();
     let token = manager.generate(req.subject, role);
     Json(token).into_response()
+}
+
+#[cfg(test)]
+mod role_setting_tests {
+    use super::*;
+
+    #[test]
+    fn unset_keeps_backward_compatible_operator() {
+        assert_eq!(role_from_setting(None), Role::Operator);
+    }
+
+    #[test]
+    fn invalid_value_falls_to_least_privilege_viewer() {
+        assert_eq!(role_from_setting(Some("adm1n")), Role::Viewer);
+        assert_eq!(role_from_setting(Some("")), Role::Viewer);
+    }
+
+    #[test]
+    fn valid_values_are_honored_case_insensitively() {
+        assert_eq!(role_from_setting(Some("viewer")), Role::Viewer);
+        assert_eq!(role_from_setting(Some("ADMIN")), Role::Admin);
+        assert_eq!(role_from_setting(Some("Operator")), Role::Operator);
+    }
 }
