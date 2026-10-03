@@ -447,13 +447,32 @@ pub fn list_agent_scripts() -> Result<Vec<String>, String> {
         .collect())
 }
 
+/// Capability adını (Flutter/FRB'den gelen string) enum'a çevirir.
+/// `grant_agent_capability` ve `start_agent` aynı tabloyu kullanır.
+pub(crate) fn parse_capability(
+    name: &str,
+) -> Result<crate::agents::capabilities::AgentCapability, String> {
+    use crate::agents::capabilities::AgentCapability as C;
+    match name {
+        "wasm_execution"     => Ok(C::WasmExecution),
+        "workflow_execution" => Ok(C::WorkflowExecution),
+        "ai_reasoning"       => Ok(C::AiReasoning),
+        "remote_execution"   => Ok(C::RemoteExecution),
+        "terminal_execution" => Ok(C::TerminalExecution),
+        other => Err(format!("Bilinmeyen capability: '{other}'")),
+    }
+}
+
 /// Bir agent'a tek bir capability grant et.
 ///
-/// `capability`: "wasm_execution" | "workflow_execution" | "ai_reasoning" | "remote_execution"
+/// `capability`: "wasm_execution" | "workflow_execution" | "ai_reasoning"
+///               | "remote_execution" | "terminal_execution"
 ///
-/// BİLİNEN SINIRLAMA: start_agent() agent_id'yi execution'ı hemen
-/// spawn ederken üretir. Bu fonksiyonu start_agent'ın DÖNDÜĞÜ agent_id
-/// ile, execution ilk tool adımına gelmeden önce çağırman gerekir.
+/// TERCİH EDİLEN YOL: `start_agent(..., capabilities)` — yetkiler agent
+/// çalışmaya başlamadan ÖNCE, atomik verilir (yarış yok). Bu fonksiyon,
+/// çalışan bir agent'a SONRADAN yetki eklemek içindir ve start_agent'ın
+/// döndüğü agent_id ile, execution ilk tool adımına gelmeden önce
+/// çağrılmazsa yarışa açıktır.
 /// Bu yarış durumu kabul edilebilir (planning genelde tool adımından
 /// önce bir miktar zaman alır) ama sağlam bir çözüm değil — gerçek
 /// çözüm Approval Engine'in agent'ı "grant bekliyor" durumunda
@@ -468,14 +487,7 @@ pub fn grant_agent_capability(
     let agent_id = uuid::Uuid::parse_str(&agent_id_hex)
         .map_err(|e| format!("Geçersiz agent_id: {e}"))?;
 
-    let cap = match capability.as_str() {
-        "wasm_execution" => crate::agents::capabilities::AgentCapability::WasmExecution,
-        "workflow_execution" => crate::agents::capabilities::AgentCapability::WorkflowExecution,
-        "ai_reasoning" => crate::agents::capabilities::AgentCapability::AiReasoning,
-        "remote_execution" => crate::agents::capabilities::AgentCapability::RemoteExecution,
-        "terminal_execution" => crate::agents::capabilities::AgentCapability::TerminalExecution,
-        other => return Err(format!("Bilinmeyen capability: '{other}'")),
-    };
+    let cap = parse_capability(capability.as_str())?;
 
     rt.capability_engine.grant_capability(agent_id, cap);
 
@@ -637,16 +649,42 @@ fn parse_hash(hex_str: &str) -> Result<[u8; 32], String> {
 // ── Agent fonksiyonları (FRB) ─────────────────────────────────
 
 /// Agent başlat → execution_id döner.
+///
+/// `capabilities`: agent'a BAŞLANGIÇTA verilecek yetkiler
+/// ("wasm_execution" | "workflow_execution" | "ai_reasoning" |
+/// "remote_execution" | "terminal_execution"). Boş liste = hiç yetki
+/// (capability gerektiren hiçbir tool çalışmaz). Yetkiler agent
+/// spawn edilmeden ÖNCE verilir — `grant_agent_capability` ile sonradan
+/// vermenin yarışı yoktur. Bilinmeyen bir ad varsa HİÇBİR şey
+/// başlatılmaz/verilmez (kısmi durum bırakmaz).
 pub async fn start_agent(
-    objective:  String,
-    max_steps:  usize,
-    max_tokens: usize,
+    objective:    String,
+    max_steps:    usize,
+    max_tokens:   usize,
+    capabilities: Vec<String>,
 ) -> Result<AgentStartResponse, String> {
     let rt = get_runtime()
         .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
+    // Önce HEPSİNİ doğrula (kısmi grant yok).
+    let mut caps = Vec::new();
+    for name in &capabilities {
+        let cap = parse_capability(name)?;
+        if !caps.contains(&cap) {
+            caps.push(cap);
+        }
+    }
+
     let execution_id = uuid::Uuid::new_v4();
     let agent_id     = uuid::Uuid::new_v4();
+
+    // Yetkiler, agent'ın execution'ı spawn edilmeden ÖNCE (B11).
+    for cap in &caps {
+        rt.capability_engine.grant_capability(agent_id, *cap);
+    }
+    if !caps.is_empty() {
+        info!(agent_id = %agent_id, capabilities = ?capabilities, "Agent başlangıç yetkileri verildi");
+    }
     let started_at   = chrono::Utc::now();
     let objective_c  = objective.clone();
 

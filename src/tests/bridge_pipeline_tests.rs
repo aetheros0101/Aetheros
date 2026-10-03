@@ -84,6 +84,7 @@ fn bridge_pipeline_register_grant_and_run() {
             "deneme".to_string(),
             5,
             1_000,
+            vec![],
         )
         .await
         .expect("agent başlatılabilmeli");
@@ -176,5 +177,60 @@ fn bridge_pipeline_register_grant_and_run() {
             "grant edilmiş agent, gerçekten kaydedilmiş script'i çalıştırabilmeli: {:?}",
             result.err()
         );
+
+        // ── B11: yetkiler start_agent'ta, spawn'dan ÖNCE verilir ──
+        use crate::agents::capabilities::AgentCapability as Cap;
+        use crate::security::capability_engine::CapabilityDecision as Dec;
+
+        // Bilinmeyen capability → Err, hiçbir agent kaydı/yan etki yok.
+        let before = rt.agent_registry.len();
+        let bad = crate::bridge::api::start_agent(
+            "kötü".to_string(),
+            5,
+            1_000,
+            vec!["wasm_execution".to_string(), "uçan_halı".to_string()],
+        )
+        .await;
+        assert!(bad.is_err(), "bilinmeyen capability reddedilmeli");
+        assert_eq!(
+            rt.agent_registry.len(),
+            before,
+            "reddedilen start_agent hiçbir agent kaydı bırakmamalı"
+        );
+
+        // Geçerli yetkiler: dönüşte (arada hiçbir grant çağrısı olmadan)
+        // zaten verilmiş olmalı; verilmeyenler reddedilmeli.
+        let granted = crate::bridge::api::start_agent(
+            "yetkili".to_string(),
+            5,
+            1_000,
+            vec!["wasm_execution".to_string(), "wasm_execution".to_string()],
+        )
+        .await
+        .expect("geçerli yetkilerle başlatılabilmeli");
+        let gid = uuid::Uuid::parse_str(&granted.agent_id).unwrap();
+        assert!(matches!(
+            rt.capability_engine.check(&gid, Some(Cap::WasmExecution)),
+            Dec::Allowed
+        ));
+        assert!(matches!(
+            rt.capability_engine.check(&gid, Some(Cap::TerminalExecution)),
+            Dec::Denied { .. }
+        ));
+
+        // Yetkisiz başlatılan agent hiçbir şeye sahip değil.
+        let none = crate::bridge::api::start_agent(
+            "yetkisiz".to_string(),
+            5,
+            1_000,
+            vec![],
+        )
+        .await
+        .unwrap();
+        let nid = uuid::Uuid::parse_str(&none.agent_id).unwrap();
+        assert!(matches!(
+            rt.capability_engine.check(&nid, Some(Cap::WasmExecution)),
+            Dec::Denied { .. }
+        ));
     });
 }
