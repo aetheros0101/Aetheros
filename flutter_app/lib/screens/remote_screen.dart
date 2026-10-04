@@ -7,6 +7,7 @@
 //   • Yeni node kayıt
 // ============================================================
 
+import '../core/load_error_banner.dart';
 import '../core/lifecycle_poller.dart';
 import '../core/app_error.dart';
 import 'package:flutter/material.dart';
@@ -33,15 +34,25 @@ class _RemoteScreenState extends State<RemoteScreen> {
     _poller.start();
   }
 
+  final _loadError = LoadErrorBanner();
+
   @override
-  void dispose() { _poller.stop(); super.dispose(); }
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadError.attach(context);
+  }
+
+  @override
+  void dispose() { _poller.stop(); _loadError.dispose(); super.dispose(); }
 
   Future<void> _load({bool silent = false}) async {
     if (!silent && mounted) setState(() => _loading = true);
     try {
       final c = await AetherApi.getClusterStatus();
+      _loadError.clear();
       if (mounted) setState(() { _cluster = c; _loading = false; });
-    } catch (_) {
+    } catch (e) {
+      _loadError.report(e, onRetry: _load);
       if (mounted) setState(() => _loading = false);
     }
   }

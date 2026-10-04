@@ -7,6 +7,7 @@
 //   • Workflow detayı (durum, adımlar, süre)
 // ============================================================
 
+import '../core/load_error_banner.dart';
 import 'dart:convert';
 import '../core/lifecycle_poller.dart';
 import '../core/app_error.dart';
@@ -45,8 +46,16 @@ class _WorkflowScreenState extends State<WorkflowScreen> {
     _poller.start();
   }
 
+  final _loadError = LoadErrorBanner();
+
   @override
-  void dispose() { _poller.stop(); super.dispose(); }
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadError.attach(context);
+  }
+
+  @override
+  void dispose() { _poller.stop(); _loadError.dispose(); super.dispose(); }
 
   Future<void> _restoreStepCache() async {
     final prefs = await SharedPreferences.getInstance();
@@ -81,8 +90,10 @@ class _WorkflowScreenState extends State<WorkflowScreen> {
     if (!silent && mounted) setState(() => _loading = true);
     try {
       final wf = await AetherApi.listWorkflows(limit: 50);
+      _loadError.clear();
       if (mounted) setState(() { _workflows = wf; _loading = false; });
-    } catch (_) {
+    } catch (e) {
+      _loadError.report(e, onRetry: _load);
       if (mounted) setState(() => _loading = false);
     }
   }

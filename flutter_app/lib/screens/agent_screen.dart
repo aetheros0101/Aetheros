@@ -7,6 +7,7 @@
 //   • Execution detayı (durum, süre, hata)
 // ============================================================
 
+import '../core/load_error_banner.dart';
 import '../core/lifecycle_poller.dart';
 import '../core/agent_capabilities.dart';
 import '../core/app_error.dart';
@@ -38,15 +39,25 @@ class _AgentScreenState extends State<AgentScreen> {
     _poller.start();
   }
 
+  final _loadError = LoadErrorBanner();
+
   @override
-  void dispose() { _poller.stop(); super.dispose(); }
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadError.attach(context);
+  }
+
+  @override
+  void dispose() { _poller.stop(); _loadError.dispose(); super.dispose(); }
 
   Future<void> _load({bool silent = false}) async {
     if (!silent && mounted) setState(() => _loading = true);
     try {
       final agents = await AetherApi.listAgents(limit: 50);
+      _loadError.clear();
       if (mounted) setState(() { _agents = agents; _loading = false; });
-    } catch (_) {
+    } catch (e) {
+      _loadError.report(e, onRetry: _load);
       if (mounted) setState(() => _loading = false);
     }
   }

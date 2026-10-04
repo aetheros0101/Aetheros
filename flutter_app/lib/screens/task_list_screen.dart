@@ -3,6 +3,7 @@
 // Sprint 2: filtreler, canlı dot, detay modal, retry, ikon fix
 // ============================================================
 
+import '../core/load_error_banner.dart';
 import '../core/lifecycle_poller.dart';
 import '../core/app_error.dart';
 import 'package:flutter/material.dart';
@@ -43,15 +44,25 @@ class _TaskListScreenState extends State<TaskListScreen> {
     _poller.start();
   }
 
+  final _loadError = LoadErrorBanner();
+
   @override
-  void dispose() { _poller.stop(); super.dispose(); }
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadError.attach(context);
+  }
+
+  @override
+  void dispose() { _poller.stop(); _loadError.dispose(); super.dispose(); }
 
   Future<void> _load({bool silent = false}) async {
     if (!silent && mounted) setState(() => _refreshing = true);
     try {
       final tasks = await AetherApi.listTasks(limit: 100);
+      _loadError.clear();
       if (mounted) setState(() { _tasks = tasks; _loading = false; _refreshing = false; });
-    } catch (_) {
+    } catch (e) {
+      _loadError.report(e, onRetry: _load);
       if (mounted) setState(() { _loading = false; _refreshing = false; });
     }
   }

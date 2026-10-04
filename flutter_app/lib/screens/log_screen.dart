@@ -12,6 +12,7 @@
 //   - "Temizle" → sadece listeyi gizler, buffer etkilenmez
 // ============================================================
 
+import '../core/load_error_banner.dart';
 import 'dart:async';
 import '../core/lifecycle_poller.dart';
 import '../core/app_error.dart';
@@ -54,8 +55,17 @@ class _LogScreenState extends State<LogScreen> {
     _poller.start();
   }
 
+  final _loadError = LoadErrorBanner();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadError.attach(context);
+  }
+
   @override
   void dispose() {
+    _loadError.dispose();
     _poller.stop();
     _searchDebounce?.cancel();
     _scrollCtrl.dispose();
@@ -69,6 +79,7 @@ class _LogScreenState extends State<LogScreen> {
           ? await AetherApi.getTaskLogs(_taskSearch)
           : await AetherApi.getRecentLogs(limit: 200);
 
+      _loadError.clear();
       if (!mounted) return;
       setState(() { _all = entries; _loading = false; });
 
@@ -77,7 +88,8 @@ class _LogScreenState extends State<LogScreen> {
           0, duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut);
       }
-    } catch (_) {
+    } catch (e) {
+      _loadError.report(e, onRetry: _fetch);
       if (mounted) setState(() => _loading = false);
     }
   }

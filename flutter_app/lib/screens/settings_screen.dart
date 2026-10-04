@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/load_error_banner.dart';
 import '../api/aetheros_api.dart';
 import '../src/rust/api/aetheros.dart' as rust;
 import 'ai_settings_screen.dart';
@@ -14,21 +15,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
   rust.RuntimeInfo? _runtimeInfo;
   bool _loading = true;
 
+  final _loadError = LoadErrorBanner();
+
   @override
   void initState() {
     super.initState();
     _loadRuntime();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadError.attach(context);
+  }
+
+  @override
+  void dispose() {
+    _loadError.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadRuntime() async {
     try {
       final info = await AetherApi.getRuntimeInfo();
+      _loadError.clear();
       if (!mounted) return;
       setState(() {
         _runtimeInfo = info;
         _loading = false;
       });
-    } catch (_) {
+    } catch (e) {
+      _loadError.report(e, onRetry: _loadRuntime);
       if (mounted) setState(() => _loading = false);
     }
   }
