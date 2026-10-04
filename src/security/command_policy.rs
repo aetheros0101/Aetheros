@@ -159,6 +159,17 @@ impl CommandPolicy {
                 reason: "program adı boş".into(),
             };
         }
+        // Boşluk içeren program adı, neredeyse kesinlikle yanlış biçimli bir
+        // komut satırıdır (["touch deneme.txt"]). Onaya düşürmek yerine
+        // net bir gerekçeyle reddedilir — ajan bu hatayı görüp düzeltir,
+        // kullanıcı anlamsız bir "komutu" onaylamak zorunda kalmaz.
+        if program.chars().any(char::is_whitespace) {
+            return CallVerdict::Deny {
+                reason: "program adı boşluk içeremez: komutu ayrı argümanlarla ver, \
+                         örn. [\"touch\", \"deneme.txt\"] (tek bir komut satırı string'i değil)"
+                    .into(),
+            };
+        }
         let args = &arguments[1..];
         let base_lower = basename(program).to_ascii_lowercase();
         let norm = normalized(program);
@@ -430,6 +441,18 @@ mod tests {
         assert!(is_deny(p().assess(&a(&["mkfs.ext4", "/dev/sda1"]))));
         // Hedefsiz rm → insan karar versin
         assert!(is_ask(p().assess(&a(&["rm", "dosya.txt"]))));
+    }
+
+    #[test]
+    fn whole_command_line_in_one_argument_is_denied_with_guidance() {
+        match p().assess(&a(&["touch deneme.txt"])) {
+            CallVerdict::Deny { reason } => assert!(reason.contains("ayrı argümanlarla"), "{reason}"),
+            other => panic!("{other:?}"),
+        }
+        assert!(is_deny(p().assess(&a(&["git status"]))));
+        assert!(is_deny(p().assess(&a(&["ls -la", "/tmp"]))));
+        // Doğru biçim bozulmadı
+        assert!(is_ask(p().assess(&a(&["touch", "deneme.txt"]))));
     }
 
     #[test]

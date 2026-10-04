@@ -32,6 +32,7 @@
 //      bilerek açmıyor.
 // ============================================================
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use aetheros_terminal::{
@@ -53,6 +54,9 @@ pub struct TerminalAgentTool {
     inner: Arc<AgentTerminalTool>,
     /// B4: argüman-bazlı karar (allow/ask/deny). Bkz. security::command_policy.
     policy: CommandPolicy,
+    /// Komutların çalışma dizini + HOME'u. None → süreç cwd'si (eski
+    /// davranış; Android'de "/" ve salt-okunur olduğundan işe yaramaz).
+    workspace: Option<PathBuf>,
 }
 
 impl TerminalAgentTool {
@@ -65,16 +69,31 @@ impl TerminalAgentTool {
         Self {
             inner: Arc::new(AgentTerminalTool::local()),
             policy,
+            workspace: None,
         }
     }
 
+    /// Varsayılan politika + belirli bir çalışma alanı (uygulamada kullanılan).
+    /// Dizin yoksa oluşturulur.
+    pub fn with_workspace(dir: PathBuf) -> Self {
+        let _ = std::fs::create_dir_all(&dir);
+        let mut tool = Self::new();
+        tool.workspace = Some(dir);
+        tool
+    }
+
     /// Ortamı temizleyip sadece allowlist'teki değişkenleri geçirir.
-    fn sanitized_environment() -> Environment {
+    fn sanitized_environment(&self) -> Environment {
         let mut env = Environment::new().clear();
         for key in ENV_ALLOWLIST {
             if let Ok(value) = std::env::var(key) {
                 env = env.set(*key, value);
             }
+        }
+        // Çalışma alanı varsa HOME oraya işaret eder (`~`, git config vb.
+        // uygulama sandbox'ında yazılabilir bir yere düşsün).
+        if let Some(ws) = &self.workspace {
+            env = env.set("HOME", ws.display().to_string());
         }
         env
     }
@@ -93,8 +112,10 @@ impl AgentTool for TerminalAgentTool {
     }
 
     fn description(&self) -> &'static str {
-        "Runs ONE program (no shell). arguments[0] is the program, the rest are its \
-         arguments, e.g. [\"git\", \"status\"]. Shell syntax like && ; | is NOT interpreted."
+        "Runs ONE program (no shell). arguments[0] is ONLY the program name (no spaces), \
+         every other word is a SEPARATE array element: [\"touch\", \"deneme.txt\"], \
+         [\"git\", \"status\"]. Never put a whole command line in one string. \
+         Shell syntax like && ; | is NOT interpreted. Runs in the app workspace directory."
     }
 
     fn required_capability(&self) -> Option<AgentCapability> {
@@ -121,12 +142,12 @@ impl AgentTool for TerminalAgentTool {
         let command = CommandBuilder::new(program)
             .map_err(|e| e.to_string())?
             .args(args)
-            .env(Self::sanitized_environment())
+            .env(self.sanitized_environment())
             .build();
 
         let session = match self
             .inner
-            .call(TerminalToolRequest::Create { cwd: None })
+            .call(TerminalToolRequest::Create { cwd: self.workspace.clone() })
             .await
             .map_err(|e| e.to_string())?
         {
@@ -250,6 +271,35 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(out.trim(), "a && echo b");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn commands_run_inside_the_workspace_with_home_pointing_there() {
+        let ws = std::env::temp_dir().join(format!("aetheros_ws_{}", uuid::Uuid::new_v4()));
+        let tool = TerminalAgentTool::with_workspace(ws.clone());
+        assert!(ws.is_dir(), "workspace oluşturulmalı");
+
+        // cwd = workspace
+        let out = tool.invoke(vec!["pwd".to_string()]).await.unwrap();
+        assert_eq!(
+            std::fs::canonicalize(out.trim()).unwrap(),
+            std::fs::canonicalize(&ws).unwrap()
+        );
+
+        // yazılabilir: touch workspace'te dosya oluşturur
+        tool.invoke(vec!["touch".to_string(), "deneme.txt".to_string()])
+            .await
+            .expect("touch workspace'te çalışmalı");
+        assert!(ws.join("deneme.txt").is_file());
+
+        // HOME workspace'e işaret eder
+        let env_out = tool.invoke(vec!["env".to_string()]).await.unwrap();
+        assert!(
+            env_out.lines().any(|l| l == format!("HOME={}", ws.display())),
+            "HOME workspace olmalı: {env_out}"
+        );
+        let _ = std::fs::remove_dir_all(&ws);
     }
 
     #[cfg(unix)]

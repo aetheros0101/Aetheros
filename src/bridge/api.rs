@@ -730,7 +730,9 @@ pub async fn start_agent(
     // V10 Faz 1: terminal her agent'a sunuluyor — listede olmak izin
     // vermez, TerminalExecution capability + Governor onayı hâlâ şart.
     tools.push(std::sync::Arc::new(
-        crate::agents::terminal_tool::TerminalAgentTool::new(),
+        crate::agents::terminal_tool::TerminalAgentTool::with_workspace(
+            std::path::PathBuf::from(&rt.workspace_dir),
+        ),
     ));
 
     tokio::spawn(async move {
@@ -885,7 +887,9 @@ pub async fn respond_to_approval(
         })
         .collect();
     tools.push(std::sync::Arc::new(
-        crate::agents::terminal_tool::TerminalAgentTool::new(),
+        crate::agents::terminal_tool::TerminalAgentTool::with_workspace(
+            std::path::PathBuf::from(&rt.workspace_dir),
+        ),
     ));
 
     let ai_router         = rt.ai_router.clone();

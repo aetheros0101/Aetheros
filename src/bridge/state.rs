@@ -64,6 +64,10 @@ pub struct MobileRuntime {
     pub log_buffer:        LogBuffer,
     /// WASM binary'lerinin kalıcı dizini: {docDir}/modules/
     pub modules_dir:       String,
+    /// Terminal aracının çalışma dizini ve HOME'u: {docDir}/workspace/.
+    /// Android'de süreç cwd'si "/" (salt-okunur) olduğundan komutlar
+    /// burada koşar; böylece `touch x`, `ls` vb. yazılabilir bir yerde çalışır.
+    pub workspace_dir:     String,
     /// Agent execution kaydı (in-memory, Faz-2'de persist)
     pub agent_registry:    AgentRegistry,
     /// Workflow execution kaydı (in-memory, Faz-2'de persist)
@@ -151,6 +155,15 @@ pub fn init_mobile_runtime(
     };
     std::fs::create_dir_all(&modules_dir)
         .map_err(|e| format!("Modules dizini oluşturulamadı: {e}"))?;
+
+    // ── Terminal çalışma alanı: {docDir}/workspace/ ──────────
+    let workspace_dir = {
+        let p = std::path::Path::new(&db_path);
+        let parent = p.parent().unwrap_or(std::path::Path::new("."));
+        parent.join("workspace").display().to_string()
+    };
+    std::fs::create_dir_all(&workspace_dir)
+        .map_err(|e| format!("Workspace dizini oluşturulamadı: {e}"))?;
 
     // ── Önceki oturumdan kalan WASM binary'lerini restore et ─
     restore_modules_from_disk(&modules_dir, &module_store);
@@ -245,6 +258,7 @@ pub fn init_mobile_runtime(
         module_store,
         log_buffer,
         modules_dir,
+        workspace_dir,
         agent_registry,
         workflow_registry: Arc::new(dashmap::DashMap::new()),
         cluster:           Arc::new(crate::remote::cluster::ClusterState::new()),
