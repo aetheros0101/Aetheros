@@ -181,6 +181,21 @@ class AetherApi {
     return rust.listAuditEvents(executionId: executionId);
   }
 
+  /// Kullanıcı terminali: komutu ÇALIŞTIRMADAN politika kararını al.
+  static Future<rust.TerminalCheck> terminalCheck(String commandLine) async {
+    return rust.terminalCheckCommand(commandLine);
+  }
+
+  /// Kullanıcı terminali: komutu çalıştır. `ask` kararında `confirmed: true`
+  /// olmadan Rust komutu çalıştırmaz.
+  static Future<rust.TerminalRunResult> terminalRun(
+    String commandLine, {
+    required bool confirmed,
+  }) async {
+    return rust.terminalRunCommand(
+        commandLine: commandLine, confirmed: confirmed);
+  }
+
   /// Tüm execution'ların denetim kayıtları.
   static Future<List<rust.AuditEvent>> listAllAuditEvents() async {
     return rust.listAuditEvents();

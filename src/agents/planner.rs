@@ -52,6 +52,47 @@ pub struct StepRecord {
     pub step_name: String,
     pub success: bool,
     pub output: String,
+    /// Adımın çağırdığı tool + argümanlar (varsa). Planlayıcıya GERÇEKTEN
+    /// ne çalıştırıldığını gösterir; aynı çağrının tekrarını da buradan
+    /// yakalarız (bkz. `is_repeat_of_last`).
+    pub tool_call: Option<ToolCall>,
+}
+
+/// Planlayıcının yeni adımı, hemen önceki BAŞARILI adımın birebir aynı
+/// tool çağrısı mı? Öyleyse tekrar çalıştırmak yalnızca boşa iş/token
+/// harcar (ör. `ls` çıktısını gördükten sonra yine `ls`). Ardışık
+/// olmayan tekrarlar (ls → touch → ls) meşrudur ve engellenmez.
+pub fn is_repeat_of_last(history: &[StepRecord], next: &AgentPlanStep) -> bool {
+    match (history.last(), next.tool_call.as_ref()) {
+        (Some(last), Some(call)) => last.success && last.tool_call.as_ref() == Some(call),
+        _ => false,
+    }
+}
+
+/// `plan_next` prompt'una giren geçmiş metni. Adım adıyla birlikte
+/// çalıştırılan tool çağrısını da gösterir.
+pub fn format_history(history: &[StepRecord]) -> String {
+    if history.is_empty() {
+        return "(henüz hiçbir adım atılmadı)".to_string();
+    }
+    history
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            let status = if r.success { "başarılı" } else { "başarısız" };
+            let output_preview: String = r.output.chars().take(200).collect();
+            let call = match &r.tool_call {
+                Some(c) => format!(" [{} {:?}]", c.tool_name, c.arguments),
+                None => String::new(),
+            };
+            if output_preview.is_empty() {
+                format!("{}. {}{call} → {status} (çıktı yok)", i + 1, r.step_name)
+            } else {
+                format!("{}. {}{call} → {status}: {output_preview}", i + 1, r.step_name)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// `plan_next`'in kararı: ya yeni bir adım, ya da "hedef tamamlandı".
@@ -231,24 +272,7 @@ Output ONLY valid JSON, no explanation."#,
     ) -> Option<NextStepDecision> {
         let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
 
-        let history_text = if history.is_empty() {
-            "(henüz hiçbir adım atılmadı)".to_string()
-        } else {
-            history
-                .iter()
-                .enumerate()
-                .map(|(i, r)| {
-                    let status = if r.success { "başarılı" } else { "başarısız" };
-                    let output_preview: String = r.output.chars().take(200).collect();
-                    if output_preview.is_empty() {
-                        format!("{}. {} → {status}", i + 1, r.step_name)
-                    } else {
-                        format!("{}. {} → {status}: {output_preview}", i + 1, r.step_name)
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
-        };
+        let history_text = format_history(history);
 
         let tools_section = if tool_names.is_empty() {
             "No tools are available right now — never set \"tool_name\".".to_string()
@@ -270,7 +294,15 @@ Output ONLY valid JSON, no explanation, in exactly one of these two forms:
 
 {tools_section}
 
-Only include "tool_name" if this specific step should invoke that tool."#
+Only include "tool_name" if this specific step should invoke that tool.
+
+Rules:
+- NEVER repeat a step that already succeeded with the same tool and
+  arguments. If the steps so far already satisfy the objective, answer
+  {{"done": true}}. An empty result ("çıktı yok") from a successful command
+  is NORMAL (e.g. touch, mkdir) — it means it worked.
+- Tool "arguments" is a JSON array: arguments[0] is the program name only,
+  every other word is its own element."#
         );
 
         let prompt = format!(

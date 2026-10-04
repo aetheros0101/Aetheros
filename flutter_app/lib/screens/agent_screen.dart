@@ -21,7 +21,10 @@ import '../src/rust/api/aetheros.dart' as rust;
 import '../core/app_theme.dart';
 
 class AgentScreen extends StatefulWidget {
-  const AgentScreen({super.key});
+  /// Doluysa ekran açılır açılmaz Yeni Agent formu bu hedefle (ve Terminal
+  /// yetkisi önceden seçili olarak) açılır — Chat'ten "Agent ile yap".
+  final String? initialObjective;
+  const AgentScreen({super.key, this.initialObjective});
   @override
   State<AgentScreen> createState() => _AgentScreenState();
 }
@@ -37,6 +40,16 @@ class _AgentScreenState extends State<AgentScreen> {
     _load();
     _poller = LifecyclePoller(interval: const Duration(seconds: 3), onTick: () => _load(silent: true));
     _poller.start();
+    final objective = widget.initialObjective;
+    if (objective != null && objective.trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _showNewAgentDialog(
+          objective: objective,
+          caps: const {kTerminalCapabilityId},
+        );
+      });
+    }
   }
 
   final _loadError = LoadErrorBanner();
@@ -62,7 +75,7 @@ class _AgentScreenState extends State<AgentScreen> {
     }
   }
 
-  void _showNewAgentDialog() {
+  void _showNewAgentDialog({String? objective, Set<String> caps = const {}}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -70,7 +83,11 @@ class _AgentScreenState extends State<AgentScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _NewAgentSheet(onCreated: _load),
+      builder: (_) => _NewAgentSheet(
+        onCreated: _load,
+        initialObjective: objective,
+        initialCaps: caps,
+      ),
     );
   }
 
@@ -128,7 +145,13 @@ class _AgentScreenState extends State<AgentScreen> {
 
 class _NewAgentSheet extends StatefulWidget {
   final VoidCallback onCreated;
-  const _NewAgentSheet({required this.onCreated});
+  final String? initialObjective;
+  final Set<String> initialCaps;
+  const _NewAgentSheet({
+    required this.onCreated,
+    this.initialObjective,
+    this.initialCaps = const {},
+  });
   @override State<_NewAgentSheet> createState() => _NewAgentSheetState();
 }
 
@@ -139,6 +162,14 @@ class _NewAgentSheetState extends State<_NewAgentSheet> {
   bool   _submitting = false;
   String? _error;
   final Set<String> _caps = {};
+
+  @override
+  void initState() {
+    super.initState();
+    final o = widget.initialObjective;
+    if (o != null) _objCtrl.text = o;
+    _caps.addAll(widget.initialCaps);
+  }
 
   @override
   void dispose() { _objCtrl.dispose(); super.dispose(); }

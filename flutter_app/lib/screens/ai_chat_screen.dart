@@ -14,6 +14,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/ai_provider_service.dart';
 import 'ai_settings_screen.dart';
+import 'agent_screen.dart' show AgentScreen;
+import '../core/chat_to_agent.dart';
 import 'script_editor_screen.dart' show ScriptEditorScreen;
 import '../core/app_theme.dart';
 
@@ -228,7 +230,20 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   itemCount: _messages.length + (_loading ? 1 : 0),
                   itemBuilder: (_, i) {
                     if (i == _messages.length) return const _TypingIndicator();
-                    return _MessageBubble(message: _messages[i]);
+                    final m = _messages[i];
+                    return _MessageBubble(
+                      message: m,
+                      onRunAsAgent: m.role == MessageRole.user
+                          ? () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AgentScreen(
+                                      initialObjective:
+                                          objectiveFromChat(m.text)),
+                                ),
+                              )
+                          : null,
+                    );
                   },
                 ),
         ),
@@ -346,7 +361,9 @@ class _EmptyChat extends StatelessWidget {
 
 class _MessageBubble extends StatelessWidget {
   final ChatMessage message;
-  const _MessageBubble({required this.message});
+  /// Doluysa (yalnız kullanıcı mesajları) "Agent ile yap" düğmesi çıkar.
+  final VoidCallback? onRunAsAgent;
+  const _MessageBubble({required this.message, this.onRunAsAgent});
 
   bool get _isUser => message.role == MessageRole.user;
 
@@ -382,6 +399,18 @@ class _MessageBubble extends StatelessWidget {
                   color: (_isUser ? Colors.white : Colors.white38)
                       .withOpacity(0.5),
                   fontSize: 10)),
+          if (onRunAsAgent != null) ...[
+            const SizedBox(width: 10),
+            InkWell(
+              onTap: onRunAsAgent,
+              child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.smart_toy_outlined, color: Colors.white70, size: 13),
+                SizedBox(width: 3),
+                Text('Agent ile yap',
+                    style: TextStyle(color: Colors.white70, fontSize: 10)),
+              ]),
+            ),
+          ],
           if (!_isUser) ...[
             const SizedBox(width: 8),
             InkWell(

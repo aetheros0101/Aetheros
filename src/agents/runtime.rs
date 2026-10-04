@@ -41,7 +41,7 @@ use crate::agents::approval::{ApprovalStore, PendingApproval};
 use crate::agents::budget::AgentExecutionBudget;
 use crate::agents::context::AgentContext;
 use crate::agents::memory::AgentMemory;
-use crate::agents::planner::{AgentPlanner, NextStepDecision, StepRecord};
+use crate::agents::planner::{is_repeat_of_last, AgentPlanner, NextStepDecision, StepRecord};
 use crate::agents::plans::{AgentPlanStep, ToolCall};
 use crate::agents::reasoning::ReasoningTrace;
 use crate::agents::tools::AgentTool;
@@ -504,6 +504,19 @@ impl AgentRuntime {
                 }
             };
 
+            // Planlayıcı, az önce BAŞARIYLA çalışan çağrının aynısını yine
+            // istiyorsa (ör. `ls` sonrası tekrar `ls`) hedef zaten
+            // karşılanmıştır; tekrar çalıştırmak boşa iş + token.
+            if is_repeat_of_last(&history, &step) {
+                info!(
+                    agent_id = %context.agent_id,
+                    execution_id = %context.execution_id,
+                    step = %step.name,
+                    "Autonomous loop: aynı çağrının ardışık tekrarı engellendi, tamamlandı sayılıyor"
+                );
+                break;
+            }
+
             // Otonom modda "kalan adımlar" kavramı yok — sonraki adım
             // henüz planlanmadı (bkz. yukarıdaki BİLİNEN SINIRLAMA notu).
             let outcome = self
@@ -522,6 +535,7 @@ impl AgentRuntime {
                         step_name: step.name.clone(),
                         success,
                         output,
+                        tool_call: step.tool_call.clone(),
                     });
                     steps_taken += 1;
                 }

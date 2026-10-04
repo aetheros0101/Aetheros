@@ -217,3 +217,23 @@ pub struct NodeRegistrationResponse {
     pub address: String,
     pub status:  String,
 }
+
+/// Kullanıcı terminali: komut ÇALIŞTIRILMADAN önce politika kararı.
+/// `verdict`: "allow" | "ask" | "deny". `argv`: ayrıştırılmış komut
+/// (arayüz, onay kutusunda tam olarak ne çalışacağını gösterir).
+pub struct TerminalCheckResponse {
+    pub verdict: String,
+    /// ask/deny için gerekçe; allow için boş.
+    pub reason:  String,
+    pub argv:    Vec<String>,
+}
+
+/// Kullanıcı terminali: çalıştırma sonucu.
+pub struct TerminalRunResponse {
+    /// Komut 0 koduyla bitti mi?
+    pub success:   bool,
+    /// Başarıda stdout; başarısızlıkta çıkış kodu + stderr.
+    pub output:    String,
+    /// Çıktı 20 000 karaktere kırpıldı mı?
+    pub truncated: bool,
+}

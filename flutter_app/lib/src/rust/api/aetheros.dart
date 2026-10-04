@@ -701,3 +701,54 @@ Future<List<AuditEvent>> listAuditEvents({String? executionId}) async {
           ))
       .toList();
 }
+
+
+// ── Kullanıcı terminali (Faz 2) ───────────────────────────────
+// Kullanıcının yazdığı tek satır komut, agent'larla aynı politika
+// motorundan geçer. İki aşama: önce karar, sonra (gerekirse onayla) çalıştır.
+
+class TerminalCheck {
+  final String verdict;      // allow | ask | deny
+  final String reason;       // ask/deny için gerekçe
+  final List<String> argv;   // ayrıştırılmış komut
+  const TerminalCheck({
+    required this.verdict,
+    required this.reason,
+    required this.argv,
+  });
+}
+
+class TerminalRunResult {
+  final bool success;
+  final String output;       // başarıda stdout, başarısızlıkta kod + stderr
+  final bool truncated;
+  const TerminalRunResult({
+    required this.success,
+    required this.output,
+    required this.truncated,
+  });
+}
+
+Future<TerminalCheck> terminalCheckCommand(String commandLine) async {
+  final r = await _bridge.terminalCheckCommand(commandLine: commandLine);
+  return TerminalCheck(
+    verdict: r.verdict,
+    reason:  r.reason,
+    argv:    List<String>.from(r.argv),
+  );
+}
+
+Future<TerminalRunResult> terminalRunCommand({
+  required String commandLine,
+  required bool confirmed,
+}) async {
+  final r = await _bridge.terminalRunCommand(
+    commandLine: commandLine,
+    confirmed:   confirmed,
+  );
+  return TerminalRunResult(
+    success:   r.success,
+    output:    r.output,
+    truncated: r.truncated,
+  );
+}

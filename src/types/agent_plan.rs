@@ -55,6 +55,8 @@ pub struct AgentPlanStep {
 #[derive(
     Debug,
     Clone,
+    PartialEq,
+    Eq,
     Serialize,
     Deserialize,
 )]

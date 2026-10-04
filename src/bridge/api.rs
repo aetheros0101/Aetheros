@@ -27,6 +27,7 @@ use crate::bridge::types::{
     LogRecord, MetricsSnapshot, ModuleUploadResponse,
     AuditEventResponse, NodeRegistrationResponse, PendingApprovalResponse,
     RuntimeInfo, TaskRequest, TaskStatusResponse,
+    TerminalCheckResponse, TerminalRunResponse,
     WorkflowStartResponse, WorkflowStatusResponse,
 };
 use crate::api::rest::router::WorkflowStepRequest;
@@ -1338,4 +1339,64 @@ pub async fn ai_chat(
         .await
         .map(|r| r.output)
         .map_err(|e| e.to_string())
+}
+
+
+// ── Faz 2: Kullanıcı Terminali ─────────────────────────────
+//
+// Kullanıcının kendi yazdığı TEK SATIR komut, agent'larla aynı politika
+// motorundan geçer (bkz. agents::user_terminal). İki aşamalı:
+//   1) terminal_check_command  → çalıştırmadan karar (allow/ask/deny + argv)
+//   2) terminal_run_command    → çalıştır; ask ise `confirmed: true` şart.
+// Onay kutusu arayüzdedir ama Rust kendi başına da zorlar.
+
+fn user_terminal_tool(
+    rt: &crate::bridge::state::MobileRuntime,
+) -> crate::agents::terminal_tool::TerminalAgentTool {
+    crate::agents::terminal_tool::TerminalAgentTool::with_workspace(
+        std::path::PathBuf::from(&rt.workspace_dir),
+    )
+}
+
+/// Komutu çalıştırmadan ayrıştırır ve politikaya sorar.
+pub fn terminal_check_command(command_line: String) -> Result<TerminalCheckResponse, String> {
+    use crate::types::agent_tool::CallVerdict;
+
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let tool = user_terminal_tool(&rt);
+    let checked = crate::agents::user_terminal::check(&tool, &command_line)?;
+
+    let (verdict, reason) = match checked.verdict {
+        CallVerdict::Allow => ("allow", String::new()),
+        CallVerdict::Ask { reason } => ("ask", reason),
+        CallVerdict::Deny { reason } => ("deny", reason),
+    };
+    Ok(TerminalCheckResponse {
+        verdict: verdict.to_string(),
+        reason,
+        argv: checked.argv,
+    })
+}
+
+/// Komutu çalıştırır. Deny → Err. Ask → `confirmed` true değilse Err.
+pub async fn terminal_run_command(
+    command_line: String,
+    confirmed: bool,
+) -> Result<TerminalRunResponse, String> {
+    let rt = get_runtime()
+        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let tool = user_terminal_tool(&rt);
+    let res = crate::agents::user_terminal::run(
+        &tool,
+        &rt.audit_log,
+        &command_line,
+        confirmed,
+    )
+    .await?;
+    Ok(TerminalRunResponse {
+        success: res.success,
+        output: res.output,
+        truncated: res.truncated,
+    })
 }

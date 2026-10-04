@@ -11,6 +11,7 @@ pub mod registry;
 pub mod state;
 pub mod tools;
 pub mod terminal_tool;
+pub mod user_terminal;
 pub mod budget;
 pub mod subscriptions;
 pub mod cancellation;

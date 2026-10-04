@@ -76,3 +76,6 @@ String capabilitySummary(Iterable<String> ids) {
   ];
   return labels.isEmpty ? 'Yetki yok' : labels.join(', ');
 }
+
+/// Terminal yetkisinin Rust'taki adı (Chat'ten "Agent ile yap" önceden seçer).
+const String kTerminalCapabilityId = 'terminal_execution';

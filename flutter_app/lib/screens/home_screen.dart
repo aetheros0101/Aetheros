@@ -21,6 +21,7 @@ import 'workflow_screen.dart';
 import 'remote_screen.dart';
 import 'settings_screen.dart';
 import 'audit_screen.dart';
+import 'terminal_screen.dart';
 import '../core/app_theme.dart';
 
 // ── Provider ──────────────────────────────────────────────────
@@ -80,6 +81,12 @@ class HomeScreen extends ConsumerWidget {
             tooltip: 'Bekleyen onaylar',
             onPressed: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const ApprovalsScreen())),
+          ),
+          IconButton(
+            icon: const Icon(Icons.terminal, color: Colors.white70),
+            tooltip: 'Terminal',
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const TerminalScreen())),
           ),
           IconButton(
             icon: const Icon(Icons.history, color: Colors.white70),
