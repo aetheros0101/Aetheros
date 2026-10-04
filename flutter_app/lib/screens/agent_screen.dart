@@ -10,6 +10,9 @@
 import '../core/lifecycle_poller.dart';
 import '../core/agent_capabilities.dart';
 import '../core/app_error.dart';
+import '../core/audit_format.dart';
+import 'approvals_screen.dart';
+import 'audit_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../api/aetheros_api.dart';
@@ -374,16 +377,46 @@ class _AgentCard extends StatelessWidget {
 
 // ── Agent detay modal ─────────────────────────────────────────
 
-class _AgentDetailSheet extends StatelessWidget {
+class _AgentDetailSheet extends StatefulWidget {
   final rust.AgentStatusResponse agent;
   const _AgentDetailSheet({required this.agent});
 
   @override
+  State<_AgentDetailSheet> createState() => _AgentDetailSheetState();
+}
+
+class _AgentDetailSheetState extends State<_AgentDetailSheet> {
+  List<rust.AuditEvent>? _events;
+  String? _eventsError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEvents();
+  }
+
+  Future<void> _loadEvents() async {
+    try {
+      final ev = await AetherApi.listAuditEvents(widget.agent.executionId);
+      ev.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      if (!mounted) return;
+      setState(() {
+        _events = ev;
+        _eventsError = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _eventsError = userFacingError(e));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final agent = widget.agent;
     return DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.6,
-      maxChildSize: 0.9,
+      initialChildSize: 0.75,
+      maxChildSize: 0.95,
       builder: (_, ctrl) => Container(
         padding: const EdgeInsets.all(20),
         child: ListView(controller: ctrl, children: [
@@ -403,9 +436,38 @@ class _AgentDetailSheet extends StatelessWidget {
           _DetailRow('Hedef',        agent.objective),
           if (agent.error != null)
             _DetailRow('Hata', agent.error!, valueColor: const Color(0xFFFF5252)),
-          const SizedBox(height: 16),
 
-          // Kopyala butonu
+          if (agent.status == 'pending_approval') ...[
+            const SizedBox(height: 8),
+            SizedBox(width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => const ApprovalsScreen()));
+                },
+                icon: const Icon(Icons.gpp_maybe_outlined),
+                label: const Text('Onay bekliyor — Bekleyen Onaylar\'a git'),
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 20),
+          Row(children: [
+            const Expanded(
+              child: Text('Olay Geçmişi',
+                  style: TextStyle(color: Colors.white,
+                      fontSize: 15, fontWeight: FontWeight.bold)),
+            ),
+            IconButton(
+              tooltip: 'Yenile',
+              icon: const Icon(Icons.refresh, color: Colors.white54, size: 20),
+              onPressed: _loadEvents,
+            ),
+          ]),
+          ..._buildEvents(),
+
+          const SizedBox(height: 16),
           SizedBox(width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () {
@@ -425,6 +487,31 @@ class _AgentDetailSheet extends StatelessWidget {
         ]),
       ),
     );
+  }
+
+  List<Widget> _buildEvents() {
+    if (_eventsError != null) {
+      return [
+        Text('Olaylar okunamadı: $_eventsError',
+            style: const TextStyle(color: Color(0xFFFFB300), fontSize: 12)),
+      ];
+    }
+    final events = _events;
+    if (events == null) {
+      return const [
+        Padding(
+          padding: EdgeInsets.all(12),
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+      ];
+    }
+    if (events.isEmpty) {
+      return const [
+        Text('Bu execution için kayıt yok.',
+            style: TextStyle(color: Colors.white38, fontSize: 12)),
+      ];
+    }
+    return [for (final e in events) AuditTile(event: e)];
   }
 }
 

@@ -269,6 +269,7 @@ class AgentStatusResponse {
   final String? error;
   final int startedAt;       // ms epoch
   final int? finishedAt;
+  final String? pendingApprovalId; // status == pending_approval ise dolu
 
   const AgentStatusResponse({
     required this.executionId,
@@ -278,6 +279,7 @@ class AgentStatusResponse {
     this.error,
     required this.startedAt,
     this.finishedAt,
+    this.pendingApprovalId,
   });
 }
 
@@ -419,6 +421,7 @@ Future<AgentStatusResponse> getAgentStatus({
     error:       r.error,
     startedAt:   r.startedAt.toInt(),
     finishedAt:  r.finishedAt?.toInt(),
+    pendingApprovalId: r.pendingApprovalId,
   );
 }
 
@@ -432,6 +435,7 @@ Future<List<AgentStatusResponse>> listAgents({required int limit}) async {
     error:       r.error,
     startedAt:   r.startedAt.toInt(),
     finishedAt:  r.finishedAt?.toInt(),
+    pendingApprovalId: r.pendingApprovalId,
   )).toList();
 }
 
@@ -658,3 +662,42 @@ Future<void> respondToApproval({
   required bool approved,
 }) =>
     _bridge.respondToApproval(approvalId: approvalId, approved: approved);
+
+
+// ── Denetim kayıtları (Faz 2) ─────────────────────────────────
+// Agent'ın ne yaptığının kaydı: güvenlik kararı, onay, çalışma sonucu.
+
+class AuditEvent {
+  final String id;
+  final String agentId;
+  final String executionId;
+  final String kindLabel;   // governor_decision | tool_invoked | ...
+  final String summary;     // okunabilir tek satır
+  final String detailsJson; // tam, kayıpsız JSON
+  final int createdAt;      // ms epoch
+
+  const AuditEvent({
+    required this.id,
+    required this.agentId,
+    required this.executionId,
+    required this.kindLabel,
+    required this.summary,
+    required this.detailsJson,
+    required this.createdAt,
+  });
+}
+
+Future<List<AuditEvent>> listAuditEvents({String? executionId}) async {
+  final list = await _bridge.listAuditEvents(executionId: executionId);
+  return list
+      .map((r) => AuditEvent(
+            id:           r.id,
+            agentId:      r.agentId,
+            executionId:  r.executionId,
+            kindLabel:    r.kindLabel,
+            summary:      r.summary,
+            detailsJson:  r.detailsJson,
+            createdAt:    r.createdAt.toInt(),
+          ))
+      .toList();
+}

@@ -175,6 +175,17 @@ class AetherApi {
     return rust.listPendingApprovals();
   }
 
+  /// Bir execution'ın denetim kayıtları (en eski önce). Komut, güvenlik
+  /// kararı, onay ve çalışma sonucunu içerir.
+  static Future<List<rust.AuditEvent>> listAuditEvents(String executionId) async {
+    return rust.listAuditEvents(executionId: executionId);
+  }
+
+  /// Tüm execution'ların denetim kayıtları.
+  static Future<List<rust.AuditEvent>> listAllAuditEvents() async {
+    return rust.listAuditEvents();
+  }
+
   /// `approved: true` → çağrı çalışır, agent devam eder.
   /// `approved: false` → execution kalıcı olarak reddedilir.
   static Future<void> respondToApproval({
