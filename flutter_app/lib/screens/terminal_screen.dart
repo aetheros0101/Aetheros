@@ -196,6 +196,17 @@ class _TerminalScreenState extends State<TerminalScreen> {
                   ),
                 ),
         ),
+        const Padding(
+          padding: EdgeInsets.symmetric(
+              horizontal: AetherSpacing.lg, vertical: 2),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Gerçek komut satırı — doğal dil için Agent ekranını kullan.',
+              style: TextStyle(color: Colors.white38, fontSize: 11),
+            ),
+          ),
+        ),
         SizedBox(
           height: 40,
           child: ListView(
@@ -283,6 +294,8 @@ class _Hint extends StatelessWidget {
               style: TextStyle(color: AetherColors.textMuted, fontSize: 16)),
           SizedBox(height: AetherSpacing.xs),
           Text(
+            'Bu bir KOMUT satırı, doğal dil değil: ls, touch notlar.txt.\n'
+            'Türkçe talimat için Agent ekranını (ya da Chat → Agent ile yap) kullan.\n'
             'Shell yok: &&, ;, | ve > düz argüman sayılır.\n'
             'Riskli komutlar onay ister, yasaklılar çalışmaz.\n'
             'Her çalıştırma Denetim Kayıtları\'na yazılır.',

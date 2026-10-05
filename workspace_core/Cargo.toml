@@ -1,0 +1,23 @@
+[package]
+name = "aetheros-workspace"
+version = "0.3.0"
+edition = "2021"
+description = "AetherOS workspace service: guarded filesystem, atomic documents, search index and git status"
+license = "MIT"
+
+[features]
+# Dosya izleyici (notify) ajan yolunda gerekmez; Android derlemesini şişirmemek
+# için varsayılan KAPALI. UI tarafı izleyici isterse `features = ["watcher"]`.
+default = []
+watcher = ["dep:notify"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+walkdir = "2"
+ignore = "0.4"
+notify = { version = "8", optional = true }
+
+[dev-dependencies]
+tempfile = "3"

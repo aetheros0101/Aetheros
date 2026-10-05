@@ -59,6 +59,9 @@ impl CapabilityEngine {
             ai_reasoning: false,
             remote_execution: false,
             terminal_execution: false,
+            workspace_read: false,
+            workspace_write: false,
+            workspace_mutate: false,
         });
         match capability {
             AgentCapability::WorkflowExecution => entry.workflow_execution = true,
@@ -66,6 +69,9 @@ impl CapabilityEngine {
             AgentCapability::AiReasoning => entry.ai_reasoning = true,
             AgentCapability::RemoteExecution => entry.remote_execution = true,
             AgentCapability::TerminalExecution => entry.terminal_execution = true,
+            AgentCapability::WorkspaceRead => entry.workspace_read = true,
+            AgentCapability::WorkspaceWrite => entry.workspace_write = true,
+            AgentCapability::WorkspaceMutate => entry.workspace_mutate = true,
         }
     }
 
@@ -101,6 +107,9 @@ impl CapabilityEngine {
             AgentCapability::AiReasoning => caps.ai_reasoning,
             AgentCapability::RemoteExecution => caps.remote_execution,
             AgentCapability::TerminalExecution => caps.terminal_execution,
+            AgentCapability::WorkspaceRead => caps.workspace_read,
+            AgentCapability::WorkspaceWrite => caps.workspace_write,
+            AgentCapability::WorkspaceMutate => caps.workspace_mutate,
         };
 
         if has {
@@ -152,6 +161,9 @@ mod tests {
                 ai_reasoning: false,
                 remote_execution: false,
                 terminal_execution: false,
+                workspace_read: false,
+                workspace_write: false,
+                workspace_mutate: false,
             },
         );
         assert!(engine

@@ -431,6 +431,9 @@ mod tests {
                 ai_reasoning: false,
                 remote_execution: false,
                 terminal_execution: false,
+                workspace_read: false,
+                workspace_write: false,
+                workspace_mutate: false,
             },
         );
         let risk_engine = Arc::new(RiskEngine::new());

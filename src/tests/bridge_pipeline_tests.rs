@@ -232,5 +232,40 @@ fn bridge_pipeline_register_grant_and_run() {
             rt.capability_engine.check(&nid, Some(Cap::WasmExecution)),
             Dec::Denied { .. }
         ));
+
+        // Workspace yetkileri: ad → enum eşlemesi ve bağımsızlık.
+        let wsr = crate::bridge::api::start_agent(
+            "workspace okuyucu".to_string(),
+            5,
+            1_000,
+            vec!["workspace_read".to_string()],
+        )
+        .await
+        .expect("workspace_read geçerli bir yetki adı olmalı");
+        let wid = uuid::Uuid::parse_str(&wsr.agent_id).unwrap();
+        assert!(matches!(
+            rt.capability_engine.check(&wid, Some(Cap::WorkspaceRead)),
+            Dec::Allowed
+        ));
+        assert!(matches!(
+            rt.capability_engine.check(&wid, Some(Cap::WorkspaceWrite)),
+            Dec::Denied { .. }
+        ));
+        assert!(matches!(
+            rt.capability_engine.check(&wid, Some(Cap::WorkspaceMutate)),
+            Dec::Denied { .. }
+        ));
+        for name in ["workspace_write", "workspace_mutate"] {
+            assert!(crate::bridge::api::parse_capability(name).is_ok(), "{name}");
+        }
+
+        // Workspace init'te {workspace_dir} üzerinde açılmış olmalı ve
+        // agent araç listesine 10 araç eklenmeli.
+        let root = crate::bridge::state::workspace_root()
+            .expect("workspace init'te açılmış olmalı");
+        assert!(!root.is_empty());
+        let mut tools: Vec<std::sync::Arc<dyn crate::types::agent_tool::AgentTool>> = Vec::new();
+        crate::bridge::api::append_workspace_tools(rt, &mut tools);
+        assert_eq!(tools.len(), 10);
     });
 }

@@ -68,6 +68,9 @@ pub struct MobileRuntime {
     /// Android'de süreç cwd'si "/" (salt-okunur) olduğundan komutlar
     /// burada koşar; böylece `touch x`, `ls` vb. yazılabilir bir yerde çalışır.
     pub workspace_dir:     String,
+    /// `workspace_dir` üzerinde açılmış güvenli dosya katmanı. Açılamazsa None:
+    /// agent'lar workspace aracı almadan çalışır (terminal etkilenmez).
+    pub workspace:         Option<Arc<aetheros_workspace::Workspace>>,
     /// Agent execution kaydı (in-memory, Faz-2'de persist)
     pub agent_registry:    AgentRegistry,
     /// Workflow execution kaydı (in-memory, Faz-2'de persist)
@@ -165,6 +168,14 @@ pub fn init_mobile_runtime(
     std::fs::create_dir_all(&workspace_dir)
         .map_err(|e| format!("Workspace dizini oluşturulamadı: {e}"))?;
 
+    let workspace = match aetheros_workspace::Workspace::open(&workspace_dir) {
+        Ok(w)  => Some(Arc::new(w)),
+        Err(e) => {
+            tracing::warn!(error = %e, "Workspace açılamadı — workspace araçları devre dışı");
+            None
+        }
+    };
+
     // ── Önceki oturumdan kalan WASM binary'lerini restore et ─
     restore_modules_from_disk(&modules_dir, &module_store);
 
@@ -259,6 +270,7 @@ pub fn init_mobile_runtime(
         log_buffer,
         modules_dir,
         workspace_dir,
+        workspace,
         agent_registry,
         workflow_registry: Arc::new(dashmap::DashMap::new()),
         cluster:           Arc::new(crate::remote::cluster::ClusterState::new()),
@@ -362,6 +374,11 @@ fn restore_modules_from_disk(modules_dir: &str, store: &Arc<ModuleStore>) {
 ///
 /// init_mobile_runtime() çağrılmadan önce kullanılırsa None döner.
 /// Bridge fonksiyonları bu durumda "RuntimeNotInitialized" hatası verir.
+/// Aktif workspace kökü (yalnızca bu salt-okunur bilgi dışarı açılır).
+pub fn workspace_root() -> Option<String> {
+    get_runtime()?.workspace.as_ref().map(|w| w.info().root)
+}
+
 pub fn get_runtime() -> Option<&'static MobileRuntime> {
     MOBILE_RUNTIME.get()
 }

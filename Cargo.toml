@@ -61,6 +61,8 @@ harness = false
 # Bilerek ayrı bir crate — PTY/session iç detayları AgentTool arayüzünü
 # kirletmesin diye; entegrasyon src/agents/tools/terminal_tool.rs'te.
 aetheros-terminal = { path = "aetheros-terminal" }
+# Dosya/arama/git primitifleri; agent entegrasyonu src/agents/workspace_tool.rs
+aetheros-workspace = { path = "workspace_core" }
 tokio       = { version = "1", features = ["full", "signal"] }
 
 # ── WASM backend — sadece biri aktif olmalı ───────────────

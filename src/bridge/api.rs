@@ -460,6 +460,9 @@ pub(crate) fn parse_capability(
         "ai_reasoning"       => Ok(C::AiReasoning),
         "remote_execution"   => Ok(C::RemoteExecution),
         "terminal_execution" => Ok(C::TerminalExecution),
+        "workspace_read"     => Ok(C::WorkspaceRead),
+        "workspace_write"    => Ok(C::WorkspaceWrite),
+        "workspace_mutate"   => Ok(C::WorkspaceMutate),
         other => Err(format!("Bilinmeyen capability: '{other}'")),
     }
 }
@@ -468,6 +471,7 @@ pub(crate) fn parse_capability(
 ///
 /// `capability`: "wasm_execution" | "workflow_execution" | "ai_reasoning"
 ///               | "remote_execution" | "terminal_execution"
+///               | "workspace_read" | "workspace_write" | "workspace_mutate"
 ///
 /// TERCİH EDİLEN YOL: `start_agent(..., capabilities)` — yetkiler agent
 /// çalışmaya başlamadan ÖNCE, atomik verilir (yarış yok). Bu fonksiyon,
@@ -735,6 +739,7 @@ pub async fn start_agent(
             std::path::PathBuf::from(&rt.workspace_dir),
         ),
     ));
+    append_workspace_tools(rt, &mut tools);
 
     tokio::spawn(async move {
         let result      = crate::agents::executor::AgentExecutor
@@ -892,6 +897,7 @@ pub async fn respond_to_approval(
             std::path::PathBuf::from(&rt.workspace_dir),
         ),
     ));
+    append_workspace_tools(rt, &mut tools);
 
     let ai_router         = rt.ai_router.clone();
     let capability_engine = rt.capability_engine.clone();
@@ -1399,4 +1405,19 @@ pub async fn terminal_run_command(
         output: res.output,
         truncated: res.truncated,
     })
+}
+
+
+/// Workspace araçlarını (oku/listele/ara/yaz/…) agent'ın araç listesine ekler.
+/// Listede olmak izin vermez: her araç kendi `Workspace*` capability'sini
+/// ister ve Governor/RiskEngine zincirinden geçer.
+pub(crate) fn append_workspace_tools(
+    rt: &crate::bridge::state::MobileRuntime,
+    tools: &mut Vec<std::sync::Arc<dyn crate::types::agent_tool::AgentTool>>,
+) {
+    use crate::agents::workspace_tool::{WorkspaceAgentTool, WorkspaceToolKind};
+    let Some(ws) = rt.workspace.as_ref() else { return };
+    for kind in WorkspaceToolKind::ALL {
+        tools.push(std::sync::Arc::new(WorkspaceAgentTool::new(ws.clone(), kind)));
+    }
 }

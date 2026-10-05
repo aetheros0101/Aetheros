@@ -10,6 +10,7 @@ pub mod bridge_pipeline_tests;
 pub mod cluster_tests;
 pub mod command_policy_tests;
 pub mod user_terminal_tests;
+pub mod workspace_tool_tests;
 pub mod dashboard_tests;
 pub mod integration;
 pub mod module_store_tests;

@@ -36,6 +36,29 @@ const List<CapabilityOption> kAgentCapabilities = [
     sensitive: true,
   ),
   CapabilityOption(
+    id: 'workspace_read',
+    label: 'Dosya okuma',
+    description:
+        'Çalışma alanındaki dosyaları okur, listeler ve arar; git durumunu '
+        'görür. Alan dışına çıkamaz. .git içeriğini okumak ayrıca onay ister.',
+  ),
+  CapabilityOption(
+    id: 'workspace_write',
+    label: 'Dosya yazma',
+    description:
+        'Çalışma alanında dosya/klasör oluşturur, dosya yazar ve düzenler. '
+        'Alan dışına ve .git içine yazamaz.',
+    sensitive: true,
+  ),
+  CapabilityOption(
+    id: 'workspace_mutate',
+    label: 'Dosya silme/taşıma',
+    description:
+        'Çalışma alanında dosya ve klasörleri yeniden adlandırır veya SİLER. '
+        'Her işlem Bekleyen Onaylar\'a düşer.',
+    sensitive: true,
+  ),
+  CapabilityOption(
     id: 'wasm_execution',
     label: 'WASM',
     description: 'Kayıtlı WASM modüllerini / script\'leri çalıştırır.',

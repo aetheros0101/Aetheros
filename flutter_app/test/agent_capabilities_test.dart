@@ -10,6 +10,9 @@ void main() {
       ids.toSet(),
       {
         'terminal_execution',
+        'workspace_read',
+        'workspace_write',
+        'workspace_mutate',
         'wasm_execution',
         'workflow_execution',
         'remote_execution',
@@ -24,6 +27,21 @@ void main() {
     expect(terminal.sensitive, isTrue);
   });
 
+  test('workspace write/mutate are sensitive, read is not', () {
+    bool sensitive(String id) =>
+        kAgentCapabilities.firstWhere((c) => c.id == id).sensitive;
+    expect(sensitive('workspace_read'), isFalse);
+    expect(sensitive('workspace_write'), isTrue);
+    expect(sensitive('workspace_mutate'), isTrue);
+  });
+
+  test('workspace ids survive normalize in catalog order', () {
+    expect(
+      normalizeCapabilities(['workspace_mutate', 'workspace_read', 'workspace_write']),
+      ['workspace_read', 'workspace_write', 'workspace_mutate'],
+    );
+  });
+
   test('normalize drops unknown ids, dedups and keeps catalog order', () {
     expect(
       normalizeCapabilities(['wasm_execution', 'uçan_halı', 'terminal_execution', 'wasm_execution']),
@@ -35,5 +53,6 @@ void main() {
   test('summary', () {
     expect(capabilitySummary(const []), 'Yetki yok');
     expect(capabilitySummary(['wasm_execution', 'terminal_execution']), 'Terminal, WASM');
+    expect(capabilitySummary(['workspace_read']), 'Dosya okuma');
   });
 }

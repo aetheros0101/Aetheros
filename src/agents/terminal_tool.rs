@@ -138,6 +138,7 @@ impl AgentTool for TerminalAgentTool {
             .next()
             .ok_or_else(|| "terminal: program belirtilmedi (arguments[0] boş)".to_string())?;
         let args: Vec<String> = iter.collect();
+        let program_name = program.clone();
 
         let command = CommandBuilder::new(program)
             .map_err(|e| e.to_string())?
@@ -188,8 +189,29 @@ impl AgentTool for TerminalAgentTool {
                 }
             }
             Ok(_) => Err("terminal: beklenmeyen yanıt (çalıştırma)".to_string()),
-            Err(e) => Err(e.to_string()),
+            Err(e) => Err(explain_spawn_failure(&program_name, e.to_string())),
         }
+    }
+}
+
+/// Süreç hiç başlatılamadıysa (program yok / yürütme izni yok) ham işletim
+/// sistemi hatası ("Permission denied (os error 13)") kullanıcıyı yanıltır:
+/// asıl sebep çoğu zaman yanlış/olmayan bir program adıdır (ör. doğal dil
+/// cümlesi yazmak). Net bir açıklama ekler; diğer hatalara dokunmaz.
+pub(crate) fn explain_spawn_failure(program: &str, raw: String) -> String {
+    let lower = raw.to_lowercase();
+    let spawn_failed = lower.contains("failed to spawn");
+    let missing_or_denied = lower.contains("permission denied")
+        || lower.contains("no such file")
+        || lower.contains("not found");
+    if spawn_failed && missing_or_denied {
+        format!(
+            "'{program}' programı başlatılamadı (bulunamadı ya da çalıştırma izni yok). \
+             Bu bir komut satırıdır, doğal dil değil: gerçek bir program adıyla başla, \
+             örn. ls, touch notlar.txt, echo merhaba. Ayrıntı: {raw}"
+        )
+    } else {
+        raw
     }
 }
 

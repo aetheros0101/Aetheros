@@ -5,7 +5,7 @@
 // zorlaması ve denetim izi.
 // ============================================================
 
-use crate::agents::terminal_tool::TerminalAgentTool;
+use crate::agents::terminal_tool::{explain_spawn_failure, TerminalAgentTool};
 use crate::agents::user_terminal::{
     check, run, split_command_line, MAX_OUTPUT_CHARS, USER_TERMINAL_AGENT_ID,
 };
@@ -162,4 +162,44 @@ async fn failing_command_reports_failure_not_an_error() {
 #[test]
 fn max_output_constant_is_sane() {
     assert!(MAX_OUTPUT_CHARS >= 1_000);
+}
+
+// ── spawn hatası açıklaması ──
+
+#[test]
+fn spawn_failure_gets_a_plain_explanation() {
+    let msg = explain_spawn_failure(
+        "terminal",
+        "failed to spawn process: Permission denied (os error 13)".to_string(),
+    );
+    assert!(msg.contains("'terminal' programı başlatılamadı"), "{msg}");
+    assert!(msg.contains("doğal dil değil"), "{msg}");
+    assert!(msg.contains("os error 13"), "ham ayrıntı korunmalı: {msg}");
+
+    let nf = explain_spawn_failure(
+        "xyz",
+        "failed to spawn process: No such file or directory (os error 2)".to_string(),
+    );
+    assert!(nf.contains("'xyz' programı başlatılamadı"), "{nf}");
+}
+
+#[test]
+fn other_errors_are_left_untouched() {
+    let raw = "komut 1 koduyla başarısız oldu: boom".to_string();
+    assert_eq!(explain_spawn_failure("ls", raw.clone()), raw);
+    let other = "failed to spawn process: Argument list too long".to_string();
+    assert_eq!(explain_spawn_failure("ls", other.clone()), other);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn nonexistent_program_reports_the_explained_failure() {
+    let t = tool();
+    let audit = AuditLog::new(100);
+    // Bilinmeyen program → politika "Ask"; onaylı çağrı çalışmayı dener.
+    let res = run(&t, &audit, "aetheros_olmayan_program_xyz --x", true)
+        .await
+        .unwrap();
+    assert!(!res.success);
+    assert!(res.output.contains("programı başlatılamadı"), "{}", res.output);
 }
