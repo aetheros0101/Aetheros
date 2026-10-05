@@ -210,6 +210,8 @@ fn cap_pending() -> crate::agents::approval::PendingApproval {
         remaining_steps: vec![],
         budget: budget(),
         created_at: chrono::Utc::now(),
+        autonomous: false,
+        history: vec![],
     }
 }
 

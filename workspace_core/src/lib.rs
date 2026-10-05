@@ -38,6 +38,9 @@ use walkdir::WalkDir;
 /// Tek yazma işleminin içerik üst sınırı.
 pub const MAX_WRITE_BYTES: usize = 8 * 1024 * 1024;
 
+/// Dışarıdan içe aktarılan tek dosyanın üst sınırı.
+pub const MAX_IMPORT_BYTES: u64 = 25 * 1024 * 1024;
+
 pub struct Workspace {
     root: PathBuf,
     ignore: Gitignore,
@@ -261,6 +264,45 @@ impl Workspace {
         Ok(CreateResult { path: r.replace('\\', "/"), kind: EntryKind::Directory })
     }
 
+    /// Workspace DIŞINDAKİ bir dosyayı (kullanıcının seçtiği) içeri kopyalar.
+    /// Hedef yol path guard'dan geçer (kök/.git/dışarı reddedilir), var olan
+    /// dosyanın üzerine YAZMAZ. Agent araçlarına AÇILMAZ: yalnız kullanıcı
+    /// arayüzü çağırır, kaynak yolu kullanıcının dosya seçicisinden gelir.
+    pub fn import_external(&self, source: &Path, dest_relative: &str) -> Result<CreateResult> {
+        let meta = fs::metadata(source).map_err(|e| {
+            if e.kind() == io::ErrorKind::NotFound {
+                WorkspaceError::SourceInvalid("kaynak dosya bulunamadı".into())
+            } else {
+                e.into()
+            }
+        })?;
+        if !meta.is_file() {
+            return Err(WorkspaceError::SourceInvalid("kaynak normal bir dosya değil".into()));
+        }
+        if meta.len() > MAX_IMPORT_BYTES {
+            return Err(WorkspaceError::TooLarge { limit: MAX_IMPORT_BYTES as usize });
+        }
+        let dest = self.resolve_mutable(dest_relative)?;
+        if fs::symlink_metadata(&dest).is_ok() {
+            return Err(WorkspaceError::AlreadyExists(dest_relative.into()));
+        }
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let name = dest.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+        let tmp = dest.with_file_name(format!(".{name}.aetheros-import-{}.tmp", std::process::id()));
+        if let Err(e) = fs::copy(source, &tmp) {
+            let _ = fs::remove_file(&tmp);
+            return Err(e.into());
+        }
+        if let Err(e) = fs::rename(&tmp, &dest) {
+            let _ = fs::remove_file(&tmp);
+            return Err(e.into());
+        }
+        self.refresh_one(dest_relative)?;
+        Ok(CreateResult { path: dest_relative.replace('\\', "/"), kind: EntryKind::File })
+    }
+
     pub fn rename(&self, from: &str, to: &str) -> Result<()> {
         let a = self.resolve_mutable_nofollow(from)?;
         let b = self.resolve_mutable(to)?;
@@ -408,5 +450,71 @@ mod tests {
         w.delete("linkfile").unwrap();
         assert!(out.path().join("secret.txt").exists(), "hedef dosya silinmemeli");
         assert!(!d.path().join("linkfile").exists());
+    }
+
+    #[test]
+    fn import_external_copies_and_never_overwrites() {
+        let src_dir = tempdir().unwrap();
+        let src = src_dir.path().join("kaynak.txt");
+        std::fs::write(&src, "dış içerik").unwrap();
+        let d = tempdir().unwrap();
+        let w = Workspace::open(d.path()).unwrap();
+
+        let r = w.import_external(&src, "belgeler/kaynak.txt").unwrap();
+        assert_eq!(r.path, "belgeler/kaynak.txt");
+        assert_eq!(std::fs::read_to_string(d.path().join("belgeler/kaynak.txt")).unwrap(), "dış içerik");
+        // kaynak yerinde kalır, geçici dosya bırakılmaz
+        assert!(src.exists());
+        let leftovers: Vec<_> = std::fs::read_dir(d.path().join("belgeler"))
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(leftovers, vec!["kaynak.txt".to_string()]);
+        // içe aktarılan metin aramada görünür
+        let hits = w
+            .search(SearchOptions { query: "dış içerik".into(), ..SearchOptions::default() })
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+
+        // var olanın üstüne yazmaz
+        assert!(matches!(
+            w.import_external(&src, "belgeler/kaynak.txt"),
+            Err(WorkspaceError::AlreadyExists(_))
+        ));
+    }
+
+    #[test]
+    fn import_external_respects_the_guard_and_source_checks() {
+        let src_dir = tempdir().unwrap();
+        let src = src_dir.path().join("a.txt");
+        std::fs::write(&src, "x").unwrap();
+        let d = tempdir().unwrap();
+        let w = Workspace::open(d.path()).unwrap();
+
+        assert!(matches!(w.import_external(&src, "../kacis.txt"), Err(WorkspaceError::PathOutsideRoot)));
+        assert!(matches!(w.import_external(&src, ".git/config"), Err(WorkspaceError::Protected(_))));
+        assert!(matches!(w.import_external(&src, ""), Err(WorkspaceError::InvalidPath)));
+        // kaynak dizin olamaz, olmayan kaynak anlaşılır hata verir
+        assert!(matches!(
+            w.import_external(src_dir.path(), "d.txt"),
+            Err(WorkspaceError::SourceInvalid(_))
+        ));
+        assert!(matches!(
+            w.import_external(&src_dir.path().join("yok.txt"), "y.txt"),
+            Err(WorkspaceError::SourceInvalid(_))
+        ));
+    }
+
+    #[test]
+    fn import_external_rejects_oversized_source() {
+        let src_dir = tempdir().unwrap();
+        let big = src_dir.path().join("buyuk.bin");
+        let f = std::fs::File::create(&big).unwrap();
+        f.set_len(MAX_IMPORT_BYTES + 1).unwrap(); // seyrek dosya, disk harcamaz
+        let d = tempdir().unwrap();
+        let w = Workspace::open(d.path()).unwrap();
+        assert!(matches!(w.import_external(&big, "buyuk.bin"), Err(WorkspaceError::TooLarge { .. })));
+        assert!(!d.path().join("buyuk.bin").exists());
     }
 }

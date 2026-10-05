@@ -115,10 +115,20 @@ fn bridge_pipeline_register_grant_and_run() {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
 
-        let status = final_status.expect("agent zaman aşımı olmadan tamamlanmalı");
+        let status = final_status.expect("agent zaman aşımı olmadan sonuçlanmalı");
+        // AI sağlayıcı yokken agent hiçbir şey planlayamaz: eskiden boş plan
+        // "completed" diyordu (yanıltıcı). Artık dürüstçe "failed" + açık sebep.
         assert_eq!(
-            status.status, "completed",
-            "AI provider yokken fallback_plan hatasız tamamlanmalı: {:?}",
+            status.status, "failed",
+            "AI provider yokken agent başarısız sayılmalı: {:?}",
+            status.error
+        );
+        assert!(
+            status
+                .error
+                .as_deref()
+                .is_some_and(|e| e.contains("AI sağlayıcı aktif değil")),
+            "hata mesajı sebebi söylemeli: {:?}",
             status.error
         );
 
@@ -267,5 +277,13 @@ fn bridge_pipeline_register_grant_and_run() {
         let mut tools: Vec<std::sync::Arc<dyn crate::types::agent_tool::AgentTool>> = Vec::new();
         crate::bridge::api::append_workspace_tools(rt, &mut tools);
         assert_eq!(tools.len(), 10);
+
+        // Dosyalar ekranı köprüsü: aynı workspace üzerinde uçtan uca.
+        assert_eq!(crate::bridge::api::workspace_files_root().unwrap(), root);
+        crate::bridge::api::workspace_create_entry("ui_deneme.txt".to_string(), false).unwrap();
+        let items = crate::bridge::api::workspace_list_dir(String::new(), false).unwrap();
+        assert!(items.iter().any(|i| i.name == "ui_deneme.txt" && !i.is_dir));
+        crate::bridge::api::workspace_delete_entry("ui_deneme.txt".to_string()).unwrap();
+        assert!(crate::bridge::api::workspace_delete_entry(".".to_string()).is_err());
     });
 }

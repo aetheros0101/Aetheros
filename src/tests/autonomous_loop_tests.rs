@@ -3,14 +3,11 @@
 //
 // V10 Sprint 7: Autonomous Agent Loop (guarded).
 //
-// Gerçek bir AI provider olmadan plan_next()'in hallucination-filtreleme
-// veya çok-adımlı yeniden planlama davranışını test edemeyiz (Sprint 2'de
-// ai_plan() için de aynı sebeple yapılmadı — sahte bir ProviderRouter
-// kurmak bu testi ya kırılgan ya da anlamsız kılardı). Burada test
-// edilen: (1) aktif provider yokken plan_next'in gerçekten None
-// döndüğü, (2) ai_router Some ama aktif provider yokken otonom
-// döngünün sabit fallback plana GÜVENLE düştüğü — yani "ai_router var"
-// demek "hep otonom, hiç güvenlik ağı yok" demek değil.
+// Test edilenler: (1) aktif provider yokken plan_next None döner, (2) aktif
+// provider yokken otonom döngü DÜRÜSTÇE başarısız olur (boş plan + sahte
+// "completed" yok), (3) senaryolu sahte provider ile: onaydan sonra döngü
+// kaldığı yerden DEVAM eder (B6), hiçbir adım başarılı olmazsa başarısız
+// sayılır.
 // ============================================================
 
 use std::sync::Arc;
@@ -21,8 +18,10 @@ use crate::agents::budget::AgentExecutionBudget;
 use crate::agents::context::AgentContext;
 use crate::agents::executor::AgentExecutor;
 use crate::agents::planner::{AgentPlanner, StepRecord};
-use crate::agents::runtime::AgentOutcome;
+use crate::agents::runtime::{AgentOutcome, AgentRuntime};
 use crate::ai::routing::router::ProviderRouter;
+use crate::errors::runtime::RuntimeError;
+use crate::logging::audit::{AuditEventKind, AuditLog};
 
 fn test_budget() -> AgentExecutionBudget {
     AgentExecutionBudget {
@@ -46,18 +45,20 @@ async fn plan_next_returns_none_without_an_active_provider() {
 }
 
 #[tokio::test]
-async fn autonomous_loop_falls_back_to_fixed_plan_without_an_active_provider() {
-    // ai_router Some (bağlı) AMA aktif provider yok — tam olarak
-    // "bridge her zaman Some(ai_router) geçer, provider'ın kendisi
-    // aktif olmayabilir" senaryosu (gerçek mobil bridge'in yaptığı gibi).
+async fn autonomous_loop_fails_honestly_without_an_active_provider() {
+    // ai_router Some (bağlı) AMA aktif provider yok — gerçek mobil bridge'in
+    // durumu. Eskiden boş bir sabit plana düşüp "completed" deniyordu;
+    // hiçbir şey yapılmadığı hâlde başarı görünüyordu.
     let router = Arc::new(ProviderRouter::new());
+    let audit = Arc::new(AuditLog::new(100));
     let context = AgentContext {
         agent_id: Uuid::new_v4(),
         execution_id: Uuid::new_v4(),
         workflow_id: None,
     };
+    let exec_id = context.execution_id;
 
-    let outcome = AgentExecutor::execute(
+    let result = AgentExecutor::execute(
         context,
         "test objective".to_string(),
         test_budget(),
@@ -66,15 +67,28 @@ async fn autonomous_loop_falls_back_to_fixed_plan_without_an_active_provider() {
         None,
         None,
         None,
-        None,
+        Some(audit.clone()),
     )
-    .await
-    .expect("aktif provider olmasa bile execution hatasız tamamlanmalı");
+    .await;
 
-    assert_eq!(
-        outcome,
-        AgentOutcome::Completed,
-        "otonom döngü ilk adımda başarısız olunca sabit fallback plana düşüp tamamlamalı"
+    match result {
+        Err(RuntimeError::TaskExecutionFailed { message }) => {
+            assert!(message.contains("AI sağlayıcı aktif değil"), "{message}");
+        }
+        other => panic!("başarısızlık bekleniyordu, gelen: {other:?}"),
+    }
+    let events = audit.list_for_execution(exec_id);
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e.kind, AuditEventKind::ExecutionFailed { .. })),
+        "ExecutionFailed denetime yazılmalı"
+    );
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e.kind, AuditEventKind::ExecutionCompleted)),
+        "başarısız execution 'tamamlandı' yazmamalı"
     );
 }
 
@@ -154,4 +168,191 @@ fn history_text_shows_the_executed_command_and_marks_empty_output() {
     assert!(text.contains("çıktı yok"), "{text}");
     assert!(text.contains("başarılı: deneme.txt"), "{text}");
     assert_eq!(format_history(&[]), "(henüz hiçbir adım atılmadı)");
+}
+
+
+// ── Senaryolu sahte provider: onay sonrası devam (B6) ──
+
+use std::collections::VecDeque;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
+
+use async_trait::async_trait;
+
+use crate::agents::approval::ApprovalStore;
+use crate::ai::errors::AiError;
+use crate::ai::inference::request::InferenceRequest;
+use crate::ai::inference::response::InferenceResponse;
+use crate::ai::providers::provider::ModelProvider;
+use crate::security::risk_engine::RiskEngine;
+use crate::types::agent_tool::{AgentTool, RiskLevel};
+
+/// Sıradaki hazır yanıtı döner; biterse `{"done": true}`. Aldığı istemleri saklar.
+struct ScriptedProvider {
+    replies: Mutex<VecDeque<String>>,
+    prompts: Arc<Mutex<Vec<String>>>,
+}
+
+#[async_trait]
+impl ModelProvider for ScriptedProvider {
+    fn provider_id(&self) -> &'static str {
+        "scripted"
+    }
+    fn supports_streaming(&self) -> bool {
+        false
+    }
+    async fn infer(&self, request: InferenceRequest) -> Result<InferenceResponse, AiError> {
+        self.prompts.lock().unwrap().push(request.prompt.clone());
+        let next = self
+            .replies
+            .lock()
+            .unwrap()
+            .pop_front()
+            .unwrap_or_else(|| r#"{"done": true}"#.to_string());
+        Ok(InferenceResponse { output: next, tokens_used: 1 })
+    }
+}
+
+fn scripted_router(replies: &[&str]) -> (Arc<ProviderRouter>, Arc<Mutex<Vec<String>>>) {
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let router = Arc::new(ProviderRouter::new());
+    router.register(Arc::new(ScriptedProvider {
+        replies: Mutex::new(replies.iter().map(|s| s.to_string()).collect()),
+        prompts: prompts.clone(),
+    }));
+    router.set_active("scripted").unwrap();
+    (router, prompts)
+}
+
+/// Yüksek riskli (onay ister) ve düşük riskli iki araç; çağrı sayısını tutar.
+struct CountTool {
+    name: &'static str,
+    risk: RiskLevel,
+    calls: Arc<AtomicUsize>,
+    fail: bool,
+}
+
+#[async_trait]
+impl AgentTool for CountTool {
+    fn name(&self) -> &'static str {
+        self.name
+    }
+    fn risk_level(&self) -> RiskLevel {
+        self.risk
+    }
+    async fn invoke(&self, _a: Vec<String>) -> Result<String, String> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        if self.fail {
+            Err("bilerek hata".to_string())
+        } else {
+            Ok(format!("{} tamam", self.name))
+        }
+    }
+}
+
+fn ctx() -> AgentContext {
+    AgentContext { agent_id: Uuid::new_v4(), execution_id: Uuid::new_v4(), workflow_id: None }
+}
+
+const STEP_RISKY: &str =
+    r#"{"done": false, "name": "riskli", "retryable": false, "tool_name": "risky", "arguments": ["a"]}"#;
+const STEP_SECOND_RETRYABLE: &str =
+    r#"{"done": false, "name": "ikinci", "retryable": true, "tool_name": "second", "arguments": ["b"]}"#;
+const STEP_SECOND: &str =
+    r#"{"done": false, "name": "ikinci", "retryable": false, "tool_name": "second", "arguments": ["b"]}"#;
+
+#[tokio::test]
+async fn autonomous_loop_continues_after_an_approved_step() {
+    let risky_calls = Arc::new(AtomicUsize::new(0));
+    let second_calls = Arc::new(AtomicUsize::new(0));
+    let mk_tools = || -> Vec<Arc<dyn AgentTool>> {
+        vec![
+            Arc::new(CountTool { name: "risky", risk: RiskLevel::High, calls: risky_calls.clone(), fail: false }),
+            Arc::new(CountTool { name: "second", risk: RiskLevel::Low, calls: second_calls.clone(), fail: false }),
+        ]
+    };
+    let (router, prompts) = scripted_router(&[STEP_RISKY, STEP_SECOND, r#"{"done": true}"#]);
+    let store = Arc::new(ApprovalStore::new());
+    let context = ctx();
+
+    // 1) İlk çalıştırma: riskli adımda duraklar, araç ÇALIŞMAZ.
+    let outcome = AgentExecutor::execute(
+        context.clone(),
+        "iki şey yap".to_string(),
+        test_budget(),
+        mk_tools(),
+        Some(router.clone()),
+        None,
+        Some(Arc::new(RiskEngine::new())),
+        Some(store.clone()),
+        None,
+    )
+    .await
+    .unwrap();
+    let approval_id = match outcome {
+        AgentOutcome::PendingApproval { approval_id } => approval_id,
+        o => panic!("PendingApproval bekleniyordu: {o:?}"),
+    };
+    assert_eq!(risky_calls.load(Ordering::SeqCst), 0);
+    let pending = store.take(&approval_id).unwrap();
+    assert!(pending.autonomous, "otonom duraklama işaretlenmeli");
+
+    // 2) Onay + resume: onaylanan adım çalışır, SONRA planlayıcı yeniden
+    //    sorulur ve ikinci adım da çalışır, sonunda tamamlanır.
+    let outcome = AgentRuntime::resume(
+        pending,
+        mk_tools(),
+        Some(router),
+        None,
+        Some(Arc::new(RiskEngine::new())),
+        Some(store),
+        None,
+    )
+    .await
+    .expect("resume hatasız ilerlemeli");
+
+    assert_eq!(outcome, AgentOutcome::Completed);
+    assert_eq!(risky_calls.load(Ordering::SeqCst), 1, "onaylanan adım bir kez çalışmalı");
+    assert_eq!(second_calls.load(Ordering::SeqCst), 1, "onaydan sonra döngü devam etmeli");
+
+    // Planlayıcı, onaylanan adımın sonucunu geçmişte görmüş olmalı.
+    let seen = prompts.lock().unwrap();
+    assert!(
+        seen.iter().skip(1).any(|p| p.contains("risky tamam")),
+        "onay sonrası istem, onaylanan adımın çıktısını içermeli: {seen:?}"
+    );
+}
+
+#[tokio::test]
+async fn failing_every_step_is_reported_as_failure_not_completed() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let tools: Vec<Arc<dyn AgentTool>> = vec![Arc::new(CountTool {
+        name: "second",
+        risk: RiskLevel::Low,
+        calls: calls.clone(),
+        fail: true,
+    })];
+    let (router, _p) = scripted_router(&[STEP_SECOND_RETRYABLE, r#"{"done": true}"#]);
+    let audit = Arc::new(AuditLog::new(100));
+    let context = ctx();
+    let exec_id = context.execution_id;
+
+    let result = AgentExecutor::execute(
+        context,
+        "başarısız olacak".to_string(),
+        test_budget(),
+        tools,
+        Some(router),
+        None,
+        Some(Arc::new(RiskEngine::new())),
+        None,
+        Some(audit.clone()),
+    )
+    .await;
+
+    assert!(result.is_err(), "hiçbir adım başarılı olmadıysa başarısız sayılmalı: {result:?}");
+    assert!(audit
+        .list_for_execution(exec_id)
+        .iter()
+        .any(|e| matches!(e.kind, AuditEventKind::ExecutionFailed { .. })));
 }

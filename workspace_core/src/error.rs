@@ -35,6 +35,8 @@ pub enum WorkspaceError {
     Protected(String),
     #[error("content exceeds the write limit of {limit} bytes")]
     TooLarge { limit: usize },
+    #[error("import source is not usable: {0}")]
+    SourceInvalid(String),
 }
 
 impl From<crate::path_guard::GuardError> for WorkspaceError {

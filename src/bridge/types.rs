@@ -237,3 +237,28 @@ pub struct TerminalRunResponse {
     /// Çıktı 20 000 karaktere kırpıldı mı?
     pub truncated: bool,
 }
+
+// ── Dosyalar ekranı (workspace) ─────────────────────────────
+
+/// Workspace'te bir klasör satırı ya da dosya satırı.
+#[derive(Debug)]
+pub struct WorkspaceItem {
+    /// Workspace köküne göre yol ("belge/a.txt").
+    pub path:   String,
+    pub name:   String,
+    pub is_dir: bool,
+    /// Bayt (klasör için 0).
+    pub size:   i64,
+    pub hidden: bool,
+}
+
+/// Açılan metin dosyası. `version`, kaydederken çakışma denetimi içindir.
+#[derive(Debug)]
+pub struct WorkspaceFileResponse {
+    pub path:     String,
+    pub content:  String,
+    pub size:     i64,
+    /// Opak sürüm bilgisi (değişince değişir) — `workspace_write_text`e geri ver.
+    pub version:  String,
+    pub readonly: bool,
+}

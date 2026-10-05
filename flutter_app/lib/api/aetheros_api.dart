@@ -196,6 +196,38 @@ class AetherApi {
         commandLine: commandLine, confirmed: confirmed);
   }
 
+  // ── Dosyalar (workspace) ──────────────────────────────
+
+  static Future<String> workspaceRoot() => rust.workspaceFilesRoot();
+
+  static Future<List<rust.WsItem>> listDir(String dir,
+          {bool includeHidden = false}) =>
+      rust.workspaceListDir(dir, includeHidden: includeHidden);
+
+  static Future<rust.WsFile> readFile(String path) =>
+      rust.workspaceReadText(path);
+
+  static Future<rust.WsFile> writeFile(String path, String content,
+          {String? expectedVersion}) =>
+      rust.workspaceWriteText(path, content, expectedVersion: expectedVersion);
+
+  static Future<void> createEntry(String path, {required bool isDir}) =>
+      rust.workspaceCreateEntry(path, isDir: isDir);
+
+  static Future<void> renameEntry(String from, String to) =>
+      rust.workspaceRenameEntry(from, to);
+
+  static Future<void> deleteEntry(String path) =>
+      rust.workspaceDeleteEntry(path);
+
+  static Future<String> importFile({
+    required String sourcePath,
+    required String destDir,
+    required String fileName,
+  }) =>
+      rust.workspaceImportFile(
+          sourcePath: sourcePath, destDir: destDir, fileName: fileName);
+
   /// Tüm execution'ların denetim kayıtları.
   static Future<List<rust.AuditEvent>> listAllAuditEvents() async {
     return rust.listAuditEvents();

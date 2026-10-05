@@ -32,6 +32,16 @@ use crate::agents::budget::AgentExecutionBudget;
 use crate::agents::context::AgentContext;
 use crate::agents::plans::{AgentPlanStep, ToolCall};
 
+/// Otonom döngüde duraklama anına kadar çalışan adımların kalıcı özeti.
+/// Onaydan sonra planlayıcı "şimdiye kadar ne oldu"yu bilerek devam eder (B6).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StepSnapshot {
+    pub step_name: String,
+    pub success: bool,
+    pub output: String,
+    pub tool_call: Option<ToolCall>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PendingApproval {
     pub id: Uuid,
@@ -47,6 +57,14 @@ pub struct PendingApproval {
     /// Duraklatma anındaki kalan budget (harcanan düşülmüş).
     pub budget: AgentExecutionBudget,
     pub created_at: DateTime<Utc>,
+    /// true: duraklayan execution OTONOM döngüdeydi; onaydan sonra sabit
+    /// `remaining_steps` yerine planlayıcıyla devam edilir. Eski kayıtlar
+    /// (alan yok) false okunur → eski davranış.
+    #[serde(default)]
+    pub autonomous: bool,
+    /// Otonom döngünün o ana kadarki geçmişi (yalnız `autonomous` iken dolu).
+    #[serde(default)]
+    pub history: Vec<StepSnapshot>,
 }
 
 /// Bir onayın, verilmeden bekleyebileceği varsayılan süre. Eski bir
@@ -201,6 +219,8 @@ mod tests {
                 max_runtime_seconds: 30,
             },
             created_at: Utc::now(),
+            autonomous: false,
+            history: vec![],
         }
     }
 

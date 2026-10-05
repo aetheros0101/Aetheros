@@ -37,7 +37,7 @@ use tracing::{
 };
 use uuid::Uuid;
 
-use crate::agents::approval::{ApprovalStore, PendingApproval};
+use crate::agents::approval::{ApprovalStore, PendingApproval, StepSnapshot};
 use crate::agents::budget::AgentExecutionBudget;
 use crate::agents::context::AgentContext;
 use crate::agents::memory::AgentMemory;
@@ -251,6 +251,7 @@ impl AgentRuntime {
             )),
         };
 
+        let approved_output: String;
         match result {
             Ok(output) => {
                 runtime.audit(
@@ -264,6 +265,7 @@ impl AgentRuntime {
                         output: Some(summarize_output(&output)),
                     },
                 );
+                approved_output = output.clone();
                 runtime.memory.store(
                     pending.id.to_string(),
                     serde_json::Value::String(output),
@@ -291,6 +293,33 @@ impl AgentRuntime {
             }
         }
 
+        // B6: duraklayan execution OTONOM döngüdeyse, onaylanan adım geçmişe
+        // eklenir ve planlayıcıyla DEVAM edilir (eskiden onaylanan adımdan
+        // sonra execution orada bitiyordu).
+        if pending.autonomous {
+            if let Some(router) = runtime.ai_router.clone() {
+                let mut history: Vec<StepRecord> =
+                    pending.history.iter().map(StepRecord::from).collect();
+                let tokens = approved_output.split_whitespace().count();
+                history.push(StepRecord {
+                    step_name: format!("{} (onaylandı)", pending.tool_call.tool_name),
+                    success: true,
+                    output: approved_output,
+                    tool_call: Some(pending.tool_call.clone()),
+                });
+                return runtime
+                    .run_autonomous_steps(
+                        &pending.context,
+                        &pending.objective,
+                        router,
+                        history,
+                        1,
+                        tokens,
+                    )
+                    .await;
+            }
+        }
+
         runtime
             .run_steps(
                 &pending.context,
@@ -300,6 +329,16 @@ impl AgentRuntime {
                 &pending.objective,
             )
             .await
+    }
+
+    /// Execution'ı denetime `ExecutionFailed` yazarak başarısız kapatır.
+    fn fail_execution(&self, context: &AgentContext, message: String) -> RuntimeError {
+        self.audit(
+            context.agent_id,
+            context.execution_id,
+            AuditEventKind::ExecutionFailed { error: message.clone() },
+        );
+        RuntimeError::TaskExecutionFailed { message }
     }
 
     async fn run(
@@ -318,7 +357,9 @@ impl AgentRuntime {
                 execution_id = %context.execution_id,
                 "Starting autonomous agent loop"
             );
-            return self.run_autonomous_steps(&context, &objective, router).await;
+            return self
+                .run_autonomous_steps(&context, &objective, router, Vec::new(), 0, 0)
+                .await;
         }
 
         let plan = AgentPlanner::plan(
@@ -383,6 +424,7 @@ impl AgentRuntime {
                     tokens_used,
                     objective,
                     &steps[idx + 1..],
+                    None,
                 )
                 .await?;
 
@@ -434,11 +476,11 @@ impl AgentRuntime {
         context: &AgentContext,
         objective: &str,
         router: Arc<ProviderRouter>,
+        // B6: onaydan sonra devam ederken önceki geçmiş ve harcama taşınır.
+        mut history: Vec<StepRecord>,
+        mut steps_taken: usize,
+        mut tokens_used: usize,
     ) -> Result<AgentOutcome, RuntimeError> {
-        let mut steps_taken = 0usize;
-        let mut tokens_used = 0usize;
-        let mut history: Vec<StepRecord> = Vec::new();
-
         loop {
             if steps_taken >= self.budget.max_steps {
                 warn!(
@@ -471,36 +513,33 @@ impl AgentRuntime {
                     break;
                 }
                 Some(NextStepDecision::Step(step)) => step,
-                None if history.is_empty() => {
-                    // AI otonom döngüyü hiç BAŞLATAMADI (muhtemelen aktif
-                    // provider yok) — eski güvenlik ağına düş: sabit
-                    // fallback_plan. Bu, "ai_router var ama aktif provider
-                    // yok" durumunda eskiden olduğu gibi en azından birkaç
-                    // no-op adımın çalışmasını korur.
-                    warn!(
-                        agent_id = %context.agent_id,
-                        "Autonomous loop: plan_next ilk denemede başarısız oldu, sabit fallback plana düşülüyor"
-                    );
-                    let plan = AgentPlanner::plan(
-                        objective.to_string(),
-                        Some(router.clone()),
-                        &self.tools,
-                    )
-                    .await;
-                    return self
-                        .run_steps(context, &plan.planned_steps, steps_taken, tokens_used, objective)
-                        .await;
-                }
                 None => {
-                    // Otonom döngü BAŞLADI (en az bir adım gerçekten
-                    // çalıştı) ama AI şimdi cevap veremiyor (rate limit,
-                    // geçici hata vb.) — kısmi ilerlemeyi sabit bir plana
-                    // zorlamak yerine burada güvenle bitiriyoruz.
+                    // Planlayıcıdan karar ALINAMADI. Eskiden burada sabit,
+                    // boş bir plana düşülüp "completed" deniyordu — hiçbir
+                    // şey yapılmadığı hâlde başarı görünüyordu. Artık
+                    // dürüstçe başarısız sayılır ve sebep kullanıcıya gider.
+                    let message = if history.is_empty() {
+                        if router.active_id().is_none() {
+                            "AI sağlayıcı aktif değil: agent hedefi planlayamaz. \
+                             Ayarlar → AI'dan bir sağlayıcı ekleyip aktif et."
+                                .to_string()
+                        } else {
+                            "AI sağlayıcıdan geçerli bir plan alınamadı (bağlantı/limit \
+                             hatası ya da beklenmeyen yanıt). Tekrar dene."
+                                .to_string()
+                        }
+                    } else {
+                        format!(
+                            "AI sağlayıcı yanıt vermedi; {} adım çalıştıktan sonra durdu.",
+                            history.len()
+                        )
+                    };
                     warn!(
                         agent_id = %context.agent_id,
-                        "Autonomous loop: plan_next başarısız oldu, execution sonlandırılıyor"
+                        reason = %message,
+                        "Autonomous loop: plan alınamadı, execution başarısız sayılıyor"
                     );
-                    break;
+                    return Err(self.fail_execution(context, message));
                 }
             };
 
@@ -520,7 +559,15 @@ impl AgentRuntime {
             // Otonom modda "kalan adımlar" kavramı yok — sonraki adım
             // henüz planlanmadı (bkz. yukarıdaki BİLİNEN SINIRLAMA notu).
             let outcome = self
-                .execute_guarded_step(context, &step, steps_taken, tokens_used, objective, &[])
+                .execute_guarded_step(
+                    context,
+                    &step,
+                    steps_taken,
+                    tokens_used,
+                    objective,
+                    &[],
+                    Some(history.as_slice()),
+                )
                 .await?;
 
             match outcome {
@@ -540,6 +587,19 @@ impl AgentRuntime {
                     steps_taken += 1;
                 }
             }
+        }
+
+        // Adım çalıştırıldı ama HİÇBİRİ başarılı olmadıysa "tamamlandı"
+        // demek yanıltıcıdır.
+        if !history.is_empty() && !history.iter().any(|r| r.success) {
+            let last: String = history
+                .last()
+                .map(|r| r.output.chars().take(300).collect())
+                .unwrap_or_default();
+            return Err(self.fail_execution(
+                context,
+                format!("Hiçbir adım başarılı olmadı. Son hata: {last}"),
+            ));
         }
 
         self.audit(
@@ -575,6 +635,8 @@ impl AgentRuntime {
         tokens_used: usize,
         objective: &str,
         remaining_steps: &[AgentPlanStep],
+        // Otonom döngüde: o ana kadarki geçmiş (onay kaydına yazılır, B6).
+        history: Option<&[StepRecord]>,
     ) -> Result<StepOutcome, RuntimeError> {
         debug!(
             step_id = %step.id,
@@ -654,6 +716,10 @@ impl AgentRuntime {
                         max_runtime_seconds: self.budget.max_runtime_seconds,
                     },
                     created_at: chrono::Utc::now(),
+                    autonomous: history.is_some(),
+                    history: history
+                        .map(|h| h.iter().map(StepSnapshot::from).collect())
+                        .unwrap_or_default(),
                 };
                 let approval_id = pending.id;
 

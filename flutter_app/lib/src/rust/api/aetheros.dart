@@ -752,3 +752,96 @@ Future<TerminalRunResult> terminalRunCommand({
     truncated: r.truncated,
   );
 }
+
+// ── Dosyalar ekranı (workspace) ───────────────────────────────
+// Kullanıcının kendi dosya işlemleri. Workspace dışına çıkılamaz, .git
+// değiştirilemez. Hatalar kullanıcıya gösterilecek Türkçe metindir;
+// sürüm çakışması "conflict:" ile başlar (bkz. core/files_format.dart).
+
+class WsItem {
+  final String path;   // workspace köküne göre ("belge/a.txt")
+  final String name;
+  final bool isDir;
+  final int size;      // bayt (klasör için 0)
+  final bool hidden;
+  const WsItem({
+    required this.path,
+    required this.name,
+    required this.isDir,
+    required this.size,
+    required this.hidden,
+  });
+}
+
+class WsFile {
+  final String path;
+  final String content;
+  final int size;
+  final String version; // kaydederken geri verilir (çakışma denetimi)
+  final bool readonly;
+  const WsFile({
+    required this.path,
+    required this.content,
+    required this.size,
+    required this.version,
+    required this.readonly,
+  });
+}
+
+WsFile _toWsFile(dynamic r) => WsFile(
+      path: r.path as String,
+      content: r.content as String,
+      size: (r.size as dynamic).toInt() as int,
+      version: r.version as String,
+      readonly: r.readonly as bool,
+    );
+
+Future<String> workspaceFilesRoot() => _bridge.workspaceFilesRoot();
+
+Future<List<WsItem>> workspaceListDir(String dir, {bool includeHidden = false}) async {
+  final items = await _bridge.workspaceListDir(dir: dir, includeHidden: includeHidden);
+  return [
+    for (final i in items)
+      WsItem(
+        path: i.path,
+        name: i.name,
+        isDir: i.isDir,
+        size: (i.size as dynamic).toInt() as int,
+        hidden: i.hidden,
+      ),
+  ];
+}
+
+Future<WsFile> workspaceReadText(String path) async =>
+    _toWsFile(await _bridge.workspaceReadText(path: path));
+
+Future<WsFile> workspaceWriteText(
+  String path,
+  String content, {
+  String? expectedVersion,
+}) async =>
+    _toWsFile(await _bridge.workspaceWriteText(
+      path: path,
+      content: content,
+      expectedVersion: expectedVersion,
+    ));
+
+Future<void> workspaceCreateEntry(String path, {required bool isDir}) =>
+    _bridge.workspaceCreateEntry(path: path, isDir: isDir);
+
+Future<void> workspaceRenameEntry(String from, String to) =>
+    _bridge.workspaceRenameEntry(from: from, to: to);
+
+Future<void> workspaceDeleteEntry(String path) =>
+    _bridge.workspaceDeleteEntry(path: path);
+
+Future<String> workspaceImportFile({
+  required String sourcePath,
+  required String destDir,
+  required String fileName,
+}) =>
+    _bridge.workspaceImportFile(
+      sourcePath: sourcePath,
+      destDir: destDir,
+      fileName: fileName,
+    );

@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 use uuid::Uuid;
 
+use crate::agents::approval::StepSnapshot;
 use crate::agents::plans::{AgentPlan, AgentPlanStep, ToolCall};
 use crate::agents::tools::AgentTool;
 use crate::ai::inference::request::InferenceRequest;
@@ -56,6 +57,28 @@ pub struct StepRecord {
     /// ne çalıştırıldığını gösterir; aynı çağrının tekrarını da buradan
     /// yakalarız (bkz. `is_repeat_of_last`).
     pub tool_call: Option<ToolCall>,
+}
+
+impl From<&StepRecord> for StepSnapshot {
+    fn from(r: &StepRecord) -> Self {
+        StepSnapshot {
+            step_name: r.step_name.clone(),
+            success: r.success,
+            output: r.output.clone(),
+            tool_call: r.tool_call.clone(),
+        }
+    }
+}
+
+impl From<&StepSnapshot> for StepRecord {
+    fn from(s: &StepSnapshot) -> Self {
+        StepRecord {
+            step_name: s.step_name.clone(),
+            success: s.success,
+            output: s.output.clone(),
+            tool_call: s.tool_call.clone(),
+        }
+    }
 }
 
 /// Planlayıcının yeni adımı, hemen önceki BAŞARILI adımın birebir aynı
@@ -301,8 +324,14 @@ Rules:
   arguments. If the steps so far already satisfy the objective, answer
   {{"done": true}}. An empty result ("çıktı yok") from a successful command
   is NORMAL (e.g. touch, mkdir) — it means it worked.
-- Tool "arguments" is a JSON array: arguments[0] is the program name only,
-  every other word is its own element."#
+- Tool "arguments" is a JSON array of strings; follow each tool's description
+  for the exact order.
+- For the terminal tool, arguments[0] is the program name only and every
+  other word is its own element.
+- For workspace_* tools every path is RELATIVE to the workspace root
+  (e.g. "notes/a.txt"; "." is the root). NEVER use absolute paths or "..".
+- If a step was denied or failed, do NOT retry the same call; try a
+  different approach, or answer done: true if the objective cannot be met."#
         );
 
         let prompt = format!(
