@@ -117,7 +117,9 @@ impl CapabilityEngine {
         } else {
             CapabilityDecision::Denied {
                 reason: format!(
-                    "agent {agent_id}, {required:?} capability'sine sahip değil"
+                    "agent {agent_id}, {required:?} capability'sine sahip değil \
+                     (agent'ı başlatırken '{}' yetkisini seç)",
+                    required.chip_label()
                 ),
             }
         }

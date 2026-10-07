@@ -1,20 +1,39 @@
-use crate::error::Result;
-use std::{fs::{self, OpenOptions}, io::{self, Write}, path::Path};
+use crate::error::{Result, WorkspaceError};
+use std::fs::{self, File};
+use std::io::Write;
+use std::path::Path;
 
-/// Writes content to a temporary sibling, flushes it, then renames it over the destination.
+/// Atomik yazma: tmp dosyaya yaz → fsync → rename.
+/// Aynı dizinde tmp kullanır; çapraz-FS rename riskini önler.
 pub fn atomic_write(path: &Path, content: &[u8]) -> Result<()> {
-    if let Some(parent) = path.parent() { fs::create_dir_all(parent)?; }
-    let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("file");
-    let tmp = path.with_file_name(format!(".{file_name}.aetheros-{}.tmp", std::process::id()));
-    {
-        let mut file = OpenOptions::new().create_new(true).write(true).open(&tmp)?;
-        file.write_all(content)?;
-        file.flush()?;
-        file.sync_all()?;
-    }
-    match fs::rename(&tmp, path) {
-        Ok(()) => Ok(()),
-        Err(e) => { let _ = fs::remove_file(&tmp); Err(io::Error::new(e.kind(), format!("atomic rename failed: {e}")).into()) }
-    }
-}
+    let parent = path.parent().ok_or(WorkspaceError::InvalidPath)?;
+    fs::create_dir_all(parent)?;
 
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("file");
+    let tmp = path.with_file_name(format!(
+        ".{}.aetheros-write-{}.tmp",
+        name,
+        std::process::id()
+    ));
+
+    let write_result = (|| -> Result<()> {
+        let mut f = File::create(&tmp)?;
+        f.write_all(content)?;
+        f.sync_all()?;
+        Ok(())
+    })();
+
+    if let Err(e) = write_result {
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
+    }
+
+    if let Err(e) = fs::rename(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(e.into());
+    }
+    Ok(())
+}

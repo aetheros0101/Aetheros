@@ -44,6 +44,9 @@ pub fn friendly_error(e: WorkspaceError) -> String {
             "Dosya görüntülemek için çok büyük (en fazla {} KB).",
             MAX_VIEW_BYTES / 1024
         ),
+        WorkspaceError::Io(io) if io.kind() == std::io::ErrorKind::NotFound => {
+            "Dosya ya da klasör bulunamadı.".into()
+        }
         other => other.to_string(),
     }
 }
@@ -84,7 +87,7 @@ fn to_file_response(doc: aetheros_workspace::FileDocument) -> WorkspaceFileRespo
 pub fn list(ws: &Workspace, dir: &str, include_hidden: bool) -> Result<Vec<WorkspaceItem>, String> {
     // tree(depth): 0 = yalnız doğrudan çocuklar.
     let entries = ws.tree(dir, 0, include_hidden).map_err(friendly_error)?;
-    Ok(entries
+    let mut items: Vec<WorkspaceItem> = entries
         .into_iter()
         .map(|e| WorkspaceItem {
             is_dir: matches!(e.kind, EntryKind::Directory),
@@ -93,7 +96,14 @@ pub fn list(ws: &Workspace, dir: &str, include_hidden: bool) -> Result<Vec<Works
             size: e.size as i64,
             hidden: e.hidden,
         })
-        .collect())
+        .collect();
+    // Klasörler önce, kendi içinde ada göre (büyük/küçük harf duyarsız).
+    items.sort_by(|a, b| {
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    Ok(items)
 }
 
 pub fn read(ws: &Workspace, path: &str) -> Result<WorkspaceFileResponse, String> {

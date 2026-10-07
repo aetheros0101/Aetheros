@@ -203,3 +203,16 @@ async fn nonexistent_program_reports_the_explained_failure() {
     assert!(!res.success);
     assert!(res.output.contains("programı başlatılamadı"), "{}", res.output);
 }
+
+#[cfg(unix)]
+#[test]
+fn user_terminal_check_denies_paths_outside_the_workspace() {
+    let dir = std::env::temp_dir().join(format!("aeth_uconf_{}", uuid::Uuid::new_v4()));
+    let t = TerminalAgentTool::with_workspace(dir.clone());
+    for line in ["cat /etc/passwd", "ls ..", "ls /"] {
+        let r = check(&t, line).unwrap();
+        assert!(matches!(r.verdict, CallVerdict::Deny { .. }), "{line}: {:?}", r.verdict);
+    }
+    assert_eq!(check(&t, "ls").unwrap().verdict, CallVerdict::Allow);
+    let _ = std::fs::remove_dir_all(&dir);
+}

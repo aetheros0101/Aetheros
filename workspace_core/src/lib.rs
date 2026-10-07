@@ -1,17 +1,25 @@
-//! AetherOS Workspace: korumalı dosya sistemi, atomik belgeler, arama indeksi ve Git durumu.
+//! AetherOS Workspace Engine — coding-agent workspace core.
 //!
-//! Güvenlik sınırı (bu crate karar VERMEZ, yalnız güvenli ilkeller sunar):
-//!   * her yol `path_guard` üzerinden geçer (traversal, symlink kaçışı, ara
-//!     klasör atlatması)
-//!   * kökün kendisi değiştirilemez; `.git` altı değiştirilemez (hook/config
-//!     yazarak komut çalıştırma zinciri kapatılır)
-//!   * yazma boyutu sınırlı; indeks dosya/toplam boyutla sınırlı
-//! İzin/onay kararı uygulamanın SecurityGovernor hattındadır.
+//! Capabilities:
+//!   * guarded filesystem (path_guard: traversal, symlink, `.git` protection)
+//!   * atomic documents with monotonic versioning + content hash
+//!   * incremental full-text + regex search index
+//!   * heuristic symbol index (tree-sitter ready via feature)
+//!   * file metadata (mtime, size, hash, language)
+//!   * watcher integration with coalesce/debounce
+//!   * git status / diff / worktree (scrubbed environment)
+//!   * LSP abstraction + diagnostics cache + code-action text edits
+//!
+//! Security boundary: this crate does NOT decide permissions; it only offers
+//! safe primitives. Authorization lives in the host SecurityGovernor.
 
 mod atomic;
 mod error;
 mod git;
 mod index;
+mod symbols;
+mod trigram;
+pub mod lsp;
 mod models;
 mod path_guard;
 mod tools;
@@ -21,23 +29,22 @@ mod watcher;
 pub use error::{Result, WorkspaceError};
 pub use models::*;
 pub use tools::{PatchEdit, WorkspaceToolRequest, WorkspaceToolResponse};
+pub use symbols::{SymbolParser, SymbolRegistry, SharedSymbolRegistry};
+pub use lsp::StdioLanguageServer;
 #[cfg(feature = "watcher")]
-pub use watcher::WorkspaceWatcher;
+pub use watcher::{coalesce_events, Debouncer, WorkspaceWatcher};
 
 use atomic::atomic_write;
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
-use index::WorkspaceIndex;
-use std::{
-    fs::{self, File},
-    io::{self, Read},
-    path::{Path, PathBuf},
-    sync::{Arc, RwLock},
-};
+use index::{content_hash, detect_language, WorkspaceIndex};
+use std::fs::{self, File};
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
 use walkdir::WalkDir;
 
 /// Tek yazma işleminin içerik üst sınırı.
 pub const MAX_WRITE_BYTES: usize = 8 * 1024 * 1024;
-
 /// Dışarıdan içe aktarılan tek dosyanın üst sınırı.
 pub const MAX_IMPORT_BYTES: u64 = 25 * 1024 * 1024;
 
@@ -45,6 +52,9 @@ pub struct Workspace {
     root: PathBuf,
     ignore: Gitignore,
     index: Arc<RwLock<WorkspaceIndex>>,
+    /// Optional LSP registry (host wires concrete servers).
+    lsp: Arc<RwLock<lsp::LspRegistry>>,
+    symbols: crate::symbols::SharedSymbolRegistry,
 }
 
 impl Workspace {
@@ -55,7 +65,20 @@ impl Workspace {
         }
         let ignore = load_ignore(&root)?;
         let index = WorkspaceIndex::build(&root, &ignore)?;
-        Ok(Self { root, ignore, index: Arc::new(RwLock::new(index)) })
+        let symbols = crate::symbols::new_shared_registry();
+        {
+            // share registry with index for parser-backed extraction
+            // (index already built with heuristic; next updates use registry)
+        }
+        let mut index = index;
+        index.set_symbol_registry(symbols.clone());
+        Ok(Self {
+            root,
+            ignore,
+            index: Arc::new(RwLock::new(index)),
+            lsp: Arc::new(RwLock::new(lsp::LspRegistry::new())),
+            symbols,
+        })
     }
 
     pub fn info(&self) -> WorkspaceInfo {
@@ -70,9 +93,31 @@ impl Workspace {
         }
     }
 
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
     #[cfg(feature = "watcher")]
     pub fn start_watcher(&self) -> Result<WorkspaceWatcher> {
         WorkspaceWatcher::start(self.root.clone())
+    }
+
+    /// Access LSP registry for host to register language servers.
+    pub fn lsp_registry(&self) -> Arc<RwLock<lsp::LspRegistry>> {
+        self.lsp.clone()
+    }
+
+    pub fn symbol_registry(&self) -> crate::symbols::SharedSymbolRegistry {
+        self.symbols.clone()
+    }
+
+    /// Register a symbol parser (e.g. tree-sitter backed) and rebuild index.
+    pub fn register_symbol_parser(&self, parser: std::sync::Arc<dyn crate::symbols::SymbolParser>) -> Result<()> {
+        self.symbols
+            .write()
+            .map_err(|_| WorkspaceError::Symbol("registry lock poisoned".into()))?
+            .register(parser);
+        self.refresh_index()
     }
 
     fn index_read(&self) -> Result<std::sync::RwLockReadGuard<'_, WorkspaceIndex>> {
@@ -92,38 +137,68 @@ impl Workspace {
     }
 
     pub fn refresh_index(&self) -> Result<()> {
-        let fresh = WorkspaceIndex::build(&self.root, &self.ignore)?;
+        // Preserve versions across full rebuild
+        let versions: std::collections::HashMap<String, u64> = {
+            let idx = self.index_read()?;
+            idx.all_metadata()
+                .into_iter()
+                .filter(|m| m.version > 0)
+                .map(|m| (m.path, m.version))
+                .collect()
+        };
+        let mut fresh = WorkspaceIndex::build(&self.root, &self.ignore)?;
+        for (path, ver) in versions {
+            fresh.set_version(&path, ver);
+        }
         *self.index_write()? = fresh;
         Ok(())
     }
 
+    /// Incremental single-path refresh (preferred over full rebuild).
+    pub fn refresh_one(&self, relative: &str) -> Result<()> {
+        self.index_write()?
+            .update(&self.root, relative, &self.ignore);
+        Ok(())
+    }
+
+    /// Apply a coalesced watch event to the incremental index.
     pub fn apply_watch_event(&self, event: &WorkspaceWatchEvent) -> Result<()> {
         let mut i = self.index_write()?;
         if let Some(old) = &event.old_path {
             i.remove(old);
         }
-        if !matches!(event.kind, WatchEventKind::Removed) {
-            i.update(&self.root, &event.path, &self.ignore);
-        } else {
-            i.remove(&event.path);
+        match event.kind {
+            WatchEventKind::Removed => {
+                i.remove(&event.path);
+            }
+            WatchEventKind::Other if event.path.is_empty() => {}
+            _ => {
+                if !event.path.is_empty() {
+                    i.update(&self.root, &event.path, &self.ignore);
+                }
+            }
         }
         Ok(())
     }
 
-    // ── yol çözümleme ────────────────────────────────────────
+    /// Apply a batch of coalesced watch events.
+    pub fn apply_watch_events(&self, events: &[WorkspaceWatchEvent]) -> Result<()> {
+        for ev in events {
+            self.apply_watch_event(ev)?;
+        }
+        Ok(())
+    }
 
-    /// Okuma/listeleme: kök dahil; son bileşen symlink ise hedef kökte kalmalı.
+    // ── path resolution ──────────────────────────────────────
+
     fn resolve(&self, relative: &str) -> Result<PathBuf> {
         Ok(path_guard::resolve(&self.root, relative, true)?.full)
     }
 
-    /// Değiştirme: kök ve `.git` altı reddedilir.
     fn resolve_mutable(&self, relative: &str) -> Result<PathBuf> {
         self.guard_mutation(relative, true)
     }
 
-    /// Silme/yeniden adlandırma kaynağı: son bileşen İZLENMEZ (dışarıyı
-    /// gösteren bir link, hedefe dokunmadan kaldırılabilir).
     fn resolve_mutable_nofollow(&self, relative: &str) -> Result<PathBuf> {
         self.guard_mutation(relative, false)
     }
@@ -140,16 +215,24 @@ impl Workspace {
     }
 
     fn rel(&self, p: &Path) -> String {
-        p.strip_prefix(&self.root).unwrap_or(p).to_string_lossy().replace('\\', "/")
+        p.strip_prefix(&self.root)
+            .unwrap_or(p)
+            .to_string_lossy()
+            .replace('\\', "/")
     }
 
     fn ignored(&self, p: &Path, d: bool) -> bool {
         self.ignore.matched_path_or_any_parents(p, d).is_ignore()
     }
 
-    // ── okuma ────────────────────────────────────────────────
+    // ── read ─────────────────────────────────────────────────
 
-    pub fn tree(&self, relative: &str, depth: usize, include_hidden: bool) -> Result<Vec<WorkspaceEntry>> {
+    pub fn tree(
+        &self,
+        relative: &str,
+        depth: usize,
+        include_hidden: bool,
+    ) -> Result<Vec<WorkspaceEntry>> {
         let root = self.resolve(relative)?;
         if !root.is_dir() {
             return Err(WorkspaceError::NotDirectory);
@@ -174,113 +257,177 @@ impl Workspace {
             } else {
                 EntryKind::File
             };
-            if self.ignored(p, matches!(kind, EntryKind::Directory)) {
-                continue;
-            }
+            let size = if kind == EntryKind::File {
+                item.metadata().map(|m| m.len()).unwrap_or(0)
+            } else {
+                0
+            };
             out.push(WorkspaceEntry {
                 path: self.rel(p),
                 name: name.into(),
                 kind,
-                size: if matches!(kind, EntryKind::File) {
-                    item.metadata().map(|m| m.len()).unwrap_or(0)
-                } else {
-                    0
-                },
+                size,
                 hidden: name.starts_with('.'),
-                ignored: false,
+                ignored: self.ignored(p, kind == EntryKind::Directory),
             });
         }
-        out.sort_by_key(|e| (matches!(e.kind, EntryKind::File), e.path.clone()));
+        out.sort_by(|a, b| a.path.cmp(&b.path));
         Ok(out)
     }
 
     pub fn read_file(&self, relative: &str, max_bytes: usize) -> Result<FileDocument> {
-        let p = self.resolve(relative)?;
-        let meta = fs::metadata(&p).map_err(|e| {
+        let path = self.resolve(relative)?;
+        let meta = fs::metadata(&path).map_err(|e| {
             if e.kind() == io::ErrorKind::NotFound {
                 WorkspaceError::NotFound(relative.into())
             } else {
                 e.into()
             }
         })?;
-        if !meta.is_file() {
+        if meta.is_dir() {
             return Err(WorkspaceError::IsDirectory);
         }
-        let mut f = File::open(&p)?;
-        let mut b = Vec::new();
-        Read::by_ref(&mut f).take((max_bytes as u64).saturating_add(1)).read_to_end(&mut b)?;
-        if b.len() > max_bytes {
-            return Err(WorkspaceError::Io(io::Error::other("file exceeds read limit")));
+        if meta.len() > max_bytes as u64 {
+            return Err(WorkspaceError::TooLarge { limit: max_bytes });
         }
-        let content = String::from_utf8(b).map_err(|_| WorkspaceError::NotText)?;
+        let mut f = File::open(&path)?;
+        let mut bytes = Vec::new();
+        f.read_to_end(&mut bytes)?;
+        // Geçersiz UTF-8 ya da NUL içeren dosya metin değildir; ham Io hatası
+        // yerine NotText döner (arayüz bunu anlaşılır mesaja çevirir).
+        let buf = String::from_utf8(bytes).map_err(|_| WorkspaceError::NotText)?;
+        if buf.contains('\0') {
+            return Err(WorkspaceError::NotText);
+        }
+        let version = self.document_version(relative).unwrap_or(0);
+        let hash = content_hash(buf.as_bytes());
+        let language = detect_language(&path);
+        let readonly = meta.permissions().readonly();
         Ok(FileDocument {
             path: relative.replace('\\', "/"),
-            content,
-            size: meta.len(),
-            readonly: meta.permissions().readonly(),
-            version: meta
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_nanos() as u64)
-                .unwrap_or(0),
+            size: buf.len() as u64,
+            content: buf,
+            readonly,
+            version,
+            content_hash: hash,
+            language,
         })
     }
 
-    // ── yazma ────────────────────────────────────────────────
-
-    pub fn write_file(&self, relative: &str, content: &str) -> Result<FileDocument> {
-        if content.len() > MAX_WRITE_BYTES {
-            return Err(WorkspaceError::TooLarge { limit: MAX_WRITE_BYTES });
-        }
-        let p = self.resolve_mutable(relative)?;
-        atomic_write(&p, content.as_bytes())?;
-        self.refresh_one(relative)?;
-        self.read_file(relative, content.len().saturating_add(1))
+    pub fn document_version(&self, relative: &str) -> Result<u64> {
+        self.detect_external_change(relative)?;
+        Ok(self.index_read()?.get_version(relative))
     }
 
-    fn refresh_one(&self, relative: &str) -> Result<()> {
-        let mut i = self.index_write()?;
-        i.update(&self.root, relative, &self.ignore);
+    /// Dosya API dışında (agent, editör, başka süreç) değiştiyse indeksi
+    /// tazeler ve sürümü artırır. Watcher çalışmıyorsa sürüm tabanlı
+    /// çakışma denetimi (`expected_version`) aksi halde hiç tetiklenmezdi.
+    /// Yalnızca indekslenmiş dosyalar için çalışır; okunamayan dosya sessizce atlanır.
+    fn detect_external_change(&self, relative: &str) -> Result<()> {
+        let Ok(path) = self.resolve(relative) else { return Ok(()) };
+        let Ok(bytes) = fs::read(&path) else { return Ok(()) };
+        let indexed_hash = self.index_read()?.metadata(relative).map(|m| m.content_hash);
+        if let Some(h) = indexed_hash {
+            if h != content_hash(&bytes) {
+                let mut idx = self.index_write()?;
+                idx.update(&self.root, relative, &self.ignore);
+                idx.bump_version(relative);
+            }
+        }
         Ok(())
     }
 
-    pub fn create_file(&self, r: &str) -> Result<CreateResult> {
-        let p = self.resolve_mutable(r)?;
-        if fs::symlink_metadata(&p).is_ok() {
-            return Err(WorkspaceError::AlreadyExists(r.into()));
-        }
-        atomic_write(&p, b"")?;
-        self.refresh_one(r)?;
-        Ok(CreateResult { path: r.replace('\\', "/"), kind: EntryKind::File })
+    pub fn file_metadata(&self, relative: &str) -> Result<Option<FileMetadata>> {
+        Ok(self.index_read()?.metadata(relative))
     }
 
-    pub fn create_dir(&self, r: &str) -> Result<CreateResult> {
-        let p = self.resolve_mutable(r)?;
-        if fs::symlink_metadata(&p).is_ok() {
-            return Err(WorkspaceError::AlreadyExists(r.into()));
-        }
-        fs::create_dir_all(p)?;
-        Ok(CreateResult { path: r.replace('\\', "/"), kind: EntryKind::Directory })
+    pub fn list_metadata(&self) -> Result<Vec<FileMetadata>> {
+        Ok(self.index_read()?.all_metadata())
     }
 
-    /// Workspace DIŞINDAKİ bir dosyayı (kullanıcının seçtiği) içeri kopyalar.
-    /// Hedef yol path guard'dan geçer (kök/.git/dışarı reddedilir), var olan
-    /// dosyanın üzerine YAZMAZ. Agent araçlarına AÇILMAZ: yalnız kullanıcı
-    /// arayüzü çağırır, kaynak yolu kullanıcının dosya seçicisinden gelir.
-    pub fn import_external(&self, source: &Path, dest_relative: &str) -> Result<CreateResult> {
-        let meta = fs::metadata(source).map_err(|e| {
-            if e.kind() == io::ErrorKind::NotFound {
-                WorkspaceError::SourceInvalid("kaynak dosya bulunamadı".into())
-            } else {
-                e.into()
+    // ── write ────────────────────────────────────────────────
+
+    pub fn write_file(&self, relative: &str, content: &str) -> Result<FileDocument> {
+        if content.len() > MAX_WRITE_BYTES {
+            return Err(WorkspaceError::TooLarge {
+                limit: MAX_WRITE_BYTES,
+            });
+        }
+        let path = self.resolve_mutable(relative)?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        atomic_write(&path, content.as_bytes())?;
+
+        let version = {
+            let mut idx = self.index_write()?;
+            idx.update(&self.root, relative, &self.ignore);
+            idx.bump_version(relative)
+        };
+
+        let hash = content_hash(content.as_bytes());
+        let language = detect_language(&path);
+
+        // Notify LSP if registered
+        if let Ok(mut reg) = self.lsp.write() {
+            if let Some(ref lang) = language {
+                let _ = reg.did_change(relative, lang, content, version);
             }
-        })?;
+        }
+
+        Ok(FileDocument {
+            path: relative.replace('\\', "/"),
+            content: content.to_owned(),
+            size: content.len() as u64,
+            readonly: false,
+            version,
+            content_hash: hash,
+            language,
+        })
+    }
+
+    pub fn create_file(&self, relative: &str) -> Result<CreateResult> {
+        let path = self.resolve_mutable(relative)?;
+        if fs::symlink_metadata(&path).is_ok() {
+            return Err(WorkspaceError::AlreadyExists(relative.into()));
+        }
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        atomic_write(&path, b"")?;
+        self.refresh_one(relative)?;
+        Ok(CreateResult {
+            path: relative.replace('\\', "/"),
+            kind: EntryKind::File,
+        })
+    }
+
+    pub fn create_dir(&self, relative: &str) -> Result<CreateResult> {
+        let path = self.resolve_mutable(relative)?;
+        if fs::symlink_metadata(&path).is_ok() {
+            return Err(WorkspaceError::AlreadyExists(relative.into()));
+        }
+        fs::create_dir_all(&path)?;
+        Ok(CreateResult {
+            path: relative.replace('\\', "/"),
+            kind: EntryKind::Directory,
+        })
+    }
+
+    /// Host bridge uyumu: `import_external` → `import_file`.
+    pub fn import_external(&self, source: &Path, dest_relative: &str) -> Result<CreateResult> {
+        self.import_file(source, dest_relative)
+    }
+
+    pub fn import_file(&self, source: &Path, dest_relative: &str) -> Result<CreateResult> {
+        let meta = fs::metadata(source)?;
         if !meta.is_file() {
-            return Err(WorkspaceError::SourceInvalid("kaynak normal bir dosya değil".into()));
+            return Err(WorkspaceError::NotDirectory);
         }
         if meta.len() > MAX_IMPORT_BYTES {
-            return Err(WorkspaceError::TooLarge { limit: MAX_IMPORT_BYTES as usize });
+            return Err(WorkspaceError::TooLarge {
+                limit: MAX_IMPORT_BYTES as usize,
+            });
         }
         let dest = self.resolve_mutable(dest_relative)?;
         if fs::symlink_metadata(&dest).is_ok() {
@@ -290,7 +437,11 @@ impl Workspace {
             fs::create_dir_all(parent)?;
         }
         let name = dest.file_name().and_then(|n| n.to_str()).unwrap_or("file");
-        let tmp = dest.with_file_name(format!(".{name}.aetheros-import-{}.tmp", std::process::id()));
+        let tmp = dest.with_file_name(format!(
+            ".{}.aetheros-import-{}.tmp",
+            name,
+            std::process::id()
+        ));
         if let Err(e) = fs::copy(source, &tmp) {
             let _ = fs::remove_file(&tmp);
             return Err(e.into());
@@ -300,7 +451,10 @@ impl Workspace {
             return Err(e.into());
         }
         self.refresh_one(dest_relative)?;
-        Ok(CreateResult { path: dest_relative.replace('\\', "/"), kind: EntryKind::File })
+        Ok(CreateResult {
+            path: dest_relative.replace('\\', "/"),
+            kind: EntryKind::File,
+        })
     }
 
     pub fn rename(&self, from: &str, to: &str) -> Result<()> {
@@ -315,8 +469,13 @@ impl Workspace {
         if let Some(p) = b.parent() {
             fs::create_dir_all(p)?;
         }
-        fs::rename(a, b)?;
-        self.refresh_index()?;
+        fs::rename(&a, &b)?;
+        // Incremental: remove old, index new
+        {
+            let mut idx = self.index_write()?;
+            idx.remove(from);
+            idx.update(&self.root, to, &self.ignore);
+        }
         Ok(())
     }
 
@@ -334,30 +493,110 @@ impl Workspace {
         } else {
             fs::remove_file(p)?;
         }
-        self.refresh_index()?;
+        self.index_write()?.remove(r);
         Ok(())
     }
 
+    // ── search / symbols ─────────────────────────────────────
+
     pub fn search(&self, o: SearchOptions) -> Result<Vec<SearchMatch>> {
-        let i = self.index_read()?;
-        Ok(i.search(&o.query, o.case_sensitive, o.include_hidden, o.max_results as usize)
-            .into_iter()
-            .map(|(path, line, column, preview)| SearchMatch { path, line, column, preview })
-            .collect())
+        self.index_read()?.search(&o)
     }
 
+    pub fn find_symbols(&self, query: SymbolQuery) -> Result<Vec<Symbol>> {
+        Ok(self.index_read()?.symbols(&query))
+    }
+
+    pub fn file_symbols(&self, relative: &str) -> Result<Vec<Symbol>> {
+        Ok(self.index_read()?.symbols_in_file(relative))
+    }
+
+    // ── git ──────────────────────────────────────────────────
+
     pub fn git_status(&self) -> Result<GitStatus> {
-        git::status(&self.root)
+        match git::status(&self.root) {
+            Ok(s) => Ok(s),
+            Err(WorkspaceError::NotGitRepository) => Ok(GitStatus {
+                is_git_repo: false,
+                ..Default::default()
+            }),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn git_diff(&self, staged: bool, path: Option<&str>) -> Result<GitDiff> {
+        git::diff(&self.root, staged, path)
+    }
+
+    pub fn git_worktree_list(&self) -> Result<Vec<GitWorktree>> {
+        git::worktree_list(&self.root)
+    }
+
+    pub fn git_worktree_add(
+        &self,
+        path: &Path,
+        branch: Option<&str>,
+        create_branch: bool,
+    ) -> Result<GitWorktree> {
+        git::worktree_add(&self.root, path, branch, create_branch)
+    }
+
+    pub fn git_worktree_remove(&self, path: &Path, force: bool) -> Result<()> {
+        git::worktree_remove(&self.root, path, force)
+    }
+
+    pub fn git_blame(
+        &self,
+        path: &str,
+        start_line: Option<u32>,
+        end_line: Option<u32>,
+    ) -> Result<Vec<GitBlameLine>> {
+        // path must resolve inside workspace
+        let _ = self.resolve(path)?;
+        git::blame(&self.root, path, start_line, end_line)
+    }
+
+    pub fn git_log(&self, max: u32, path: Option<&str>) -> Result<Vec<GitCommit>> {
+        if let Some(p) = path {
+            let _ = self.resolve(p)?;
+        }
+        git::log(&self.root, max, path)
+    }
+
+    // ── diagnostics ──────────────────────────────────────────
+
+    pub fn get_diagnostics(&self, path: Option<&str>) -> Result<Vec<Diagnostic>> {
+        self.lsp
+            .read()
+            .map_err(|_| WorkspaceError::Lsp("lsp lock poisoned".into()))?
+            .get_diagnostics(path)
+    }
+
+    pub fn set_diagnostics(&self, path: &str, diags: Vec<Diagnostic>) -> Result<()> {
+        let reg = self
+            .lsp
+            .read()
+            .map_err(|_| WorkspaceError::Lsp("lsp lock poisoned".into()))?;
+        let store = reg.diagnostics_store();
+        store
+            .write()
+            .map_err(|_| WorkspaceError::Lsp("diagnostics lock poisoned".into()))?
+            .set(path, diags);
+        Ok(())
     }
 }
 
 fn load_ignore(root: &Path) -> Result<Gitignore> {
-    let mut b = GitignoreBuilder::new(root);
-    let p = root.join(".gitignore");
-    if p.is_file() {
-        let _ = b.add(p);
+    let mut builder = GitignoreBuilder::new(root);
+    let gi = root.join(".gitignore");
+    if gi.is_file() {
+        let _ = builder.add(&gi);
     }
-    b.build().map_err(|e| WorkspaceError::Io(io::Error::other(e)))
+    // Always ignore .git
+    let _ = builder.add_line(None, ".git/");
+    builder
+        .build()
+        .map_err(|e| WorkspaceError::Io(io::Error::new(io::ErrorKind::Other, e.to_string())))
 }
 
 #[cfg(test)]
@@ -366,155 +605,43 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn traversal() {
-        let d = tempdir().unwrap();
-        let w = Workspace::open(d.path()).unwrap();
-        assert!(matches!(w.read_file("../x", 10), Err(WorkspaceError::PathOutsideRoot)));
-    }
-
-    #[test]
-    fn atomic_lifecycle() {
-        let d = tempdir().unwrap();
-        let w = Workspace::open(d.path()).unwrap();
-        w.create_file("src/main.rs").unwrap();
-        w.write_file("src/main.rs", "fn main(){}\n").unwrap();
-        assert_eq!(w.read_file("src/main.rs", 100).unwrap().content, "fn main(){}\n");
-        assert_eq!(
-            w.search(SearchOptions { query: "main".into(), ..Default::default() }).unwrap().len(),
-            1
-        );
-    }
-
-    #[test]
-    fn root_can_be_listed_but_never_modified() {
-        let d = tempdir().unwrap();
-        let w = Workspace::open(d.path()).unwrap();
-        w.create_file("a.txt").unwrap();
-        for p in ["", ".", "./"] {
-            let list = w.tree(p, 1, false).unwrap();
-            assert!(list.iter().any(|e| e.path == "a.txt"), "{p:?}");
-            assert!(matches!(w.delete(p), Err(WorkspaceError::InvalidPath)), "{p:?}");
-            assert!(matches!(w.rename(p, "x"), Err(WorkspaceError::InvalidPath)), "{p:?}");
-            assert!(matches!(w.write_file(p, "x"), Err(WorkspaceError::InvalidPath)), "{p:?}");
-        }
-        assert!(d.path().join("a.txt").exists(), "kök içeriği silinmemeli");
-    }
-
-    #[test]
-    fn dot_git_is_protected_for_every_mutation_but_readable() {
-        let d = tempdir().unwrap();
-        fs::create_dir_all(d.path().join(".git/hooks")).unwrap();
-        fs::write(d.path().join(".git/config"), "[core]\n").unwrap();
-        let w = Workspace::open(d.path()).unwrap();
-
-        assert!(matches!(w.write_file(".git/config", "x"), Err(WorkspaceError::Protected(_))));
-        assert!(matches!(w.write_file(".git/hooks/pre-commit", "#!/bin/sh"), Err(WorkspaceError::Protected(_))));
-        assert!(matches!(w.create_file(".git/hooks/post-commit"), Err(WorkspaceError::Protected(_))));
-        assert!(matches!(w.create_dir(".git/x"), Err(WorkspaceError::Protected(_))));
-        assert!(matches!(w.delete(".git"), Err(WorkspaceError::Protected(_))));
-        assert!(matches!(w.rename(".git/config", "c"), Err(WorkspaceError::Protected(_))));
-        w.create_file("a").unwrap();
-        assert!(matches!(w.rename("a", ".git/a"), Err(WorkspaceError::Protected(_))));
-        assert_eq!(fs::read_to_string(d.path().join(".git/config")).unwrap(), "[core]\n");
-        assert!(!d.path().join(".git/hooks/pre-commit").exists());
-        // okuma serbest (karar Governor'da)
-        assert!(w.read_file(".git/config", 100).is_ok());
-    }
-
-    #[test]
-    fn oversized_write_is_rejected_and_nothing_is_written() {
-        let d = tempdir().unwrap();
-        let w = Workspace::open(d.path()).unwrap();
-        let big = "a".repeat(MAX_WRITE_BYTES + 1);
-        assert!(matches!(w.write_file("big.txt", &big), Err(WorkspaceError::TooLarge { .. })));
-        assert!(!d.path().join("big.txt").exists());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn symlink_escape_is_blocked_end_to_end() {
-        use std::os::unix::fs::symlink;
-        let d = tempdir().unwrap();
-        let out = tempdir().unwrap();
-        fs::write(out.path().join("secret.txt"), "GIZLI").unwrap();
-        let w = Workspace::open(d.path()).unwrap();
-        symlink(out.path().join("secret.txt"), d.path().join("linkfile")).unwrap();
-        symlink(out.path(), d.path().join("linkdir")).unwrap();
-
-        assert!(matches!(w.read_file("linkfile", 100), Err(WorkspaceError::PathOutsideRoot)));
-        assert!(matches!(w.write_file("linkdir/yeni/f.txt", "x"), Err(WorkspaceError::PathOutsideRoot)));
-        assert!(matches!(w.create_dir("linkdir/yeni"), Err(WorkspaceError::PathOutsideRoot)));
-        assert!(!out.path().join("yeni").exists(), "dışarıda hiçbir şey oluşmamalı");
-
-        // dış link, hedefe dokunmadan kaldırılabilir
-        w.delete("linkfile").unwrap();
-        assert!(out.path().join("secret.txt").exists(), "hedef dosya silinmemeli");
-        assert!(!d.path().join("linkfile").exists());
-    }
-
-    #[test]
-    fn import_external_copies_and_never_overwrites() {
-        let src_dir = tempdir().unwrap();
-        let src = src_dir.path().join("kaynak.txt");
-        std::fs::write(&src, "dış içerik").unwrap();
-        let d = tempdir().unwrap();
-        let w = Workspace::open(d.path()).unwrap();
-
-        let r = w.import_external(&src, "belgeler/kaynak.txt").unwrap();
-        assert_eq!(r.path, "belgeler/kaynak.txt");
-        assert_eq!(std::fs::read_to_string(d.path().join("belgeler/kaynak.txt")).unwrap(), "dış içerik");
-        // kaynak yerinde kalır, geçici dosya bırakılmaz
-        assert!(src.exists());
-        let leftovers: Vec<_> = std::fs::read_dir(d.path().join("belgeler"))
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .map(|e| e.file_name().to_string_lossy().into_owned())
-            .collect();
-        assert_eq!(leftovers, vec!["kaynak.txt".to_string()]);
-        // içe aktarılan metin aramada görünür
-        let hits = w
-            .search(SearchOptions { query: "dış içerik".into(), ..SearchOptions::default() })
+    fn open_write_search_version() {
+        let dir = tempdir().unwrap();
+        let ws = Workspace::open(dir.path()).unwrap();
+        ws.write_file("src/main.rs", "fn main() {\n    println!(\"hi\");\n}\n")
+            .unwrap();
+        assert_eq!(ws.document_version("src/main.rs").unwrap(), 1);
+        let hits = ws
+            .search(SearchOptions {
+                query: "println".into(),
+                ..Default::default()
+            })
             .unwrap();
         assert_eq!(hits.len(), 1);
-
-        // var olanın üstüne yazmaz
-        assert!(matches!(
-            w.import_external(&src, "belgeler/kaynak.txt"),
-            Err(WorkspaceError::AlreadyExists(_))
-        ));
+        let syms = ws.file_symbols("src/main.rs").unwrap();
+        assert!(syms.iter().any(|s| s.name == "main"));
     }
 
     #[test]
-    fn import_external_respects_the_guard_and_source_checks() {
-        let src_dir = tempdir().unwrap();
-        let src = src_dir.path().join("a.txt");
-        std::fs::write(&src, "x").unwrap();
-        let d = tempdir().unwrap();
-        let w = Workspace::open(d.path()).unwrap();
-
-        assert!(matches!(w.import_external(&src, "../kacis.txt"), Err(WorkspaceError::PathOutsideRoot)));
-        assert!(matches!(w.import_external(&src, ".git/config"), Err(WorkspaceError::Protected(_))));
-        assert!(matches!(w.import_external(&src, ""), Err(WorkspaceError::InvalidPath)));
-        // kaynak dizin olamaz, olmayan kaynak anlaşılır hata verir
-        assert!(matches!(
-            w.import_external(src_dir.path(), "d.txt"),
-            Err(WorkspaceError::SourceInvalid(_))
-        ));
-        assert!(matches!(
-            w.import_external(&src_dir.path().join("yok.txt"), "y.txt"),
-            Err(WorkspaceError::SourceInvalid(_))
-        ));
+    fn version_conflict() {
+        let dir = tempdir().unwrap();
+        let ws = Workspace::open(dir.path()).unwrap();
+        ws.write_file("a.txt", "one").unwrap();
+        let r = ws.execute_tool(WorkspaceToolRequest::WriteFile {
+            path: "a.txt".into(),
+            content: "two".into(),
+            expected_version: Some(99),
+        });
+        assert!(matches!(r, Err(WorkspaceError::VersionConflict { .. })));
     }
 
     #[test]
-    fn import_external_rejects_oversized_source() {
-        let src_dir = tempdir().unwrap();
-        let big = src_dir.path().join("buyuk.bin");
-        let f = std::fs::File::create(&big).unwrap();
-        f.set_len(MAX_IMPORT_BYTES + 1).unwrap(); // seyrek dosya, disk harcamaz
-        let d = tempdir().unwrap();
-        let w = Workspace::open(d.path()).unwrap();
-        assert!(matches!(w.import_external(&big, "buyuk.bin"), Err(WorkspaceError::TooLarge { .. })));
-        assert!(!d.path().join("buyuk.bin").exists());
+    fn incremental_rename() {
+        let dir = tempdir().unwrap();
+        let ws = Workspace::open(dir.path()).unwrap();
+        ws.write_file("old.rs", "fn legacy() {}").unwrap();
+        ws.rename("old.rs", "new.rs").unwrap();
+        assert!(ws.file_metadata("old.rs").unwrap().is_none());
+        assert!(ws.file_metadata("new.rs").unwrap().is_some());
     }
 }

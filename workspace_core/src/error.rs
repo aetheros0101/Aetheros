@@ -1,42 +1,84 @@
-use std::io;
 use thiserror::Error;
+
+pub type Result<T> = std::result::Result<T, WorkspaceError>;
 
 #[derive(Debug, Error)]
 pub enum WorkspaceError {
-    #[error("workspace root does not exist")]
+    #[error("workspace root missing or inaccessible")]
     RootMissing,
-    #[error("workspace path is outside the workspace root")]
-    PathOutsideRoot,
-    #[error("invalid workspace path")]
-    InvalidPath,
-    #[error("path is a directory")]
-    IsDirectory,
+
     #[error("path is not a directory")]
     NotDirectory,
-    #[error("path already exists: {0}")]
-    AlreadyExists(String),
-    #[error("path does not exist: {0}")]
+
+    #[error("path is a directory")]
+    IsDirectory,
+
+    #[error("invalid path")]
+    InvalidPath,
+
+    /// Host bridge uyumu: path workspace dışına çıkıyor.
+    #[error("path outside workspace root")]
+    PathOutsideRoot,
+
+    /// Host bridge uyumu: ikili/null içerik.
+    #[error("file is not valid text")]
+    NotText,
+
+    /// Host bridge uyumu: dış kaynak geçersiz.
+    #[error("source invalid: {0}")]
+    SourceInvalid(String),
+
+    #[error("path not found: {0}")]
     NotFound(String),
+
+    #[error("already exists: {0}")]
+    AlreadyExists(String),
+
+    #[error("protected path: {0}")]
+    Protected(String),
+
+    #[error("content too large (limit {limit} bytes)")]
+    TooLarge { limit: usize },
+
+    #[error("version conflict on {path}: expected {expected}, actual {actual}")]
+    VersionConflict {
+        path: String,
+        expected: u64,
+        actual: u64,
+    },
+
+    #[error("patch failed: {0}")]
+    Patch(String),
+
     #[error("not a git repository")]
     NotGitRepository,
-    #[error("UTF-8 text file required")]
-    NotText,
-    #[error("I/O error: {0}")]
-    Io(#[from] io::Error),
-    #[error("watcher error: {0}")]
-    Watcher(String),
+
     #[error("git error: {0}")]
     Git(String),
-    #[error("file changed since the caller last read it: {path} (expected {expected}, actual {actual})")]
-    VersionConflict { path: String, expected: u64, actual: u64 },
-    #[error("invalid patch: {0}")]
-    InvalidPatch(String),
-    #[error("path is protected and cannot be modified: {0}")]
-    Protected(String),
-    #[error("content exceeds the write limit of {limit} bytes")]
-    TooLarge { limit: usize },
-    #[error("import source is not usable: {0}")]
-    SourceInvalid(String),
+
+    #[error("search error: {0}")]
+    Search(String),
+
+    #[error("regex error: {0}")]
+    Regex(String),
+
+    #[error("watcher error: {0}")]
+    Watcher(String),
+
+    #[error("lsp error: {0}")]
+    Lsp(String),
+
+    #[error("symbol index error: {0}")]
+    Symbol(String),
+
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+impl From<regex::Error> for WorkspaceError {
+    fn from(e: regex::Error) -> Self {
+        WorkspaceError::Regex(e.to_string())
+    }
 }
 
 impl From<crate::path_guard::GuardError> for WorkspaceError {
@@ -47,5 +89,3 @@ impl From<crate::path_guard::GuardError> for WorkspaceError {
         }
     }
 }
-
-pub type Result<T> = std::result::Result<T, WorkspaceError>;

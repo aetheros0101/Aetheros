@@ -1,6 +1,10 @@
-use crate::{error::{Result, WorkspaceError}, models::{WatchEventKind, WorkspaceWatchEvent}};
+use crate::error::{Result, WorkspaceError};
+use crate::models::{WatchEventKind, WorkspaceWatchEvent};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use std::{path::{Path, PathBuf}, sync::mpsc::{self, Receiver}, time::Duration};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver};
+use std::time::{Duration, Instant};
 
 pub struct WorkspaceWatcher {
     _watcher: RecommendedWatcher,
@@ -16,22 +20,34 @@ impl WorkspaceWatcher {
                 .map(|event| map_event(event, &callback_root))
                 .map_err(|e| WorkspaceError::Watcher(e.to_string()));
             let _ = tx.send(mapped);
-        }).map_err(|e| WorkspaceError::Watcher(e.to_string()))?;
+        })
+        .map_err(|e| WorkspaceError::Watcher(e.to_string()))?;
 
-        watcher.watch(&root, RecursiveMode::Recursive)
+        watcher
+            .watch(&root, RecursiveMode::Recursive)
             .map_err(|e| WorkspaceError::Watcher(e.to_string()))?;
 
-        Ok(Self { _watcher: watcher, receiver: rx })
+        Ok(Self {
+            _watcher: watcher,
+            receiver: rx,
+        })
     }
 
-    pub fn try_next(&self) -> Option<Result<WorkspaceWatchEvent>> { self.receiver.try_recv().ok() }
+    pub fn try_next(&self) -> Option<Result<WorkspaceWatchEvent>> {
+        self.receiver.try_recv().ok()
+    }
 
-    /// Collects a short burst of filesystem events. The caller can coalesce
-    /// events by path without losing events belonging to other files.
+    /// Collect a short burst of filesystem events.
     pub fn drain(&self, wait: Duration, max_events: usize) -> Vec<Result<WorkspaceWatchEvent>> {
-        if max_events == 0 { return Vec::new(); }
+        if max_events == 0 {
+            return Vec::new();
+        }
         let mut events = Vec::with_capacity(max_events.min(32));
-        if let Ok(first) = self.receiver.recv_timeout(wait) { events.push(first); } else { return events; }
+        if let Ok(first) = self.receiver.recv_timeout(wait) {
+            events.push(first);
+        } else {
+            return events;
+        }
         while events.len() < max_events {
             match self.receiver.try_recv() {
                 Ok(event) => events.push(event),
@@ -40,6 +56,48 @@ impl WorkspaceWatcher {
         }
         events
     }
+
+    /// Drain + coalesce by path (last event wins per path). Rename keeps old_path.
+    pub fn drain_coalesced(
+        &self,
+        wait: Duration,
+        max_events: usize,
+    ) -> Vec<WorkspaceWatchEvent> {
+        let raw = self.drain(wait, max_events);
+        coalesce_events(raw.into_iter().filter_map(|r| r.ok()).collect())
+    }
+}
+
+/// Merge events so each path appears once (latest kind wins).
+pub fn coalesce_events(events: Vec<WorkspaceWatchEvent>) -> Vec<WorkspaceWatchEvent> {
+    let mut map: HashMap<String, WorkspaceWatchEvent> = HashMap::new();
+    for ev in events {
+        let key = if !ev.path.is_empty() {
+            ev.path.clone()
+        } else {
+            ev.old_path.clone().unwrap_or_default()
+        };
+        if key.is_empty() {
+            continue;
+        }
+        if let Some(existing) = map.get_mut(&key) {
+            // Removed beats everything; Created after Removed → Modified-ish → Created
+            match (&existing.kind, &ev.kind) {
+                (_, WatchEventKind::Removed) => *existing = ev,
+                (WatchEventKind::Removed, WatchEventKind::Created) => {
+                    existing.kind = WatchEventKind::Modified;
+                    existing.path = ev.path;
+                }
+                (WatchEventKind::Created, WatchEventKind::Modified) => {
+                    // stay Created
+                }
+                _ => *existing = ev,
+            }
+        } else {
+            map.insert(key, ev);
+        }
+    }
+    map.into_values().collect()
 }
 
 fn map_event(event: Event, root: &Path) -> WorkspaceWatchEvent {
@@ -50,9 +108,51 @@ fn map_event(event: Event, root: &Path) -> WorkspaceWatchEvent {
         EventKind::Remove(_) => WatchEventKind::Removed,
         _ => WatchEventKind::Other,
     };
-    let path = event.paths.first().and_then(|p| p.strip_prefix(root).ok())
-        .map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
-    let old_path = event.paths.get(1).and_then(|p| p.strip_prefix(root).ok())
+    let path = event
+        .paths
+        .first()
+        .and_then(|p| p.strip_prefix(root).ok())
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_default();
+    let old_path = event
+        .paths
+        .get(1)
+        .and_then(|p| p.strip_prefix(root).ok())
         .map(|p| p.to_string_lossy().replace('\\', "/"));
-    WorkspaceWatchEvent { kind, path, old_path }
+    WorkspaceWatchEvent {
+        kind,
+        path,
+        old_path,
+    }
+}
+
+/// Simple debounce helper for callers that poll the watcher.
+pub struct Debouncer {
+    last: HashMap<String, Instant>,
+    window: Duration,
+}
+
+impl Debouncer {
+    pub fn new(window: Duration) -> Self {
+        Self {
+            last: HashMap::new(),
+            window,
+        }
+    }
+
+    /// Returns true if this path should be processed now.
+    pub fn should_process(&mut self, path: &str) -> bool {
+        let now = Instant::now();
+        if let Some(prev) = self.last.get(path) {
+            if now.duration_since(*prev) < self.window {
+                return false;
+            }
+        }
+        self.last.insert(path.to_string(), now);
+        true
+    }
+
+    pub fn clear(&mut self) {
+        self.last.clear();
+    }
 }

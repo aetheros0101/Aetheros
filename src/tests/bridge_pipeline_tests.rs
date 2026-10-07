@@ -270,13 +270,16 @@ fn bridge_pipeline_register_grant_and_run() {
         }
 
         // Workspace init'te {workspace_dir} üzerinde açılmış olmalı ve
-        // agent araç listesine 10 araç eklenmeli.
+        // agent araç listesine tüm workspace araçları eklenmeli.
         let root = crate::bridge::state::workspace_root()
             .expect("workspace init'te açılmış olmalı");
         assert!(!root.is_empty());
         let mut tools: Vec<std::sync::Arc<dyn crate::types::agent_tool::AgentTool>> = Vec::new();
         crate::bridge::api::append_workspace_tools(rt, &mut tools);
-        assert_eq!(tools.len(), 10);
+        assert_eq!(
+            tools.len(),
+            crate::agents::workspace_tool::WorkspaceToolKind::ALL.len()
+        );
 
         // Dosyalar ekranı köprüsü: aynı workspace üzerinde uçtan uca.
         assert_eq!(crate::bridge::api::workspace_files_root().unwrap(), root);

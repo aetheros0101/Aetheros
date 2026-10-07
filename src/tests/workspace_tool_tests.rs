@@ -46,7 +46,8 @@ fn all_kinds_have_unique_names_and_argument_contracts() {
             t.name()
         );
     }
-    assert_eq!(names.len(), 10);
+    assert_eq!(names.len(), WorkspaceToolKind::ALL.len());
+    assert_eq!(names.len(), 20);
 }
 
 #[test]
