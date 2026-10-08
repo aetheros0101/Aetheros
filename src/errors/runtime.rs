@@ -13,29 +13,16 @@ pub enum RuntimeError {
     SchedulerFailure,
 
     #[error("task failure: {0}")]
-    Task(
-        #[from]
-        TaskError,
-    ),
+    Task(#[from] TaskError),
 
     #[error("wasm failure: {0}")]
-    Wasm(
-        #[from]
-        WasmError,
-    ),
+    Wasm(#[from] WasmError),
 
     #[error("persistence failure: {0}")]
-    Persistence(
-        #[from]
-        PersistenceError,
-    ),
+    Persistence(#[from] PersistenceError),
 
-    #[error(
-        "task execution failed: {message}"
-    )]
-    TaskExecutionFailed {
-        message: String,
-    },
+    #[error("task execution failed: {message}")]
+    TaskExecutionFailed { message: String },
 
     #[error("runtime shutdown")]
     Shutdown,
@@ -50,8 +37,6 @@ pub enum RuntimeError {
     #[error("orchestration failure")]
     OrchestrationFailure,
 
-    #[error(
-        "validation error: {0}"
-    )]
+    #[error("validation error: {0}")]
     ValidationError(String),
 }

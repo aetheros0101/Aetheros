@@ -24,13 +24,11 @@ impl Default for RuntimeConfig {
 
             event_channel_capacity: 2048,
 
-            shutdown_timeout:
-                Duration::from_secs(30),
+            shutdown_timeout: Duration::from_secs(30),
 
             max_concurrent_tasks: 1024,
 
-            persistence_path:
-                "./aetheros.db".into(),
+            persistence_path: "./aetheros.db".into(),
         }
     }
 }

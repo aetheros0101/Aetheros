@@ -11,6 +11,7 @@ name: 🦀 Rust CI
 #   - cargo test (wasmi)    (Android'e GİDEN backend — build_apk.yml bunu
 #                            derliyor ama test etmiyordu)
 #   - cargo audit           (bilinen güvenlik açığı olan bağımlılık taraması)
+#   - cargo machete         (kullanılmayan bağımlılık taraması — bilgilendirici)
 # çalıştırır.
 
 on:
@@ -80,3 +81,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo install cargo-audit --locked
       - run: cargo audit
+
+  unused-deps:
+    name: 🧹 cargo machete (kullanılmayan bağımlılıklar)
+    runs-on: ubuntu-latest
+    # Bilgilendirici: yanlış pozitif verebilir (makro/feature ile kullanılan
+    # crate'ler); önce raporu izle, sonra blokleyici yap.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: bnjbvr/cargo-machete@main

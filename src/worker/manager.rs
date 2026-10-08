@@ -10,26 +10,16 @@
 // ============================================================
 
 use std::sync::Arc;
-use std::sync::atomic::{
-    AtomicUsize,
-    Ordering,
-};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use tokio::sync::{
-    mpsc,
-    watch,
-};
-
+use tokio::sync::{mpsc, watch};
 
 use crate::events::bus::EventBus;
 use crate::persistence::engine::PersistenceEngine;
 use crate::task::queue::PriorityTaskQueue;
 use crate::wasm::WasmExecutor;
 use crate::worker::message::WorkerMessage;
-use crate::worker::supervisor::{
-    WorkerSpawnParams,
-    WorkerSupervisor,
-};
+use crate::worker::supervisor::{WorkerSpawnParams, WorkerSupervisor};
 
 #[derive(Clone)]
 pub struct WorkerHandle {
@@ -43,6 +33,12 @@ pub struct WorkerManager {
     index: AtomicUsize,
     /// Worker sender'ları — dispatcher bunları kullanır
     senders: Vec<mpsc::Sender<WorkerMessage>>,
+}
+
+impl Default for WorkerManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl WorkerManager {
@@ -73,19 +69,15 @@ impl WorkerManager {
             retry_queue,
         };
 
-        let mut supervisor =
-            WorkerSupervisor::new(params, count);
+        let mut supervisor = WorkerSupervisor::new(params, count);
 
         supervisor.spawn_initial();
 
         // Dispatcher için sender'ları al
-        self.senders = supervisor
-            .senders()
-            .to_vec();
+        self.senders = supervisor.senders().to_vec();
 
         // Supervisor izleme döngüsünü arka planda başlat
-        let shutdown_rx =
-            self.shutdown_tx.subscribe();
+        let shutdown_rx = self.shutdown_tx.subscribe();
 
         tokio::spawn(async move {
             supervisor.run(shutdown_rx).await;
@@ -93,20 +85,14 @@ impl WorkerManager {
     }
 
     /// Round-robin worker seçimi.
-    pub fn next_worker(
-        &self,
-    ) -> Option<WorkerHandle> {
+    pub fn next_worker(&self) -> Option<WorkerHandle> {
         if self.senders.is_empty() {
             return None;
         }
 
-        let index = self
-            .index
-            .fetch_add(1, Ordering::Relaxed);
+        let index = self.index.fetch_add(1, Ordering::Relaxed);
 
-        let sender =
-            self.senders[index % self.senders.len()]
-                .clone();
+        let sender = self.senders[index % self.senders.len()].clone();
 
         Some(WorkerHandle { sender })
     }
@@ -118,8 +104,7 @@ impl WorkerManager {
 
         // Sonra her worker'a mesaj gönder
         for sender in &self.senders {
-            let _ =
-                sender.send(WorkerMessage::Shutdown).await;
+            let _ = sender.send(WorkerMessage::Shutdown).await;
         }
     }
 }

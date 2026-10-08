@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::{
-    CommandSpec, ExecutionBackend, LocalProcessBackend, ProcessResult, PtyCommand,
-    PtyEvent, PtySession, PtySessionManager, PtySizeSpec, TerminalError, TerminalEvent, TerminalEventBus,
+    CommandSpec, ExecutionBackend, LocalProcessBackend, ProcessResult, PtyCommand, PtyEvent,
+    PtySession, PtySessionManager, PtySizeSpec, TerminalError, TerminalEvent, TerminalEventBus,
 };
 
 static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
@@ -70,12 +70,17 @@ where
     }
 
     pub fn create(&self, cwd: Option<PathBuf>) -> TerminalSession {
-        let session = TerminalSession { id: SessionId::new(), cwd };
+        let session = TerminalSession {
+            id: SessionId::new(),
+            cwd,
+        };
         self.sessions
             .lock()
             .expect("session mutex poisoned")
             .insert(session.id, session.clone());
-        self.events.publish(TerminalEvent::SessionCreated { session_id: session.id });
+        self.events.publish(TerminalEvent::SessionCreated {
+            session_id: session.id,
+        });
         session
     }
 
@@ -89,7 +94,8 @@ where
             if let Ok(pty) = pty.try_lock() {
                 let _ = pty.kill();
             }
-            self.events.publish(TerminalEvent::PtyDetached { session_id: id });
+            self.events
+                .publish(TerminalEvent::PtyDetached { session_id: id });
         }
 
         let removed = self
@@ -99,7 +105,8 @@ where
             .remove(&id);
 
         if removed.is_some() {
-            self.events.publish(TerminalEvent::SessionRemoved { session_id: id });
+            self.events
+                .publish(TerminalEvent::SessionRemoved { session_id: id });
         }
 
         removed
@@ -170,7 +177,9 @@ where
 
         let pty_events = handle
             .try_lock()
-            .map_err(|_| TerminalError::InvalidCommand("PTY lock unavailable during attach".into()))?
+            .map_err(|_| {
+                TerminalError::InvalidCommand("PTY lock unavailable during attach".into())
+            })?
             .subscribe();
 
         let mut ptys = self.ptys.lock().expect("pty map mutex poisoned");
@@ -202,7 +211,8 @@ where
             }
         });
 
-        self.events.publish(TerminalEvent::PtyAttached { session_id });
+        self.events
+            .publish(TerminalEvent::PtyAttached { session_id });
         Ok(())
     }
 
@@ -266,7 +276,8 @@ where
             .is_some();
 
         if detached {
-            self.events.publish(TerminalEvent::PtyDetached { session_id: id });
+            self.events
+                .publish(TerminalEvent::PtyDetached { session_id: id });
         }
 
         detached
@@ -297,10 +308,7 @@ where
             .get(&id)
             .cloned()
             .ok_or_else(|| {
-                TerminalError::InvalidCommand(format!(
-                    "session {:?} has no interactive PTY",
-                    id
-                ))
+                TerminalError::InvalidCommand(format!("session {:?} has no interactive PTY", id))
             })
     }
 }
@@ -322,10 +330,7 @@ mod tests {
                 .args(vec!["/C".to_string(), "hello".to_string()])
                 .build()
         } else {
-            CommandBuilder::new("echo")
-                .unwrap()
-                .arg("hello")
-                .build()
+            CommandBuilder::new("echo").unwrap().arg("hello").build()
         };
 
         let result = manager.execute(&session, command).await.unwrap();
@@ -347,7 +352,10 @@ mod tests {
         manager.open_pty(&session, shell).unwrap();
         assert!(manager.has_pty(session.id));
 
-        manager.write_str(session.id, "printf 'manager-ok\\n'; exit\n").await.unwrap();
+        manager
+            .write_str(session.id, "printf 'manager-ok\\n'; exit\n")
+            .await
+            .unwrap();
 
         let mut saw_output = false;
         let mut saw_exit = false;

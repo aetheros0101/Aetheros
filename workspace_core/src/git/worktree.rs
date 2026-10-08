@@ -37,11 +37,7 @@ fn parse_porcelain(text: &str) -> Vec<GitWorktree> {
                 wt.head = line.trim_start_matches("HEAD ").to_string();
             } else if line.starts_with("branch ") {
                 let b = line.trim_start_matches("branch ");
-                wt.branch = Some(
-                    b.strip_prefix("refs/heads/")
-                        .unwrap_or(b)
-                        .to_string(),
-                );
+                wt.branch = Some(b.strip_prefix("refs/heads/").unwrap_or(b).to_string());
             } else if line == "detached" {
                 wt.detached = true;
             } else if line == "bare" {

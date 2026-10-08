@@ -28,7 +28,7 @@ olarak derlenir.
 │  wasm/       → WASM sandbox (wasmtime veya wasmi backend)          │
 │  agents/     → agent tanımları ve yürütme mantığı                  │
 │  workflows/  → çok adımlı workflow motoru                          │
-│  orchestration/ → görev zamanlama / dağıtım                        │
+│  orchestration/ → workflow grafı, koordinasyon (küme iskeleti deneysel)│
 │  api/        → axum tabanlı REST + WebSocket API (sunucu modunda)  │
 │  security/   → RBAC (rbac.rs), JWT-lite + API key (auth/token.rs)  │
 │  persistence/→ sled tabanlı kalıcılık (MessagePack serileştirme)   │

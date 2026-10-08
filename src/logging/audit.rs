@@ -179,37 +179,48 @@ impl AuditEventKind {
     /// megabaytlarca olabilir; 10 000 olaylık tampon bunu kaldıramaz.
     pub(crate) fn bounded(self) -> Self {
         match self {
-            AuditEventKind::GovernorDecision { tool_name, decision, reason, arguments } => {
-                AuditEventKind::GovernorDecision {
-                    tool_name,
-                    decision,
-                    reason: reason.map(|r| clip(&r, MAX_AUDIT_TEXT_CHARS)),
-                    arguments: sanitize_arguments(&arguments),
-                }
-            }
-            AuditEventKind::ToolInvoked { tool_name, success, error, arguments, output } => {
-                AuditEventKind::ToolInvoked {
-                    tool_name,
-                    success,
-                    error: error.map(|e| clip(&e, MAX_AUDIT_TEXT_CHARS)),
-                    arguments: sanitize_arguments(&arguments),
-                    output,
-                }
-            }
-            AuditEventKind::ExecutionPaused { approval_id, tool_name, reason, arguments } => {
-                AuditEventKind::ExecutionPaused {
-                    approval_id,
-                    tool_name,
-                    reason: clip(&reason, MAX_AUDIT_TEXT_CHARS),
-                    arguments: sanitize_arguments(&arguments),
-                }
-            }
-            AuditEventKind::ApprovalDenied { approval_id, reason } => {
-                AuditEventKind::ApprovalDenied {
-                    approval_id,
-                    reason: clip(&reason, MAX_AUDIT_TEXT_CHARS),
-                }
-            }
+            AuditEventKind::GovernorDecision {
+                tool_name,
+                decision,
+                reason,
+                arguments,
+            } => AuditEventKind::GovernorDecision {
+                tool_name,
+                decision,
+                reason: reason.map(|r| clip(&r, MAX_AUDIT_TEXT_CHARS)),
+                arguments: sanitize_arguments(&arguments),
+            },
+            AuditEventKind::ToolInvoked {
+                tool_name,
+                success,
+                error,
+                arguments,
+                output,
+            } => AuditEventKind::ToolInvoked {
+                tool_name,
+                success,
+                error: error.map(|e| clip(&e, MAX_AUDIT_TEXT_CHARS)),
+                arguments: sanitize_arguments(&arguments),
+                output,
+            },
+            AuditEventKind::ExecutionPaused {
+                approval_id,
+                tool_name,
+                reason,
+                arguments,
+            } => AuditEventKind::ExecutionPaused {
+                approval_id,
+                tool_name,
+                reason: clip(&reason, MAX_AUDIT_TEXT_CHARS),
+                arguments: sanitize_arguments(&arguments),
+            },
+            AuditEventKind::ApprovalDenied {
+                approval_id,
+                reason,
+            } => AuditEventKind::ApprovalDenied {
+                approval_id,
+                reason: clip(&reason, MAX_AUDIT_TEXT_CHARS),
+            },
             AuditEventKind::ExecutionFailed { error } => AuditEventKind::ExecutionFailed {
                 error: clip(&error, MAX_AUDIT_TEXT_CHARS),
             },
@@ -304,7 +315,8 @@ impl AuditLog {
         if let Some(engine) = &self.persistence {
             match serde_json::to_vec(&event) {
                 Ok(bytes) => {
-                    if let Err(e) = engine.put_record(RecordKind::Audit, &audit_key(&event), &bytes) {
+                    if let Err(e) = engine.put_record(RecordKind::Audit, &audit_key(&event), &bytes)
+                    {
                         error!(err = %e, "Denetim olayı diske yazılamadı");
                     }
                 }
@@ -313,12 +325,11 @@ impl AuditLog {
         }
 
         let mut events = self.events.write().unwrap();
-        if events.len() >= self.max_events {
-            if let Some(old) = events.pop_front() {
-                if let Some(engine) = &self.persistence {
-                    let _ = engine.delete_record(RecordKind::Audit, &audit_key(&old));
-                }
-            }
+        if events.len() >= self.max_events
+            && let Some(old) = events.pop_front()
+            && let Some(engine) = &self.persistence
+        {
+            let _ = engine.delete_record(RecordKind::Audit, &audit_key(&old));
         }
         events.push_back(event);
     }
@@ -362,11 +373,7 @@ mod tests {
         let agent_id = Uuid::new_v4();
         let execution_id = Uuid::new_v4();
 
-        log.record(
-            agent_id,
-            execution_id,
-            AuditEventKind::ExecutionCompleted,
-        );
+        log.record(agent_id, execution_id, AuditEventKind::ExecutionCompleted);
 
         let events = log.list();
         assert_eq!(events.len(), 1);
@@ -384,9 +391,13 @@ mod tests {
 
         log.record(agent_id, exec_a, AuditEventKind::ExecutionCompleted);
         log.record(agent_id, exec_b, AuditEventKind::ExecutionCompleted);
-        log.record(agent_id, exec_a, AuditEventKind::ExecutionFailed {
-            error: "x".to_string(),
-        });
+        log.record(
+            agent_id,
+            exec_a,
+            AuditEventKind::ExecutionFailed {
+                error: "x".to_string(),
+            },
+        );
 
         assert_eq!(log.list_for_execution(exec_a).len(), 2);
         assert_eq!(log.list_for_execution(exec_b).len(), 1);
@@ -398,15 +409,23 @@ mod tests {
         let agent_id = Uuid::new_v4();
         let execution_id = Uuid::new_v4();
 
-        log.record(agent_id, execution_id, AuditEventKind::ExecutionPaused {
-            approval_id: Uuid::new_v4(),
-            tool_name: "first".to_string(),
-            reason: "r".to_string(),
-            arguments: vec![],
-        });
-        log.record(agent_id, execution_id, AuditEventKind::ExecutionResumed {
-            approval_id: Uuid::new_v4(),
-        });
+        log.record(
+            agent_id,
+            execution_id,
+            AuditEventKind::ExecutionPaused {
+                approval_id: Uuid::new_v4(),
+                tool_name: "first".to_string(),
+                reason: "r".to_string(),
+                arguments: vec![],
+            },
+        );
+        log.record(
+            agent_id,
+            execution_id,
+            AuditEventKind::ExecutionResumed {
+                approval_id: Uuid::new_v4(),
+            },
+        );
         log.record(agent_id, execution_id, AuditEventKind::ExecutionCompleted);
 
         let events = log.list();
@@ -432,7 +451,12 @@ mod tests {
 
     #[test]
     fn sanitize_redacts_secret_looking_values() {
-        let out = sanitize_arguments(&v(&["curl", "-H", "Authorization: Bearer abc", "x?token=123"]));
+        let out = sanitize_arguments(&v(&[
+            "curl",
+            "-H",
+            "Authorization: Bearer abc",
+            "x?token=123",
+        ]));
         assert_eq!(out[0], "curl");
         assert_eq!(out[2], REDACTED);
         assert_eq!(out[3], REDACTED);
@@ -455,7 +479,11 @@ mod tests {
 
         let long = "x".repeat(MAX_AUDIT_ARG_CHARS + 50);
         let out = sanitize_arguments(&[long]);
-        assert_eq!(out[0].chars().count(), MAX_AUDIT_ARG_CHARS + 1, "kırpıldı + '…'");
+        assert_eq!(
+            out[0].chars().count(),
+            MAX_AUDIT_ARG_CHARS + 1,
+            "kırpıldı + '…'"
+        );
         assert!(out[0].ends_with('…'));
     }
 
@@ -501,9 +529,14 @@ mod tests {
             },
         );
         match &log.list()[0].kind {
-            AuditEventKind::ToolInvoked { error, arguments, .. } => {
+            AuditEventKind::ToolInvoked {
+                error, arguments, ..
+            } => {
                 assert_eq!(arguments, &v(&["sh", "--token", REDACTED]));
-                assert_eq!(error.as_ref().unwrap().chars().count(), MAX_AUDIT_TEXT_CHARS + 1);
+                assert_eq!(
+                    error.as_ref().unwrap().chars().count(),
+                    MAX_AUDIT_TEXT_CHARS + 1
+                );
             }
             other => panic!("beklenmeyen olay: {other:?}"),
         }
@@ -537,7 +570,13 @@ mod tests {
         let (a, e) = (Uuid::new_v4(), Uuid::new_v4());
         {
             let log = AuditLog::with_persistence(engine_at(dir.path()), 100);
-            log.record(a, e, AuditEventKind::ExecutionFailed { error: "ilk".into() });
+            log.record(
+                a,
+                e,
+                AuditEventKind::ExecutionFailed {
+                    error: "ilk".into(),
+                },
+            );
             pause_ms();
             log.record(a, e, AuditEventKind::ExecutionCompleted);
             pause_ms();
@@ -556,10 +595,14 @@ mod tests {
         let log = AuditLog::with_persistence(engine_at(dir.path()), 100);
         let events = log.list();
         assert_eq!(events.len(), 3);
-        assert!(matches!(&events[0].kind, AuditEventKind::ExecutionFailed { error } if error == "ilk"));
+        assert!(
+            matches!(&events[0].kind, AuditEventKind::ExecutionFailed { error } if error == "ilk")
+        );
         assert_eq!(events[1].kind, AuditEventKind::ExecutionCompleted);
         match &events[2].kind {
-            AuditEventKind::ToolInvoked { arguments, output, .. } => {
+            AuditEventKind::ToolInvoked {
+                arguments, output, ..
+            } => {
                 assert_eq!(arguments, &v(&["git", "status"]));
                 assert_eq!(output.as_ref().unwrap().bytes, 3);
             }
@@ -574,7 +617,13 @@ mod tests {
         {
             let log = AuditLog::with_persistence(engine_at(dir.path()), 2);
             for i in 0..3 {
-                log.record(a, e, AuditEventKind::ExecutionFailed { error: format!("olay{i}") });
+                log.record(
+                    a,
+                    e,
+                    AuditEventKind::ExecutionFailed {
+                        error: format!("olay{i}"),
+                    },
+                );
                 pause_ms();
             }
             assert_eq!(log.count(), 2, "bellekte sınır uygulanmalı");
@@ -582,7 +631,11 @@ mod tests {
         let log = AuditLog::with_persistence(engine_at(dir.path()), 2);
         let events = log.list();
         assert_eq!(events.len(), 2, "diskte de yalnız son 2 kalmalı");
-        assert!(matches!(&events[0].kind, AuditEventKind::ExecutionFailed { error } if error == "olay1"));
-        assert!(matches!(&events[1].kind, AuditEventKind::ExecutionFailed { error } if error == "olay2"));
+        assert!(
+            matches!(&events[0].kind, AuditEventKind::ExecutionFailed { error } if error == "olay1")
+        );
+        assert!(
+            matches!(&events[1].kind, AuditEventKind::ExecutionFailed { error } if error == "olay2")
+        );
     }
 }

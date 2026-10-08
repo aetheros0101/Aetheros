@@ -5,9 +5,9 @@
 // zorlaması ve denetim izi.
 // ============================================================
 
-use crate::agents::terminal_tool::{explain_spawn_failure, TerminalAgentTool};
+use crate::agents::terminal_tool::{TerminalAgentTool, explain_spawn_failure};
 use crate::agents::user_terminal::{
-    check, run, split_command_line, MAX_OUTPUT_CHARS, USER_TERMINAL_AGENT_ID,
+    MAX_OUTPUT_CHARS, USER_TERMINAL_AGENT_ID, check, run, split_command_line,
 };
 use crate::logging::audit::{AuditEventKind, AuditLog};
 use crate::security::command_policy::CommandPolicy;
@@ -21,8 +21,14 @@ fn v(items: &[&str]) -> Vec<String> {
 
 #[test]
 fn splits_on_whitespace() {
-    assert_eq!(split_command_line("touch deneme.txt").unwrap(), v(&["touch", "deneme.txt"]));
-    assert_eq!(split_command_line("  ls   -la  ").unwrap(), v(&["ls", "-la"]));
+    assert_eq!(
+        split_command_line("touch deneme.txt").unwrap(),
+        v(&["touch", "deneme.txt"])
+    );
+    assert_eq!(
+        split_command_line("  ls   -la  ").unwrap(),
+        v(&["ls", "-la"])
+    );
     assert_eq!(split_command_line("").unwrap(), Vec::<String>::new());
     assert_eq!(split_command_line("   ").unwrap(), Vec::<String>::new());
 }
@@ -33,16 +39,31 @@ fn quotes_keep_spaces_and_empty_quotes_make_empty_args() {
         split_command_line(r#"echo "merhaba dünya" 'tek tırnak'"#).unwrap(),
         v(&["echo", "merhaba dünya", "tek tırnak"])
     );
-    assert_eq!(split_command_line(r#"echo "" x"#).unwrap(), v(&["echo", "", "x"]));
+    assert_eq!(
+        split_command_line(r#"echo "" x"#).unwrap(),
+        v(&["echo", "", "x"])
+    );
     assert_eq!(split_command_line(r#"a"b c"d"#).unwrap(), v(&["ab cd"]));
 }
 
 #[test]
 fn escapes_work_outside_and_inside_double_quotes_but_not_single() {
-    assert_eq!(split_command_line(r"echo a\ b").unwrap(), v(&["echo", "a b"]));
-    assert_eq!(split_command_line(r#"echo "a\"b""#).unwrap(), v(&["echo", r#"a"b"#]));
-    assert_eq!(split_command_line(r#"echo "a\nb""#).unwrap(), v(&["echo", r"a\nb"]));
-    assert_eq!(split_command_line(r"echo 'a\b'").unwrap(), v(&["echo", r"a\b"]));
+    assert_eq!(
+        split_command_line(r"echo a\ b").unwrap(),
+        v(&["echo", "a b"])
+    );
+    assert_eq!(
+        split_command_line(r#"echo "a\"b""#).unwrap(),
+        v(&["echo", r#"a"b"#])
+    );
+    assert_eq!(
+        split_command_line(r#"echo "a\nb""#).unwrap(),
+        v(&["echo", r"a\nb"])
+    );
+    assert_eq!(
+        split_command_line(r"echo 'a\b'").unwrap(),
+        v(&["echo", r"a\b"])
+    );
 }
 
 #[test]
@@ -55,7 +76,9 @@ fn unterminated_quote_is_an_error() {
 fn shell_metacharacters_stay_plain_arguments() {
     assert_eq!(
         split_command_line("ls && rm -rf / ; echo $(x) | cat > f").unwrap(),
-        v(&["ls", "&&", "rm", "-rf", "/", ";", "echo", "$(x)", "|", "cat", ">", "f"])
+        v(&[
+            "ls", "&&", "rm", "-rf", "/", ";", "echo", "$(x)", "|", "cat", ">", "f"
+        ])
     );
 }
 
@@ -69,9 +92,18 @@ fn tool() -> TerminalAgentTool {
 fn check_returns_the_policy_verdict_for_the_typed_line() {
     let t = tool();
     assert_eq!(check(&t, "ls").unwrap().verdict, CallVerdict::Allow);
-    assert!(matches!(check(&t, "touch a.txt").unwrap().verdict, CallVerdict::Ask { .. }));
-    assert!(matches!(check(&t, r#"sh -c "echo hi""#).unwrap().verdict, CallVerdict::Deny { .. }));
-    assert_eq!(check(&t, "touch a.txt").unwrap().argv, v(&["touch", "a.txt"]));
+    assert!(matches!(
+        check(&t, "touch a.txt").unwrap().verdict,
+        CallVerdict::Ask { .. }
+    ));
+    assert!(matches!(
+        check(&t, r#"sh -c "echo hi""#).unwrap().verdict,
+        CallVerdict::Deny { .. }
+    ));
+    assert_eq!(
+        check(&t, "touch a.txt").unwrap().argv,
+        v(&["touch", "a.txt"])
+    );
     assert!(check(&t, "   ").is_err());
     assert!(check(&t, r#"echo "x"#).is_err());
 }
@@ -82,7 +114,9 @@ fn check_returns_the_policy_verdict_for_the_typed_line() {
 async fn deny_never_runs_and_is_audited() {
     let t = tool();
     let audit = AuditLog::new(100);
-    let err = run(&t, &audit, r#"sh -c "echo hi""#, true).await.unwrap_err();
+    let err = run(&t, &audit, r#"sh -c "echo hi""#, true)
+        .await
+        .unwrap_err();
     assert!(err.contains("reddedildi"), "{err}");
 
     let events = audit.list();
@@ -98,7 +132,9 @@ async fn deny_never_runs_and_is_audited() {
 async fn ask_without_confirmation_does_not_run_and_leaves_no_trace() {
     let t = tool();
     let audit = AuditLog::new(100);
-    let err = run(&t, &audit, "touch asla_olusmamali.txt", false).await.unwrap_err();
+    let err = run(&t, &audit, "touch asla_olusmamali.txt", false)
+        .await
+        .unwrap_err();
     assert!(err.contains("onay gerekli"), "{err}");
     assert!(audit.list().is_empty());
 }
@@ -121,7 +157,11 @@ async fn allowed_command_runs_and_writes_two_audit_events() {
     ));
     assert!(matches!(
         &events[1].kind,
-        AuditEventKind::ToolInvoked { success: true, output: Some(_), .. }
+        AuditEventKind::ToolInvoked {
+            success: true,
+            output: Some(_),
+            ..
+        }
     ));
     assert_eq!(events[0].execution_id, events[1].execution_id);
 }
@@ -139,7 +179,10 @@ async fn confirmed_ask_runs_inside_the_workspace() {
 
     let res = run(&t, &audit, "touch onayli.txt", true).await.unwrap();
     assert!(res.success);
-    assert!(dir.join("onayli.txt").exists(), "onaylı komut workspace'te çalışmalı");
+    assert!(
+        dir.join("onayli.txt").exists(),
+        "onaylı komut workspace'te çalışmalı"
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -161,7 +204,7 @@ async fn failing_command_reports_failure_not_an_error() {
 
 #[test]
 fn max_output_constant_is_sane() {
-    assert!(MAX_OUTPUT_CHARS >= 1_000);
+    assert!(std::hint::black_box(MAX_OUTPUT_CHARS) >= 1_000);
 }
 
 // ── spawn hatası açıklaması ──
@@ -201,7 +244,11 @@ async fn nonexistent_program_reports_the_explained_failure() {
         .await
         .unwrap();
     assert!(!res.success);
-    assert!(res.output.contains("programı başlatılamadı"), "{}", res.output);
+    assert!(
+        res.output.contains("programı başlatılamadı"),
+        "{}",
+        res.output
+    );
 }
 
 #[cfg(unix)]
@@ -211,7 +258,11 @@ fn user_terminal_check_denies_paths_outside_the_workspace() {
     let t = TerminalAgentTool::with_workspace(dir.clone());
     for line in ["cat /etc/passwd", "ls ..", "ls /"] {
         let r = check(&t, line).unwrap();
-        assert!(matches!(r.verdict, CallVerdict::Deny { .. }), "{line}: {:?}", r.verdict);
+        assert!(
+            matches!(r.verdict, CallVerdict::Deny { .. }),
+            "{line}: {:?}",
+            r.verdict
+        );
     }
     assert_eq!(check(&t, "ls").unwrap().verdict, CallVerdict::Allow);
     let _ = std::fs::remove_dir_all(&dir);

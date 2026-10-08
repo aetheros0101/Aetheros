@@ -1,22 +1,13 @@
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum WorkflowState {
     Pending,
-        Scheduled,
-        Running,
-        Suspended,
-        Retrying,
-        Failed,
-        Completed,
-        Cancelled,
+    Scheduled,
+    Running,
+    Suspended,
+    Retrying,
+    Failed,
+    Completed,
+    Cancelled,
 }

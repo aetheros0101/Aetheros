@@ -20,36 +20,17 @@ use std::sync::Arc;
 use dashmap::DashMap;
 
 use tokio::time::timeout;
-use tracing::{
-    debug,
-    info,
-};
-use wasmtime::{
-    Engine,
-    Instance,
-    Linker,
-    Module,
-    Store,
-    StoreLimitsBuilder,
-};
+use tracing::{debug, info};
+use wasmtime::{Engine, Instance, Linker, Module, Store, StoreLimitsBuilder};
 
 use async_trait::async_trait;
 
 use crate::errors::wasm::WasmError;
 use crate::task::task::TaskDefinition;
 use crate::wasm::WasmExecutor;
-use crate::wasm::host::{
-    register_host_functions,
-    HostContext,
-};
-use crate::wasm::module_store::{
-    ModuleHash,
-    ModuleStore,
-};
-use crate::wasm::sandbox::{
-    create_engine,
-    SandboxLimits,
-};
+use crate::wasm::host::{HostContext, register_host_functions};
+use crate::wasm::module_store::{ModuleHash, ModuleStore};
+use crate::wasm::sandbox::{SandboxLimits, create_engine};
 
 pub struct WasmEngine {
     engine: Arc<Engine>,
@@ -60,14 +41,10 @@ pub struct WasmEngine {
 }
 
 impl WasmEngine {
-    pub fn new(
-        limits: SandboxLimits,
-        module_store: Arc<ModuleStore>,
-    ) -> Result<Self, WasmError> {
-        let engine = create_engine()
-            .map_err(|e| WasmError::EngineFailure {
-                message: e.to_string(),
-            })?;
+    pub fn new(limits: SandboxLimits, module_store: Arc<ModuleStore>) -> Result<Self, WasmError> {
+        let engine = create_engine().map_err(|e| WasmError::EngineFailure {
+            message: e.to_string(),
+        })?;
 
         Ok(Self {
             engine: Arc::new(engine),
@@ -77,10 +54,7 @@ impl WasmEngine {
         })
     }
 
-    pub async fn execute(
-        &self,
-        task: TaskDefinition,
-    ) -> Result<Vec<u8>, WasmError> {
+    pub async fn execute(&self, task: TaskDefinition) -> Result<Vec<u8>, WasmError> {
         // Timeout kontrolü
         if task.timeout_ms == 0 {
             return Err(WasmError::InvalidConfiguration {
@@ -97,18 +71,15 @@ impl WasmEngine {
         }
 
         // L1: Binary store'dan al
-        let binary = self
-            .module_store
-            .get(&task.wasm_module_hash)
-            .map_err(|_| WasmError::InvalidConfiguration {
+        let binary = self.module_store.get(&task.wasm_module_hash).map_err(|_| {
+            WasmError::InvalidConfiguration {
                 // InvalidConfiguration → Permanent → retry yok
                 reason: "module not found in store".into(),
-            })?;
+            }
+        })?;
 
         // L2: Compile cache'den al veya derle
-        let module = self
-            .get_or_compile(task.wasm_module_hash, &binary)
-            .await?;
+        let module = self.get_or_compile(task.wasm_module_hash, &binary).await?;
 
         self.run_module(module, task).await
     }
@@ -131,20 +102,19 @@ impl WasmEngine {
         let engine = Arc::clone(&self.engine);
         let binary = binary.to_vec();
 
-        let module =
-            tokio::task::spawn_blocking(move || {
-                Module::new(&engine, &binary)
-                    .map_err(|e| WasmError::InvalidModule { reason: e.to_string() })
+        let module = tokio::task::spawn_blocking(move || {
+            Module::new(&engine, &binary).map_err(|e| WasmError::InvalidModule {
+                reason: e.to_string(),
             })
-            .await
-            .map_err(|_| WasmError::EngineFailure {
-                message: "compile task panicked".into(),
-            })??;
+        })
+        .await
+        .map_err(|_| WasmError::EngineFailure {
+            message: "compile task panicked".into(),
+        })??;
 
         let module = Arc::new(module);
 
-        self.compile_cache
-            .insert(hash, Arc::clone(&module));
+        self.compile_cache.insert(hash, Arc::clone(&module));
 
         info!(
             hash = %hex::encode(hash),
@@ -161,10 +131,9 @@ impl WasmEngine {
     ) -> Result<Vec<u8>, WasmError> {
         let mut linker = Linker::new(&self.engine);
 
-        register_host_functions(&mut linker)
-            .map_err(|e| WasmError::EngineFailure {
-                message: e.to_string(),
-            })?;
+        register_host_functions(&mut linker).map_err(|e| WasmError::EngineFailure {
+            message: e.to_string(),
+        })?;
 
         let store_limits = StoreLimitsBuilder::new()
             .memory_size(self.limits.memory_limit_bytes)
@@ -175,7 +144,9 @@ impl WasmEngine {
 
         let mut store = Store::new(
             &self.engine,
-            HostContext { limits: store_limits },
+            HostContext {
+                limits: store_limits,
+            },
         );
         store.limiter(|state| &mut state.limits);
 
@@ -192,10 +163,7 @@ impl WasmEngine {
                 .map_err(|_| WasmError::ExecutionPanic)?;
 
             let function = instance
-                .get_typed_func::<(), ()>(
-                    &mut store,
-                    &task.entrypoint,
-                )
+                .get_typed_func::<(), ()>(&mut store, &task.entrypoint)
                 .map_err(|_| WasmError::MissingEntrypoint)?;
 
             function
@@ -227,10 +195,7 @@ impl WasmEngine {
 
 #[async_trait]
 impl WasmExecutor for WasmEngine {
-    async fn execute(
-        &self,
-        task: TaskDefinition,
-    ) -> Result<Vec<u8>, WasmError> {
+    async fn execute(&self, task: TaskDefinition) -> Result<Vec<u8>, WasmError> {
         self.execute(task).await
     }
 }

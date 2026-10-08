@@ -33,10 +33,14 @@ use crate::types::agent_tool::{AgentTool, CallVerdict, RiskLevel};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GovernorDecision {
     Allow,
-    Deny { reason: String },
+    Deny {
+        reason: String,
+    },
     /// İnsan onayı gerekir: çağıran taraf eylemi çalıştırmadan duraklatır
     /// (AgentRuntime) — onay yolu yoksa çalıştırmamalıdır.
-    RequiresApproval { reason: String },
+    RequiresApproval {
+        reason: String,
+    },
 }
 
 impl GovernorDecision {
@@ -123,18 +127,17 @@ impl SecurityGovernor {
         tool: &Arc<dyn AgentTool>,
         arguments: Option<&[String]>,
     ) -> GovernorDecision {
-        if let Some(engine) = &self.capability_engine {
-            if let CapabilityDecision::Denied { reason } =
+        if let Some(engine) = &self.capability_engine
+            && let CapabilityDecision::Denied { reason } =
                 engine.check(&agent_id, tool.required_capability())
-            {
-                warn!(
-                    agent_id = %agent_id,
-                    tool = tool.name(),
-                    reason = %reason,
-                    "Governor: capability denied"
-                );
-                return GovernorDecision::Deny { reason };
-            }
+        {
+            warn!(
+                agent_id = %agent_id,
+                tool = tool.name(),
+                reason = %reason,
+                "Governor: capability denied"
+            );
+            return GovernorDecision::Deny { reason };
         }
 
         if self.fail_closed
@@ -194,7 +197,9 @@ impl SecurityGovernor {
                             reason = %assessment.reason,
                             "Governor: high-risk tool call blocked"
                         );
-                        GovernorDecision::Deny { reason: assessment.reason }
+                        GovernorDecision::Deny {
+                            reason: assessment.reason,
+                        }
                     }
                     HighRiskPolicy::RequireApproval => {
                         warn!(
@@ -203,7 +208,9 @@ impl SecurityGovernor {
                             reason = %assessment.reason,
                             "Governor: high-risk tool call requires approval (execution duraklatılacak)"
                         );
-                        GovernorDecision::RequiresApproval { reason: assessment.reason }
+                        GovernorDecision::RequiresApproval {
+                            reason: assessment.reason,
+                        }
                     }
                     HighRiskPolicy::AllowWithWarning => {
                         warn!(
@@ -245,7 +252,7 @@ mod tests {
     use async_trait::async_trait;
 
     use super::*;
-    use crate::agents::capabilities::{AgentCapabilities, AgentCapability};
+    use crate::types::capability::{AgentCapabilities, AgentCapability};
 
     struct FakeTool {
         cap: Option<AgentCapability>,
@@ -286,8 +293,12 @@ mod tests {
         fn assess_call(&self, arguments: &[String]) -> Option<CallVerdict> {
             match arguments.first().map(String::as_str) {
                 Some("ok") => Some(CallVerdict::Allow),
-                Some("ask") => Some(CallVerdict::Ask { reason: "sor".into() }),
-                Some("no") => Some(CallVerdict::Deny { reason: "yasak".into() }),
+                Some("ask") => Some(CallVerdict::Ask {
+                    reason: "sor".into(),
+                }),
+                Some("no") => Some(CallVerdict::Deny {
+                    reason: "yasak".into(),
+                }),
                 _ => None,
             }
         }
@@ -305,9 +316,15 @@ mod tests {
         let g = SecurityGovernor::new(None, Some(Arc::new(RiskEngine::new())));
         let t: Arc<dyn AgentTool> = Arc::new(CallTool);
         // Argümansız eski yol: High → onay
-        assert!(matches!(g.evaluate(Uuid::new_v4(), &t), GovernorDecision::RequiresApproval { .. }));
+        assert!(matches!(
+            g.evaluate(Uuid::new_v4(), &t),
+            GovernorDecision::RequiresApproval { .. }
+        ));
         // Argüman-bazlı açık izin → otomatik
-        assert_eq!(g.evaluate_call(Uuid::new_v4(), &t, &args(&["ok"])), GovernorDecision::Allow);
+        assert_eq!(
+            g.evaluate_call(Uuid::new_v4(), &t, &args(&["ok"])),
+            GovernorDecision::Allow
+        );
     }
 
     #[test]
@@ -347,14 +364,18 @@ mod tests {
         struct CapTool;
         #[async_trait]
         impl AgentTool for CapTool {
-            fn name(&self) -> &'static str { "cap_tool" }
+            fn name(&self) -> &'static str {
+                "cap_tool"
+            }
             fn required_capability(&self) -> Option<AgentCapability> {
                 Some(AgentCapability::TerminalExecution)
             }
             fn assess_call(&self, _a: &[String]) -> Option<CallVerdict> {
                 Some(CallVerdict::Allow)
             }
-            async fn invoke(&self, _a: Vec<String>) -> Result<String, String> { Ok(String::new()) }
+            async fn invoke(&self, _a: Vec<String>) -> Result<String, String> {
+                Ok(String::new())
+            }
         }
         let cap_engine = Arc::new(CapabilityEngine::new());
         let g = SecurityGovernor::new(Some(cap_engine), None);
@@ -370,17 +391,24 @@ mod tests {
         struct CapTool2;
         #[async_trait]
         impl AgentTool for CapTool2 {
-            fn name(&self) -> &'static str { "cap2" }
+            fn name(&self) -> &'static str {
+                "cap2"
+            }
             fn required_capability(&self) -> Option<AgentCapability> {
                 Some(AgentCapability::TerminalExecution)
             }
-            async fn invoke(&self, _a: Vec<String>) -> Result<String, String> { Ok(String::new()) }
+            async fn invoke(&self, _a: Vec<String>) -> Result<String, String> {
+                Ok(String::new())
+            }
         }
         let t: Arc<dyn AgentTool> = Arc::new(CapTool2);
         let mut g = SecurityGovernor::new(None, None);
         assert_eq!(g.evaluate(Uuid::new_v4(), &t), GovernorDecision::Allow); // eski davranış
         g.set_fail_closed(true);
-        assert!(matches!(g.evaluate(Uuid::new_v4(), &t), GovernorDecision::Deny { .. }));
+        assert!(matches!(
+            g.evaluate(Uuid::new_v4(), &t),
+            GovernorDecision::Deny { .. }
+        ));
     }
 
     #[test]
@@ -445,7 +473,10 @@ mod tests {
         );
 
         assert!(!decision.is_allowed());
-        assert!(matches!(decision, GovernorDecision::RequiresApproval { .. }));
+        assert!(matches!(
+            decision,
+            GovernorDecision::RequiresApproval { .. }
+        ));
     }
 
     #[test]
@@ -466,7 +497,10 @@ mod tests {
 
         let decision = governor.evaluate(Uuid::new_v4(), &tool(None, RiskLevel::High));
         assert!(!decision.is_allowed());
-        assert!(matches!(decision, GovernorDecision::RequiresApproval { .. }));
+        assert!(matches!(
+            decision,
+            GovernorDecision::RequiresApproval { .. }
+        ));
     }
 
     #[test]

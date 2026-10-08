@@ -20,18 +20,15 @@
 use flutter_rust_bridge::frb;
 use tracing::info;
 
+use crate::api::rest::router::WorkflowStepRequest;
 use crate::bridge::state::{get_runtime, init_mobile_runtime};
 use crate::bridge::types::{
-    AgentStartResponse, AgentStatusResponse,
-    ClusterNodeResponse, ClusterStatusResponse,
-    LogRecord, MetricsSnapshot, ModuleUploadResponse,
-    AuditEventResponse, NodeRegistrationResponse, PendingApprovalResponse,
-    RuntimeInfo, TaskRequest, TaskStatusResponse,
-    TerminalCheckResponse, TerminalRunResponse,
-    WorkflowStartResponse, WorkflowStatusResponse,
-    WorkspaceFileResponse, WorkspaceItem,
+    AgentStartResponse, AgentStatusResponse, AuditEventResponse, ClusterNodeResponse,
+    ClusterStatusResponse, LogRecord, MetricsSnapshot, ModuleUploadResponse,
+    NodeRegistrationResponse, PendingApprovalResponse, RuntimeInfo, TaskRequest,
+    TaskStatusResponse, TerminalCheckResponse, TerminalRunResponse, WorkflowStartResponse,
+    WorkflowStatusResponse, WorkspaceFileResponse, WorkspaceItem,
 };
-use crate::api::rest::router::WorkflowStepRequest;
 use crate::task::priority::TaskPriority;
 use crate::task::retry::RetryPolicy;
 use crate::task::task::{TaskDefinition, TaskMetadata, TaskState};
@@ -79,10 +76,7 @@ pub fn init_app() {
 ///
 /// `worker_count`: paralel WASM worker sayısı
 ///   Mobil için 2-4 önerilir.
-pub async fn initialize_runtime(
-    db_path: String,
-    worker_count: u32,
-) -> Result<(), String> {
+pub async fn initialize_runtime(db_path: String, worker_count: u32) -> Result<(), String> {
     info!(db = %db_path, workers = worker_count, "initialize_runtime çağrıldı");
 
     // FRB kendi Tokio runtime'ını çalıştırıyor.
@@ -91,13 +85,9 @@ pub async fn initialize_runtime(
     //
     // Çözüm: spawn_blocking → blocking thread pool'da çalıştır.
     // Bu thread'lerde aktif Tokio context YOK, dolayısıyla block_on güvenli.
-    let r = tokio::task::spawn_blocking(move || {
-        init_mobile_runtime(db_path, worker_count as usize)
-    })
-    .await
-    .map_err(|e| format!("Thread başlatma hatası: {e}"))?;
-
-    r
+    tokio::task::spawn_blocking(move || init_mobile_runtime(db_path, worker_count as usize))
+        .await
+        .map_err(|e| format!("Thread başlatma hatası: {e}"))?
 }
 
 /// Runtime'ın çalışıp çalışmadığını kontrol et.
@@ -114,7 +104,7 @@ pub fn get_runtime_info() -> RuntimeInfo {
     };
 
     RuntimeInfo {
-        version:    env!("CARGO_PKG_VERSION").to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
         is_running: get_runtime().is_some(),
         backend,
         worker_count: get_runtime().map(|_| 2u32).unwrap_or(0),
@@ -138,11 +128,8 @@ pub fn get_runtime_info() -> RuntimeInfo {
 ///   maxRetries: 3,
 /// ));
 /// ```
-pub async fn submit_task(
-    request: TaskRequest,
-) -> Result<String, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+pub async fn submit_task(request: TaskRequest) -> Result<String, String> {
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     // priority string → TaskPriority
     let priority = parse_priority(&request.priority)?;
@@ -161,7 +148,7 @@ pub async fn submit_task(
     let now = chrono::Utc::now();
 
     let task = TaskDefinition {
-        id: task_id.clone(),
+        id: task_id,
         parent: None,
         orchestration: None,
         priority,
@@ -194,14 +181,11 @@ pub async fn submit_task(
 }
 
 /// Task durumunu sorgula.
-pub async fn get_task_status(
-    task_id: String,
-) -> Result<TaskStatusResponse, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+pub async fn get_task_status(task_id: String) -> Result<TaskStatusResponse, String> {
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
-    let uuid = uuid::Uuid::parse_str(&task_id)
-        .map_err(|_| format!("Geçersiz task_id: {task_id}"))?;
+    let uuid =
+        uuid::Uuid::parse_str(&task_id).map_err(|_| format!("Geçersiz task_id: {task_id}"))?;
 
     let tid = TaskId(uuid);
 
@@ -227,7 +211,7 @@ pub async fn get_task_status(
     };
 
     Ok(TaskStatusResponse {
-        task_id: task_id,
+        task_id,
         state: state_str,
         created_at: persisted.created_at.timestamp_millis(),
         updated_at: persisted.updated_at.timestamp_millis(),
@@ -237,11 +221,8 @@ pub async fn get_task_status(
 }
 
 /// Tüm task'ları listele (son N tane).
-pub async fn list_tasks(
-    limit: u32,
-) -> Result<Vec<TaskStatusResponse>, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+pub async fn list_tasks(limit: u32) -> Result<Vec<TaskStatusResponse>, String> {
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     let all = match rt.persistence.load_all_tasks() {
         Ok(tasks) => tasks,
@@ -255,7 +236,7 @@ pub async fn list_tasks(
 
     let responses: Vec<TaskStatusResponse> = all
         .into_iter()
-        .rev()                              // En yeni önce
+        .rev() // En yeni önce
         .take(limit as usize)
         .map(|p| {
             let state_str = format!("{:?}", p.task.state);
@@ -268,11 +249,11 @@ pub async fn list_tasks(
                 _ => None,
             };
             TaskStatusResponse {
-                task_id:       p.task.id.0.to_string(),
-                state:         state_str,
-                created_at:    p.created_at.timestamp_millis(),
-                updated_at:    p.updated_at.timestamp_millis(),
-                attempts:      p.attempts,
+                task_id: p.task.id.0.to_string(),
+                state: state_str,
+                created_at: p.created_at.timestamp_millis(),
+                updated_at: p.updated_at.timestamp_millis(),
+                attempts: p.attempts,
                 error_message,
             }
         })
@@ -283,18 +264,6 @@ pub async fn list_tasks(
 
 // ── WASM modül yönetimi ───────────────────────────────────
 
-/// WASM modülü yükle → hash döner.
-///
-/// Flutter, dosyayı bytes olarak Rust'a verir.
-/// Rust, ModuleStore'a kaydeder ve SHA-256 hash döner.
-/// Sonraki task'larda bu hash kullanılır.
-///
-/// Örnek (Dart):
-/// ```dart
-/// final bytes = await File("my_module.wasm").readAsBytes();
-/// final hash = await AetherApi.uploadWasmModule(bytes: bytes);
-/// ```
-
 /// WAT (WebAssembly Text Format) kaynak kodunu WASM binary'ye derle
 /// ve ModuleStore'a kaydet.
 ///
@@ -304,14 +273,14 @@ pub async fn list_tasks(
 /// Başarı: ModuleUploadResponse { hash, size } döner.
 /// Hata:  WAT sözdizimi hatası string olarak döner.
 pub async fn compile_wat_to_wasm(
-    name:         String,
-    wat_source:   String,
-    entrypoint:   String,
-    _timeout_ms:  u64,   // Gelecekte execution timeout için — şimdilik WAT compile'da kullanılmıyor
+    name: String,
+    wat_source: String,
+    entrypoint: String,
+    _timeout_ms: u64, // Gelecekte execution timeout için — şimdilik WAT compile'da kullanılmıyor
 ) -> Result<ModuleUploadResponse, String> {
     // WAT → WASM binary (Rust tarafında, zero-dependency)
-    let wasm_binary = wat::parse_str(&wat_source)
-        .map_err(|e| format!("WAT derleme hatası: {e}"))?;
+    let wasm_binary =
+        wat::parse_str(&wat_source).map_err(|e| format!("WAT derleme hatası: {e}"))?;
 
     info!(
         name       = %name,
@@ -321,8 +290,7 @@ pub async fn compile_wat_to_wasm(
     );
 
     // Artık binary olarak upload_wasm_module'ün yaptığını tekrar et
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     let size = wasm_binary.len() as u64;
 
@@ -344,11 +312,19 @@ pub async fn compile_wat_to_wasm(
     Ok(ModuleUploadResponse { hash, size })
 }
 
-pub async fn upload_wasm_module(
-    bytes: Vec<u8>,
-) -> Result<ModuleUploadResponse, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+/// WASM modülü yükle → hash döner.
+///
+/// Flutter, dosyayı bytes olarak Rust'a verir.
+/// Rust, ModuleStore'a kaydeder ve SHA-256 hash döner.
+/// Sonraki task'larda bu hash kullanılır.
+///
+/// Örnek (Dart):
+/// ```dart
+/// final bytes = await File("my_module.wasm").readAsBytes();
+/// final hash = await AetherApi.uploadWasmModule(bytes: bytes);
+/// ```
+pub async fn upload_wasm_module(bytes: Vec<u8>) -> Result<ModuleUploadResponse, String> {
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     let size = bytes.len() as u64;
 
@@ -385,8 +361,7 @@ pub async fn upload_wasm_module(
 /// WasmModuleScreen açılışında, eski oturumdan kalan
 /// meta-data'yı doğrulamak için her modül için çağrılır.
 pub fn check_module_exists(hash_hex: String) -> Result<bool, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     let hash = crate::wasm::module_store::ModuleStore::hex_to_hash(&hash_hex)
         .map_err(|e| format!("Geçersiz hash: {e}"))?;
@@ -411,8 +386,7 @@ pub fn register_agent_script(
     entrypoint: String,
     timeout_ms: u64,
 ) -> Result<(), String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     let hash = crate::wasm::module_store::ModuleStore::hex_to_hash(&wasm_module_hash_hex)
         .map_err(|e| format!("Geçersiz hash: {e}"))?;
@@ -438,8 +412,7 @@ pub fn register_agent_script(
 /// Şu an kayıtlı, agent'ların potansiyel olarak erişebileceği
 /// script isimlerini listele (UI'da göstermek için).
 pub fn list_agent_scripts() -> Result<Vec<String>, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     Ok(rt
         .script_registry
@@ -456,14 +429,14 @@ pub(crate) fn parse_capability(
 ) -> Result<crate::agents::capabilities::AgentCapability, String> {
     use crate::agents::capabilities::AgentCapability as C;
     match name {
-        "wasm_execution"     => Ok(C::WasmExecution),
+        "wasm_execution" => Ok(C::WasmExecution),
         "workflow_execution" => Ok(C::WorkflowExecution),
-        "ai_reasoning"       => Ok(C::AiReasoning),
-        "remote_execution"   => Ok(C::RemoteExecution),
+        "ai_reasoning" => Ok(C::AiReasoning),
+        "remote_execution" => Ok(C::RemoteExecution),
         "terminal_execution" => Ok(C::TerminalExecution),
-        "workspace_read"     => Ok(C::WorkspaceRead),
-        "workspace_write"    => Ok(C::WorkspaceWrite),
-        "workspace_mutate"   => Ok(C::WorkspaceMutate),
+        "workspace_read" => Ok(C::WorkspaceRead),
+        "workspace_write" => Ok(C::WorkspaceWrite),
+        "workspace_mutate" => Ok(C::WorkspaceMutate),
         other => Err(format!("Bilinmeyen capability: '{other}'")),
     }
 }
@@ -483,15 +456,11 @@ pub(crate) fn parse_capability(
 /// önce bir miktar zaman alır) ama sağlam bir çözüm değil — gerçek
 /// çözüm Approval Engine'in agent'ı "grant bekliyor" durumunda
 /// başlatıp ilk adımdan önce durdurmasıdır (gelecek sprint).
-pub fn grant_agent_capability(
-    agent_id_hex: String,
-    capability: String,
-) -> Result<(), String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+pub fn grant_agent_capability(agent_id_hex: String, capability: String) -> Result<(), String> {
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
-    let agent_id = uuid::Uuid::parse_str(&agent_id_hex)
-        .map_err(|e| format!("Geçersiz agent_id: {e}"))?;
+    let agent_id =
+        uuid::Uuid::parse_str(&agent_id_hex).map_err(|e| format!("Geçersiz agent_id: {e}"))?;
 
     let cap = parse_capability(capability.as_str())?;
 
@@ -509,11 +478,10 @@ pub fn grant_agent_capability(
 /// "Yeniden Dene" butonu için — sadece id ve zaman damgaları
 /// yenilenir, deadline sıfırlanır.
 pub async fn resubmit_task(task_id: String) -> Result<String, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
-    let uuid = uuid::Uuid::parse_str(&task_id)
-        .map_err(|_| format!("Geçersiz task_id: {task_id}"))?;
+    let uuid =
+        uuid::Uuid::parse_str(&task_id).map_err(|_| format!("Geçersiz task_id: {task_id}"))?;
 
     let original = rt
         .persistence
@@ -526,7 +494,7 @@ pub async fn resubmit_task(task_id: String) -> Result<String, String> {
     let now = chrono::Utc::now();
 
     let resubmitted = TaskDefinition {
-        id: new_id.clone(),
+        id: new_id,
         parent: original.parent,
         orchestration: original.orchestration,
         priority: original.priority,
@@ -558,8 +526,7 @@ pub async fn resubmit_task(task_id: String) -> Result<String, String> {
 /// LogScreen 2 saniyede bir bu fonksiyonu polling ile çeker.
 /// limit: 0 → varsayılan 100.
 pub fn get_recent_logs(limit: u32) -> Result<Vec<LogRecord>, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     let limit = if limit == 0 { 100 } else { limit as usize };
 
@@ -576,8 +543,7 @@ pub fn get_recent_logs(limit: u32) -> Result<Vec<LogRecord>, String> {
 /// Task detay modalındaki "Loglar" sekmesi için.
 /// limit: 0 → varsayılan 50.
 pub fn get_task_logs(task_id: String, limit: u32) -> Result<Vec<LogRecord>, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     let limit = if limit == 0 { 50 } else { limit as usize };
 
@@ -605,17 +571,16 @@ fn to_bridge_log_entry(e: crate::logging::buffer::LogEntry) -> LogRecord {
 
 /// Anlık metrik görüntüsü al.
 pub async fn get_metrics() -> Result<MetricsSnapshot, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     let snap = rt.metrics.snapshot();
 
     Ok(MetricsSnapshot {
-        active_workers:  snap.active_workers,
-        queued_tasks:    snap.queued_tasks,
+        active_workers: snap.active_workers,
+        queued_tasks: snap.queued_tasks,
         completed_tasks: snap.completed_tasks,
-        failed_tasks:    snap.failed_tasks,
-        retried_tasks:   snap.retried_tasks,
+        failed_tasks: snap.failed_tasks,
+        retried_tasks: snap.retried_tasks,
     })
 }
 
@@ -624,33 +589,28 @@ pub async fn get_metrics() -> Result<MetricsSnapshot, String> {
 fn parse_priority(s: &str) -> Result<TaskPriority, String> {
     match s.to_lowercase().as_str() {
         "critical" => Ok(TaskPriority::Critical),
-        "high"     => Ok(TaskPriority::High),
-        "normal"   => Ok(TaskPriority::Normal),
-        "low"      => Ok(TaskPriority::Low),
-        other      => Err(format!("Geçersiz priority: '{other}'")),
+        "high" => Ok(TaskPriority::High),
+        "normal" => Ok(TaskPriority::Normal),
+        "low" => Ok(TaskPriority::Low),
+        other => Err(format!("Geçersiz priority: '{other}'")),
     }
 }
 
 fn parse_hash(hex_str: &str) -> Result<[u8; 32], String> {
     if hex_str.is_empty() {
-        return Ok([0u8; 32]);  // Modülsüz task
+        return Ok([0u8; 32]); // Modülsüz task
     }
 
-    let bytes = hex::decode(hex_str)
-        .map_err(|_| format!("Geçersiz hex hash: '{hex_str}'"))?;
+    let bytes = hex::decode(hex_str).map_err(|_| format!("Geçersiz hex hash: '{hex_str}'"))?;
 
     if bytes.len() != 32 {
-        return Err(format!(
-            "Hash 32 byte olmalı, {} byte geldi",
-            bytes.len()
-        ));
+        return Err(format!("Hash 32 byte olmalı, {} byte geldi", bytes.len()));
     }
 
     let mut hash = [0u8; 32];
     hash.copy_from_slice(&bytes);
     Ok(hash)
 }
-
 
 // ── Agent fonksiyonları (FRB) ─────────────────────────────────
 
@@ -664,13 +624,12 @@ fn parse_hash(hex_str: &str) -> Result<[u8; 32], String> {
 /// vermenin yarışı yoktur. Bilinmeyen bir ad varsa HİÇBİR şey
 /// başlatılmaz/verilmez (kısmi durum bırakmaz).
 pub async fn start_agent(
-    objective:    String,
-    max_steps:    usize,
-    max_tokens:   usize,
+    objective: String,
+    max_steps: usize,
+    max_tokens: usize,
     capabilities: Vec<String>,
 ) -> Result<AgentStartResponse, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     // Önce HEPSİNİ doğrula (kısmi grant yok).
     let mut caps = Vec::new();
@@ -682,7 +641,7 @@ pub async fn start_agent(
     }
 
     let execution_id = uuid::Uuid::new_v4();
-    let agent_id     = uuid::Uuid::new_v4();
+    let agent_id = uuid::Uuid::new_v4();
 
     // Yetkiler, agent'ın execution'ı spawn edilmeden ÖNCE (B11).
     for cap in &caps {
@@ -691,26 +650,33 @@ pub async fn start_agent(
     if !caps.is_empty() {
         info!(agent_id = %agent_id, capabilities = ?capabilities, "Agent başlangıç yetkileri verildi");
     }
-    let started_at   = chrono::Utc::now();
-    let objective_c  = objective.clone();
+    let started_at = chrono::Utc::now();
+    let objective_c = objective.clone();
 
-    rt.agent_registry.insert(execution_id, crate::bridge::agent::AgentEntry {
+    rt.agent_registry.insert(
         execution_id,
-        agent_id,
-        objective:   objective.clone(),
-        status:      "running".into(),
-        error:       None,
-        started_at,
-        finished_at: None,
-        pending_approval_id: None,
-    });
+        crate::bridge::agent::AgentEntry {
+            execution_id,
+            agent_id,
+            objective: objective.clone(),
+            status: "running".into(),
+            error: None,
+            started_at,
+            finished_at: None,
+            pending_approval_id: None,
+        },
+    );
 
     let registry = rt.agent_registry.clone();
-    let context  = crate::agents::context::AgentContext {
-        agent_id, execution_id, workflow_id: None,
+    let context = crate::agents::context::AgentContext {
+        agent_id,
+        execution_id,
+        workflow_id: None,
     };
     let budget = crate::agents::budget::AgentExecutionBudget {
-        max_tokens, max_steps, max_runtime_seconds: 300,
+        max_tokens,
+        max_steps,
+        max_runtime_seconds: 300,
     };
     let ai_router = rt.ai_router.clone();
     let capability_engine = rt.capability_engine.clone();
@@ -736,15 +702,25 @@ pub async fn start_agent(
     // V10 Faz 1: terminal her agent'a sunuluyor — listede olmak izin
     // vermez, TerminalExecution capability + Governor onayı hâlâ şart.
     tools.push(std::sync::Arc::new(
-        crate::agents::terminal_tool::TerminalAgentTool::with_workspace(
-            std::path::PathBuf::from(&rt.workspace_dir),
-        ),
+        crate::agents::terminal_tool::TerminalAgentTool::with_workspace(std::path::PathBuf::from(
+            &rt.workspace_dir,
+        )),
     ));
     append_workspace_tools(rt, &mut tools);
 
     tokio::spawn(async move {
-        let result      = crate::agents::executor::AgentExecutor
-            ::execute(context, objective_c, budget, tools, Some(ai_router), Some(capability_engine), Some(risk_engine), Some(approval_store), Some(audit_log)).await;
+        let result = crate::agents::executor::AgentExecutor::execute(
+            context,
+            objective_c,
+            budget,
+            tools,
+            Some(ai_router),
+            Some(capability_engine),
+            Some(risk_engine),
+            Some(approval_store),
+            Some(audit_log),
+        )
+        .await;
         let finished_at = chrono::Utc::now();
         if let Some(mut entry) = registry.get_mut(&execution_id) {
             match result {
@@ -759,35 +735,39 @@ pub async fn start_agent(
                     entry.status = "pending_approval".into();
                     entry.pending_approval_id = Some(approval_id);
                 }
-                Err(e) => { entry.status = "failed".into(); entry.error = Some(describe_runtime_error(&e)); entry.finished_at = Some(finished_at); }
+                Err(e) => {
+                    entry.status = "failed".into();
+                    entry.error = Some(describe_runtime_error(&e));
+                    entry.finished_at = Some(finished_at);
+                }
             }
         }
     });
 
     Ok(AgentStartResponse {
         execution_id: execution_id.to_string(),
-        agent_id:     agent_id.to_string(),
-        status:       "running".into(),
+        agent_id: agent_id.to_string(),
+        status: "running".into(),
     })
 }
 
 /// Agent execution durumunu sorgula.
 pub fn get_agent_status(execution_id: String) -> Result<AgentStatusResponse, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     let uuid = uuid::Uuid::parse_str(&execution_id)
         .map_err(|_| format!("Geçersiz execution_id: {execution_id}"))?;
 
-    rt.agent_registry.get(&uuid)
+    rt.agent_registry
+        .get(&uuid)
         .map(|e| AgentStatusResponse {
             execution_id: e.execution_id.to_string(),
-            agent_id:     e.agent_id.to_string(),
-            objective:    e.objective.clone(),
-            status:       e.status.clone(),
-            error:        e.error.clone(),
-            started_at:   e.started_at.timestamp_millis(),
-            finished_at:  e.finished_at.map(|t| t.timestamp_millis()),
+            agent_id: e.agent_id.to_string(),
+            objective: e.objective.clone(),
+            status: e.status.clone(),
+            error: e.error.clone(),
+            started_at: e.started_at.timestamp_millis(),
+            finished_at: e.finished_at.map(|t| t.timestamp_millis()),
             pending_approval_id: e.pending_approval_id.map(|id| id.to_string()),
         })
         .ok_or_else(|| format!("Agent bulunamadı: {execution_id}"))
@@ -802,12 +782,13 @@ pub fn get_agent_status(execution_id: String) -> Result<AgentStatusResponse, Str
 
 /// Onay bekleyen tüm execution'ları listele.
 pub fn list_pending_approvals() -> Result<Vec<PendingApprovalResponse>, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     // V10 B3: süresi dolmuş onaylar listede görünmesin (ve verilemesin).
     crate::bridge::state::expire_stale_approvals(
-        &rt.approval_store, &rt.audit_log, &rt.agent_registry,
+        &rt.approval_store,
+        &rt.audit_log,
+        &rt.agent_registry,
     );
 
     Ok(rt
@@ -815,14 +796,14 @@ pub fn list_pending_approvals() -> Result<Vec<PendingApprovalResponse>, String> 
         .list()
         .into_iter()
         .map(|p| PendingApprovalResponse {
-            id:           p.id.to_string(),
+            id: p.id.to_string(),
             execution_id: p.context.execution_id.to_string(),
-            agent_id:     p.context.agent_id.to_string(),
-            objective:    p.objective,
-            tool_name:    p.tool_call.tool_name,
-            arguments:    p.tool_call.arguments,
-            reason:       p.reason,
-            created_at:   p.created_at.timestamp_millis(),
+            agent_id: p.context.agent_id.to_string(),
+            objective: p.objective,
+            tool_name: p.tool_call.tool_name,
+            arguments: p.tool_call.arguments,
+            reason: p.reason,
+            created_at: p.created_at.timestamp_millis(),
         })
         .collect())
 }
@@ -833,26 +814,25 @@ pub fn list_pending_approvals() -> Result<Vec<PendingApprovalResponse>, String> 
 ///                       kalan adımlarla arka planda devam eder.
 /// `approved = false` → execution kalıcı olarak reddedilmiş sayılır,
 ///                       hiçbir şey invoke edilmez.
-pub async fn respond_to_approval(
-    approval_id: String,
-    approved: bool,
-) -> Result<(), String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+pub async fn respond_to_approval(approval_id: String, approved: bool) -> Result<(), String> {
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
-    let id = uuid::Uuid::parse_str(&approval_id)
-        .map_err(|e| format!("Geçersiz approval_id: {e}"))?;
+    let id =
+        uuid::Uuid::parse_str(&approval_id).map_err(|e| format!("Geçersiz approval_id: {e}"))?;
 
     // V10 B3: TTL'i dolmuş onay verilemez — önce temizle.
     crate::bridge::state::expire_stale_approvals(
-        &rt.approval_store, &rt.audit_log, &rt.agent_registry,
+        &rt.approval_store,
+        &rt.audit_log,
+        &rt.agent_registry,
     );
 
     // take(): kaydı çıkarır — aynı onaya iki kere cevap verilemez.
-    let pending = rt
-        .approval_store
-        .take(&id)
-        .ok_or_else(|| format!("Onay kaydı bulunamadı (zaten işlenmiş ya da süresi dolmuş olabilir): {approval_id}"))?;
+    let pending = rt.approval_store.take(&id).ok_or_else(|| {
+        format!(
+            "Onay kaydı bulunamadı (zaten işlenmiş ya da süresi dolmuş olabilir): {approval_id}"
+        )
+    })?;
 
     let execution_id = pending.context.execution_id;
 
@@ -894,18 +874,18 @@ pub async fn respond_to_approval(
         })
         .collect();
     tools.push(std::sync::Arc::new(
-        crate::agents::terminal_tool::TerminalAgentTool::with_workspace(
-            std::path::PathBuf::from(&rt.workspace_dir),
-        ),
+        crate::agents::terminal_tool::TerminalAgentTool::with_workspace(std::path::PathBuf::from(
+            &rt.workspace_dir,
+        )),
     ));
     append_workspace_tools(rt, &mut tools);
 
-    let ai_router         = rt.ai_router.clone();
+    let ai_router = rt.ai_router.clone();
     let capability_engine = rt.capability_engine.clone();
-    let risk_engine       = rt.risk_engine.clone();
-    let approval_store    = rt.approval_store.clone();
-    let audit_log         = rt.audit_log.clone();
-    let registry          = rt.agent_registry.clone();
+    let risk_engine = rt.risk_engine.clone();
+    let approval_store = rt.approval_store.clone();
+    let audit_log = rt.audit_log.clone();
+    let registry = rt.agent_registry.clone();
 
     info!(approval_id = %id, execution_id = %execution_id, "Approval granted by user — resuming execution");
 
@@ -960,14 +940,28 @@ fn fmt_call_args(arguments: &[String]) -> String {
 fn describe_audit_event(kind: &crate::logging::audit::AuditEventKind) -> (&'static str, String) {
     use crate::logging::audit::AuditEventKind as K;
     match kind {
-        K::GovernorDecision { tool_name, decision, reason, arguments } => (
+        K::GovernorDecision {
+            tool_name,
+            decision,
+            reason,
+            arguments,
+        } => (
             "governor_decision",
             match reason {
-                Some(r) => format!("'{tool_name}'{} → {decision} ({r})", fmt_call_args(arguments)),
+                Some(r) => format!(
+                    "'{tool_name}'{} → {decision} ({r})",
+                    fmt_call_args(arguments)
+                ),
                 None => format!("'{tool_name}'{} → {decision}", fmt_call_args(arguments)),
             },
         ),
-        K::ToolInvoked { tool_name, success, error, arguments, .. } => (
+        K::ToolInvoked {
+            tool_name,
+            success,
+            error,
+            arguments,
+            ..
+        } => (
             "tool_invoked",
             if *success {
                 format!("'{tool_name}'{} çalıştı", fmt_call_args(arguments))
@@ -979,18 +973,25 @@ fn describe_audit_event(kind: &crate::logging::audit::AuditEventKind) -> (&'stat
                 )
             },
         ),
-        K::ExecutionPaused { tool_name, reason, arguments, .. } => (
+        K::ExecutionPaused {
+            tool_name,
+            reason,
+            arguments,
+            ..
+        } => (
             "execution_paused",
-            format!("'{tool_name}'{} onay bekliyor: {reason}", fmt_call_args(arguments)),
+            format!(
+                "'{tool_name}'{} onay bekliyor: {reason}",
+                fmt_call_args(arguments)
+            ),
         ),
         K::ExecutionResumed { approval_id } => (
             "execution_resumed",
             format!("onay {approval_id} ile devam edildi"),
         ),
-        K::ApprovalDenied { reason, .. } => (
-            "approval_denied",
-            format!("kullanıcı reddetti: {reason}"),
-        ),
+        K::ApprovalDenied { reason, .. } => {
+            ("approval_denied", format!("kullanıcı reddetti: {reason}"))
+        }
         K::ExecutionCompleted => ("execution_completed", "tamamlandı".to_string()),
         K::ExecutionFailed { error } => ("execution_failed", format!("hata: {error}")),
     }
@@ -999,13 +1000,12 @@ fn describe_audit_event(kind: &crate::logging::audit::AuditEventKind) -> (&'stat
 /// Denetim kayıtlarını listele. `execution_id` verilirse sadece o
 /// execution'a ait kayıtlar döner, verilmezse hepsi (en yeni en sonda).
 pub fn list_audit_events(execution_id: Option<String>) -> Result<Vec<AuditEventResponse>, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     let events = match execution_id {
         Some(hex) => {
-            let id = uuid::Uuid::parse_str(&hex)
-                .map_err(|e| format!("Geçersiz execution_id: {e}"))?;
+            let id =
+                uuid::Uuid::parse_str(&hex).map_err(|e| format!("Geçersiz execution_id: {e}"))?;
             rt.audit_log.list_for_execution(id)
         }
         None => rt.audit_log.list(),
@@ -1030,26 +1030,26 @@ pub fn list_audit_events(execution_id: Option<String>) -> Result<Vec<AuditEventR
 
 /// Tüm agent execution'larını listele.
 pub fn list_agents(limit: usize) -> Result<Vec<AgentStatusResponse>, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
-    let mut list: Vec<AgentStatusResponse> = rt.agent_registry
+    let mut list: Vec<AgentStatusResponse> = rt
+        .agent_registry
         .iter()
         .take(limit)
         .map(|e| AgentStatusResponse {
             execution_id: e.execution_id.to_string(),
-            agent_id:     e.agent_id.to_string(),
-            objective:    e.objective.clone(),
-            status:       e.status.clone(),
-            error:        e.error.clone(),
-            started_at:   e.started_at.timestamp_millis(),
-            finished_at:  e.finished_at.map(|t| t.timestamp_millis()),
+            agent_id: e.agent_id.to_string(),
+            objective: e.objective.clone(),
+            status: e.status.clone(),
+            error: e.error.clone(),
+            started_at: e.started_at.timestamp_millis(),
+            finished_at: e.finished_at.map(|t| t.timestamp_millis()),
             pending_approval_id: e.pending_approval_id.map(|id| id.to_string()),
         })
         .collect();
 
     // En yeni önce
-    list.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+    list.sort_by_key(|e| std::cmp::Reverse(e.started_at));
     Ok(list)
 }
 
@@ -1057,75 +1057,92 @@ pub fn list_agents(limit: usize) -> Result<Vec<AgentStatusResponse>, String> {
 
 /// Workflow başlat → workflow_id döner.
 pub async fn start_workflow(
-    name:  String,
+    name: String,
     steps: Vec<WorkflowStepRequest>,
 ) -> Result<WorkflowStartResponse, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     let workflow_id = uuid::Uuid::new_v4();
-    let started_at  = chrono::Utc::now();
-    let name_c      = name.clone();
+    let started_at = chrono::Utc::now();
+    let name_c = name.clone();
 
-    use crate::workflows::compiler::{WorkflowDsl, StepDsl};
-    let dsl_steps: Vec<StepDsl> = steps.into_iter().map(|s| StepDsl {
-        id:         s.id,
-        name:       s.name,
-        kind:       s.kind,
-        entrypoint: s.entrypoint,
-        depends_on: s.depends_on,
-        retryable:  s.retryable,
-        labels:     Default::default(),
-    }).collect();
+    use crate::workflows::compiler::{StepDsl, WorkflowDsl};
+    let dsl_steps: Vec<StepDsl> = steps
+        .into_iter()
+        .map(|s| StepDsl {
+            id: s.id,
+            name: s.name,
+            kind: s.kind,
+            entrypoint: s.entrypoint,
+            depends_on: s.depends_on,
+            retryable: s.retryable,
+            labels: Default::default(),
+        })
+        .collect();
 
-    let dsl = WorkflowDsl { name: name.clone(), version: Some(1), steps: dsl_steps };
-
-    rt.workflow_registry.insert(workflow_id, crate::bridge::agent::WorkflowEntry {
-        workflow_id,
+    let dsl = WorkflowDsl {
         name: name.clone(),
-        status: "running".into(),
-        error: None,
-        started_at,
-        finished_at: None,
-    });
+        version: Some(1),
+        steps: dsl_steps,
+    };
+
+    rt.workflow_registry.insert(
+        workflow_id,
+        crate::bridge::agent::WorkflowEntry {
+            workflow_id,
+            name: name.clone(),
+            status: "running".into(),
+            error: None,
+            started_at,
+            finished_at: None,
+        },
+    );
 
     let registry = rt.workflow_registry.clone();
-    let runtime  = rt.handle.clone();
+    let runtime = rt.handle.clone();
     let ai_router = rt.ai_router.clone();
 
     tokio::spawn(async move {
-        let result      = crate::workflows::engine::WorkflowEngine::run_dsl(&dsl, runtime, ai_router).await;
+        let result =
+            crate::workflows::engine::WorkflowEngine::run_dsl(&dsl, runtime, ai_router).await;
         let finished_at = chrono::Utc::now();
         if let Some(mut entry) = registry.get_mut(&workflow_id) {
             match result {
-                Ok(_)  => { entry.status = "completed".into(); entry.finished_at = Some(finished_at); }
-                Err(e) => { entry.status = "failed".into(); entry.error = Some(format!("{e:?}")); entry.finished_at = Some(finished_at); }
+                Ok(_) => {
+                    entry.status = "completed".into();
+                    entry.finished_at = Some(finished_at);
+                }
+                Err(e) => {
+                    entry.status = "failed".into();
+                    entry.error = Some(format!("{e:?}"));
+                    entry.finished_at = Some(finished_at);
+                }
             }
         }
     });
 
     Ok(WorkflowStartResponse {
         workflow_id: workflow_id.to_string(),
-        name:        name_c,
-        status:      "running".into(),
+        name: name_c,
+        status: "running".into(),
     })
 }
 
 /// Workflow durumu sorgula.
 pub fn get_workflow_status(workflow_id: String) -> Result<WorkflowStatusResponse, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     let uuid = uuid::Uuid::parse_str(&workflow_id)
         .map_err(|_| format!("Geçersiz workflow_id: {workflow_id}"))?;
 
-    rt.workflow_registry.get(&uuid)
+    rt.workflow_registry
+        .get(&uuid)
         .map(|e| WorkflowStatusResponse {
             workflow_id: e.workflow_id.to_string(),
-            name:        e.name.clone(),
-            status:      e.status.clone(),
-            error:       e.error.clone(),
-            started_at:  e.started_at.timestamp_millis(),
+            name: e.name.clone(),
+            status: e.status.clone(),
+            error: e.error.clone(),
+            started_at: e.started_at.timestamp_millis(),
             finished_at: e.finished_at.map(|t| t.timestamp_millis()),
         })
         .ok_or_else(|| format!("Workflow bulunamadı: {workflow_id}"))
@@ -1133,23 +1150,23 @@ pub fn get_workflow_status(workflow_id: String) -> Result<WorkflowStatusResponse
 
 /// Tüm workflow'ları listele.
 pub fn list_workflows(limit: usize) -> Result<Vec<WorkflowStatusResponse>, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
-    let mut list: Vec<WorkflowStatusResponse> = rt.workflow_registry
+    let mut list: Vec<WorkflowStatusResponse> = rt
+        .workflow_registry
         .iter()
         .take(limit)
         .map(|e| WorkflowStatusResponse {
             workflow_id: e.workflow_id.to_string(),
-            name:        e.name.clone(),
-            status:      e.status.clone(),
-            error:       e.error.clone(),
-            started_at:  e.started_at.timestamp_millis(),
+            name: e.name.clone(),
+            status: e.status.clone(),
+            error: e.error.clone(),
+            started_at: e.started_at.timestamp_millis(),
             finished_at: e.finished_at.map(|t| t.timestamp_millis()),
         })
         .collect();
 
-    list.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+    list.sort_by_key(|e| std::cmp::Reverse(e.started_at));
     Ok(list)
 }
 
@@ -1157,63 +1174,66 @@ pub fn list_workflows(limit: usize) -> Result<Vec<WorkflowStatusResponse>, Strin
 
 /// Cluster genel durumunu getir.
 pub fn get_cluster_status() -> Result<ClusterStatusResponse, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
-    let nodes: Vec<ClusterNodeResponse> = rt.cluster.nodes()
+    let nodes: Vec<ClusterNodeResponse> = rt
+        .cluster
+        .nodes()
         .into_iter()
         .map(|n| {
             let hb = rt.cluster.heartbeat(&n.node_id);
             ClusterNodeResponse {
-                node_id:           n.node_id.to_string(),
-                address:           n.address.clone(),
-                healthy:           n.healthy,
-                capabilities:      n.capabilities.iter()
-                    .map(|c| format!("{:?}", c))
-                    .collect(),
-                cpu_percent:       hb.as_ref().map(|h| h.cpu_usage_percent).unwrap_or(0.0),
-                memory_mb:         hb.as_ref().map(|h| h.memory_usage_mb as u64).unwrap_or(0),
+                node_id: n.node_id.to_string(),
+                address: n.address.clone(),
+                healthy: n.healthy,
+                capabilities: n.capabilities.iter().map(|c| format!("{:?}", c)).collect(),
+                cpu_percent: hb.as_ref().map(|h| h.cpu_usage_percent).unwrap_or(0.0),
+                memory_mb: hb.as_ref().map(|h| h.memory_usage_mb as u64).unwrap_or(0),
                 active_executions: hb.as_ref().map(|h| h.active_executions as u64).unwrap_or(0),
             }
         })
         .collect();
 
     Ok(ClusterStatusResponse {
-        health:     format!("{:?}", rt.cluster.health()),
-        total:      rt.cluster.size() as u64,
-        healthy:    rt.cluster.healthy_count() as u64,
+        health: format!("{:?}", rt.cluster.health()),
+        total: rt.cluster.size() as u64,
+        healthy: rt.cluster.healthy_count() as u64,
         has_quorum: rt.cluster.has_quorum(),
-        leader:     rt.cluster.leader().map(|u| u.to_string()),
+        leader: rt.cluster.leader().map(|u| u.to_string()),
         nodes,
     })
 }
 
 /// Cluster'a yeni node kaydet.
 pub fn register_node(
-    address:      String,
+    address: String,
     capabilities: Vec<String>,
 ) -> Result<NodeRegistrationResponse, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     use crate::remote::node::{NodeCapability, RemoteNode};
 
-    let caps: Vec<NodeCapability> = capabilities.iter()
+    let caps: Vec<NodeCapability> = capabilities
+        .iter()
         .map(|c| match c.to_lowercase().as_str() {
-            "wasm"     => NodeCapability::WasmExecution,
+            "wasm" => NodeCapability::WasmExecution,
             "workflow" => NodeCapability::WorkflowExecution,
-            "agent"    => NodeCapability::AgentExecution,
-            "ai"       => NodeCapability::AiInference,
-            "plugin"   => NodeCapability::PluginExecution,
-            _          => NodeCapability::WasmExecution,
+            "agent" => NodeCapability::AgentExecution,
+            "ai" => NodeCapability::AiInference,
+            "plugin" => NodeCapability::PluginExecution,
+            _ => NodeCapability::WasmExecution,
         })
         .collect();
 
-    let node    = RemoteNode::new(address.clone(), caps);
+    let node = RemoteNode::new(address.clone(), caps);
     let node_id = node.node_id.to_string();
     rt.cluster.register(node);
 
-    Ok(NodeRegistrationResponse { node_id, address, status: "registered".into() })
+    Ok(NodeRegistrationResponse {
+        node_id,
+        address,
+        status: "registered".into(),
+    })
 }
 
 // ── AI Provider fonksiyonları (FRB) ───────────────────────────
@@ -1235,20 +1255,15 @@ pub fn register_node(
 /// provider_id ile kayıt yapılmışsa (örn. key güncellendi) üzerine yazılır.
 pub fn configure_ai_provider(
     provider_id: String,
-    api_key:     Option<String>,
-    base_url:    Option<String>,
-    model:       Option<String>,
+    api_key: Option<String>,
+    base_url: Option<String>,
+    model: Option<String>,
 ) -> Result<(), String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
-    let provider = crate::ai::routing::router::build_provider(
-        &provider_id,
-        api_key,
-        base_url,
-        model,
-    )
-    .map_err(|e| e.to_string())?;
+    let provider =
+        crate::ai::routing::router::build_provider(&provider_id, api_key, base_url, model)
+            .map_err(|e| e.to_string())?;
 
     rt.ai_router.register(provider);
 
@@ -1259,8 +1274,7 @@ pub fn configure_ai_provider(
 /// Kayıtlı bir provider'ı kaldır (kullanıcı key'i sildiğinde / bağlantıyı
 /// kapattığında). Kaldırılan provider aktifse aktif seçim temizlenir.
 pub fn remove_ai_provider(provider_id: String) -> Result<(), String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     rt.ai_router.unregister(&provider_id);
     Ok(())
@@ -1270,10 +1284,10 @@ pub fn remove_ai_provider(provider_id: String) -> Result<(), String> {
 /// Birden fazla provider kayıtlıysa Ayarlar ekranındaki seçim burada
 /// uygulanır.
 pub fn set_active_ai_provider(provider_id: String) -> Result<(), String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
-    rt.ai_router.set_active(&provider_id)
+    rt.ai_router
+        .set_active(&provider_id)
         .map_err(|e| e.to_string())
 }
 
@@ -1303,23 +1317,17 @@ pub async fn list_ollama_models(base_url: String) -> Result<Vec<String>, String>
 /// provider'a küçük bir inference isteği gönderir, kısa bir çıktı
 /// parçası döner (başarılıysa key/host geçerli demektir).
 pub async fn test_ai_provider(provider_id: String) -> Result<String, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     let provider = rt
         .ai_router
         .provider(&provider_id)
         .ok_or_else(|| "Provider henüz yapılandırılmadı".to_string())?;
 
-    let request = crate::ai::inference::request::InferenceRequest::new(
-        "Tek kelimeyle selam ver.",
-        16,
-    );
+    let request =
+        crate::ai::inference::request::InferenceRequest::new("Tek kelimeyle selam ver.", 16);
 
-    let response = provider
-        .infer(request)
-        .await
-        .map_err(|e| e.to_string())?;
+    let response = provider.infer(request).await.map_err(|e| e.to_string())?;
 
     Ok(response.output)
 }
@@ -1333,8 +1341,7 @@ pub async fn ai_chat(
     system_prompt: Option<String>,
     max_tokens: usize,
 ) -> Result<String, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
 
     let mut request = crate::ai::inference::request::InferenceRequest::new(prompt, max_tokens);
     if let Some(system) = system_prompt {
@@ -1348,7 +1355,6 @@ pub async fn ai_chat(
         .map_err(|e| e.to_string())
 }
 
-
 // ── Faz 2: Kullanıcı Terminali ─────────────────────────────
 //
 // Kullanıcının kendi yazdığı TEK SATIR komut, agent'larla aynı politika
@@ -1360,18 +1366,17 @@ pub async fn ai_chat(
 fn user_terminal_tool(
     rt: &crate::bridge::state::MobileRuntime,
 ) -> crate::agents::terminal_tool::TerminalAgentTool {
-    crate::agents::terminal_tool::TerminalAgentTool::with_workspace(
-        std::path::PathBuf::from(&rt.workspace_dir),
-    )
+    crate::agents::terminal_tool::TerminalAgentTool::with_workspace(std::path::PathBuf::from(
+        &rt.workspace_dir,
+    ))
 }
 
 /// Komutu çalıştırmadan ayrıştırır ve politikaya sorar.
 pub fn terminal_check_command(command_line: String) -> Result<TerminalCheckResponse, String> {
     use crate::types::agent_tool::CallVerdict;
 
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
-    let tool = user_terminal_tool(&rt);
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let tool = user_terminal_tool(rt);
     let checked = crate::agents::user_terminal::check(&tool, &command_line)?;
 
     let (verdict, reason) = match checked.verdict {
@@ -1391,23 +1396,16 @@ pub async fn terminal_run_command(
     command_line: String,
     confirmed: bool,
 ) -> Result<TerminalRunResponse, String> {
-    let rt = get_runtime()
-        .ok_or_else(|| "RuntimeNotInitialized".to_string())?;
-    let tool = user_terminal_tool(&rt);
-    let res = crate::agents::user_terminal::run(
-        &tool,
-        &rt.audit_log,
-        &command_line,
-        confirmed,
-    )
-    .await?;
+    let rt = get_runtime().ok_or_else(|| "RuntimeNotInitialized".to_string())?;
+    let tool = user_terminal_tool(rt);
+    let res =
+        crate::agents::user_terminal::run(&tool, &rt.audit_log, &command_line, confirmed).await?;
     Ok(TerminalRunResponse {
         success: res.success,
         output: res.output,
         truncated: res.truncated,
     })
 }
-
 
 /// Workspace araçlarını (oku/listele/ara/yaz/…) agent'ın araç listesine ekler.
 /// Listede olmak izin vermez: her araç kendi `Workspace*` capability'sini
@@ -1417,12 +1415,16 @@ pub(crate) fn append_workspace_tools(
     tools: &mut Vec<std::sync::Arc<dyn crate::types::agent_tool::AgentTool>>,
 ) {
     use crate::agents::workspace_tool::{WorkspaceAgentTool, WorkspaceToolKind};
-    let Some(ws) = rt.workspace.as_ref() else { return };
+    let Some(ws) = rt.workspace.as_ref() else {
+        return;
+    };
     for kind in WorkspaceToolKind::ALL {
-        tools.push(std::sync::Arc::new(WorkspaceAgentTool::new(ws.clone(), kind)));
+        tools.push(std::sync::Arc::new(WorkspaceAgentTool::new(
+            ws.clone(),
+            kind,
+        )));
     }
 }
-
 
 /// Agent hatasını kullanıcıya gösterilecek düz metne çevirir
 /// (`TaskExecutionFailed { message: "..." }` yerine yalnız mesaj).

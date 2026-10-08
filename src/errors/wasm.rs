@@ -27,16 +27,12 @@ pub enum WasmError {
     ResourceLimitExceeded,
 
     #[error("invalid module: {reason}")]
-    InvalidModule {
-        reason: String,
-    },
+    InvalidModule { reason: String },
 
     /// [BUG #8] Yeni variant: timeout_ms == 0 gibi
     /// görev konfigürasyonu geçersizse bu döner.
     #[error("invalid task configuration: {reason}")]
-    InvalidConfiguration {
-        reason: String,
-    },
+    InvalidConfiguration { reason: String },
 
     #[error("capability denied")]
     CapabilityDenied,
@@ -51,17 +47,11 @@ pub enum WasmError {
     MemoryViolation,
 
     #[error("engine failure: {message}")]
-    EngineFailure {
-        message: String,
-    },
+    EngineFailure { message: String },
 
     #[error("execution failure: {message}")]
-    ExecutionFailure {
-        message: String,
-    },
+    ExecutionFailure { message: String },
 
     #[error("linker failure: {message}")]
-    LinkerFailure {
-        message: String,
-    },
+    LinkerFailure { message: String },
 }

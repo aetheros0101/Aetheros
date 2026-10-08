@@ -171,7 +171,9 @@ impl AgentTool for TerminalAgentTool {
 
         let session = match self
             .inner
-            .call(TerminalToolRequest::Create { cwd: self.workspace.clone() })
+            .call(TerminalToolRequest::Create {
+                cwd: self.workspace.clone(),
+            })
             .await
             .map_err(|e| e.to_string())?
         {
@@ -262,12 +264,18 @@ mod tests {
             tool.assess_call(&a(&["sh", "-c", "id"])),
             Some(CallVerdict::Deny { .. })
         ));
-        assert_eq!(tool.assess_call(&a(&["git", "status"])), Some(CallVerdict::Allow));
+        assert_eq!(
+            tool.assess_call(&a(&["git", "status"])),
+            Some(CallVerdict::Allow)
+        );
         assert!(matches!(
             tool.assess_call(&a(&["git", "commit"])),
             Some(CallVerdict::Ask { .. })
         ));
-        assert!(matches!(tool.assess_call(&[]), Some(CallVerdict::Deny { .. })));
+        assert!(matches!(
+            tool.assess_call(&[]),
+            Some(CallVerdict::Deny { .. })
+        ));
     }
 
     #[tokio::test]
@@ -341,7 +349,9 @@ mod tests {
         // HOME workspace'e işaret eder
         let env_out = tool.invoke(vec!["env".to_string()]).await.unwrap();
         assert!(
-            env_out.lines().any(|l| l == format!("HOME={}", ws.display())),
+            env_out
+                .lines()
+                .any(|l| l == format!("HOME={}", ws.display())),
             "HOME workspace olmalı: {env_out}"
         );
         let _ = std::fs::remove_dir_all(&ws);

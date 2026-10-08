@@ -1,36 +1,21 @@
 //src/types/agent_plan.rs
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
 use uuid::Uuid;
 
 /// `agents` ve `ai` modüllerinin her ikisi de bu tipe ihtiyaç duyduğu için
 /// döngüsel bağımlılığı önlemek amacıyla buraya (types) taşındı.
 /// Önceki konum: src/agents/plans.rs
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentPlan {
     pub id: Uuid,
 
-    pub objective:
-        String,
+    pub objective: String,
 
-    pub planned_steps:
-        Vec<AgentPlanStep>,
+    pub planned_steps: Vec<AgentPlanStep>,
 }
 
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentPlanStep {
     pub id: Uuid,
 
@@ -52,14 +37,7 @@ pub struct AgentPlanStep {
 /// istediğini taşıyan yapısal çağrı. Serbest metin adım isimlerinin
 /// yerini alır — Risk/Approval/Audit katmanlarının denetleyebileceği
 /// tek, tipli bir yüzey.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolCall {
     pub tool_name: String,
 

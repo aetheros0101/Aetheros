@@ -107,7 +107,9 @@ impl OllamaProvider {
                 if e.is_connect() || e.is_timeout() {
                     AiError::ProviderUnavailable
                 } else {
-                    AiError::ProviderFailure { message: e.to_string() }
+                    AiError::ProviderFailure {
+                        message: e.to_string(),
+                    }
                 }
             })?;
 
@@ -117,10 +119,13 @@ impl OllamaProvider {
             });
         }
 
-        let tags: OllamaTagsResponse = response
-            .json()
-            .await
-            .map_err(|e| AiError::ProviderFailure { message: e.to_string() })?;
+        let tags: OllamaTagsResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| AiError::ProviderFailure {
+                    message: e.to_string(),
+                })?;
 
         Ok(tags.models.into_iter().map(|m| m.name).collect())
     }
@@ -136,10 +141,7 @@ impl ModelProvider for OllamaProvider {
         true
     }
 
-    async fn infer(
-        &self,
-        request: InferenceRequest,
-    ) -> Result<InferenceResponse, AiError> {
+    async fn infer(&self, request: InferenceRequest) -> Result<InferenceResponse, AiError> {
         debug!(
             host = %self.host,
             model = %self.model,
@@ -168,7 +170,9 @@ impl ModelProvider for OllamaProvider {
                     warn!(host = %self.host, "Ollama sunucusuna bağlanılamadı");
                     AiError::ProviderUnavailable
                 } else {
-                    AiError::ProviderFailure { message: e.to_string() }
+                    AiError::ProviderFailure {
+                        message: e.to_string(),
+                    }
                 }
             })?;
 
@@ -190,10 +194,13 @@ impl ModelProvider for OllamaProvider {
             });
         }
 
-        let ollama_resp: OllamaGenerateResponse = response
-            .json()
-            .await
-            .map_err(|e| AiError::ProviderFailure { message: e.to_string() })?;
+        let ollama_resp: OllamaGenerateResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| AiError::ProviderFailure {
+                    message: e.to_string(),
+                })?;
 
         let tokens_used = ollama_resp.prompt_eval_count + ollama_resp.eval_count;
 

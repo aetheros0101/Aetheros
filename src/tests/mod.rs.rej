@@ -1,0 +1,8 @@
+--- src/tests/mod.rs	2026-10-08 05:43:55.018721774 +0000
++++ src/tests/mod.rs	2026-10-08 05:43:55.030148940 +0000
+@@ -1,4 +1,5 @@
+ pub mod helpers;
++pub mod architecture_tests;
+ pub mod capability_engine_tests;
+ pub mod script_capability_integration_tests;
+ pub mod tool_call_protocol_tests;

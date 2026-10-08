@@ -5,8 +5,8 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use aetheros_workspace::{Workspace, WorkspaceToolRequest};
+use async_trait::async_trait;
 
 use crate::agents::capabilities::AgentCapability;
 use crate::types::agent_tool::{AgentTool, CallVerdict, RiskLevel};
@@ -297,32 +297,32 @@ impl AgentTool for WorkspaceAgentTool {
             WorkspaceToolKind::Search => {
                 "Workspace içinde metin/regex ara. Argümanlar: [sorgu, (ops.) case_sensitive, (ops.) max, (ops.) hidden, (ops.) regex]."
             }
-            WorkspaceToolKind::FileMetadata => "Dosya metadata (hash, version, dil). Argümanlar: [yol].",
-            WorkspaceToolKind::ListMetadata => "İndeksteki tüm dosya metadata listesi. Argümanlar: yok.",
+            WorkspaceToolKind::FileMetadata => {
+                "Dosya metadata (hash, version, dil). Argümanlar: [yol]."
+            }
+            WorkspaceToolKind::ListMetadata => {
+                "İndeksteki tüm dosya metadata listesi. Argümanlar: yok."
+            }
             WorkspaceToolKind::FindSymbols => {
                 "Sembol ara. Argümanlar: [name, (ops.) path_prefix, (ops.) max_results]."
             }
             WorkspaceToolKind::FileSymbols => "Dosyadaki semboller. Argümanlar: [yol].",
-            WorkspaceToolKind::GitStatus => "Git durumu (branch, porcelain entries). Argümanlar: yok.",
+            WorkspaceToolKind::GitStatus => {
+                "Git durumu (branch, porcelain entries). Argümanlar: yok."
+            }
             WorkspaceToolKind::GitDiff => {
                 "Git diff. Argümanlar: [(ops.) staged true/false, (ops.) path]."
             }
             WorkspaceToolKind::GitBlame => {
                 "Git blame. Argümanlar: [path, (ops.) start_line, (ops.) end_line]."
             }
-            WorkspaceToolKind::GitLog => {
-                "Git log. Argümanlar: [(ops.) max, (ops.) path]."
-            }
+            WorkspaceToolKind::GitLog => "Git log. Argümanlar: [(ops.) max, (ops.) path].",
             WorkspaceToolKind::GitWorktreeList => "Git worktree listesi. Argümanlar: yok.",
             WorkspaceToolKind::GetDiagnostics => {
                 "LSP diagnostics önbelleği. Argümanlar: [(ops.) path]."
             }
-            WorkspaceToolKind::CreateFile => {
-                "Boş yeni dosya oluştur. Argümanlar: [yol]."
-            }
-            WorkspaceToolKind::CreateDirectory => {
-                "Dizin oluştur. Argümanlar: [yol]."
-            }
+            WorkspaceToolKind::CreateFile => "Boş yeni dosya oluştur. Argümanlar: [yol].",
+            WorkspaceToolKind::CreateDirectory => "Dizin oluştur. Argümanlar: [yol].",
             WorkspaceToolKind::Write => {
                 "Dosya yaz. Argümanlar: [yol, content, (ops.) expected_version]."
             }
@@ -332,12 +332,8 @@ impl AgentTool for WorkspaceAgentTool {
             WorkspaceToolKind::ApplyTextEdits => {
                 "LSP text edit listesi uygula. Argümanlar: [yol, edits_json, (ops.) expected_version]."
             }
-            WorkspaceToolKind::Rename => {
-                "Yeniden adlandır. Argümanlar: [from, to]."
-            }
-            WorkspaceToolKind::Delete => {
-                "Dosya/dizin sil. Argümanlar: [yol]."
-            }
+            WorkspaceToolKind::Rename => "Yeniden adlandır. Argümanlar: [from, to].",
+            WorkspaceToolKind::Delete => "Dosya/dizin sil. Argümanlar: [yol].",
         }
     }
 
@@ -356,7 +352,9 @@ impl AgentTool for WorkspaceAgentTool {
     fn assess_call(&self, arguments: &[String]) -> Option<CallVerdict> {
         let mut touches_git = false;
         for &idx in self.kind.path_arg_indexes() {
-            let Some(raw) = arguments.get(idx) else { continue };
+            let Some(raw) = arguments.get(idx) else {
+                continue;
+            };
             match inspect_path_arg(raw) {
                 PathArg::Bad(reason) => {
                     return Some(CallVerdict::Deny {
@@ -473,9 +471,5 @@ fn inspect_path_arg(raw: &str) -> PathArg {
             git = true;
         }
     }
-    if git {
-        PathArg::Git
-    } else {
-        PathArg::Ok
-    }
+    if git { PathArg::Git } else { PathArg::Ok }
 }

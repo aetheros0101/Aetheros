@@ -71,13 +71,13 @@ fn resolve_inside(root: &Path, canonical_root: &Path, path: &str) -> Result<Path
             }
             Component::Normal(name) => {
                 cur.push(name);
-                if let Ok(meta) = std::fs::symlink_metadata(&cur) {
-                    if meta.file_type().is_symlink() {
-                        // Kırık/okunamayan bağ: hedefi bilinmez → reddet.
-                        cur = std::fs::canonicalize(&cur).map_err(|_| outside(path))?;
-                        if !cur.starts_with(canonical_root) {
-                            return Err(outside(path));
-                        }
+                if let Ok(meta) = std::fs::symlink_metadata(&cur)
+                    && meta.file_type().is_symlink()
+                {
+                    // Kırık/okunamayan bağ: hedefi bilinmez → reddet.
+                    cur = std::fs::canonicalize(&cur).map_err(|_| outside(path))?;
+                    if !cur.starts_with(canonical_root) {
+                        return Err(outside(path));
                     }
                 }
             }

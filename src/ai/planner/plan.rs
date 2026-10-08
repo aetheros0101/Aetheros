@@ -1,18 +1,8 @@
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiExecutionPlan {
-    pub objective:
-        String,
+    pub objective: String,
 
-    pub steps:
-        Vec<String>,
+    pub steps: Vec<String>,
 }

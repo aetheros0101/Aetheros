@@ -21,10 +21,7 @@ impl WorkerExecutor {
         Self { engine }
     }
 
-    pub async fn execute(
-        &self,
-        task: TaskDefinition,
-    ) -> Result<Vec<u8>, WasmError> {
+    pub async fn execute(&self, task: TaskDefinition) -> Result<Vec<u8>, WasmError> {
         // WasmError olduğu gibi döndürülüyor.
         // InvalidModule / InvalidConfiguration → Permanent → retry yok.
         // Retryable → RetryPolicy karar verir.

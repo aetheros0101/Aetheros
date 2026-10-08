@@ -21,18 +21,12 @@
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
-use tokio::time::{
-    sleep,
-    Duration,
-};
+use tokio::time::{Duration, sleep};
 
-use crate::runtime::backpressure::BackpressureController;
 use crate::errors::runtime::RuntimeError;
+use crate::runtime::backpressure::BackpressureController;
 use crate::task::queue::PriorityTaskQueue;
-use crate::worker::manager::{
-    WorkerHandle,
-    WorkerManager,
-};
+use crate::worker::manager::{WorkerHandle, WorkerManager};
 use crate::worker::message::WorkerMessage;
 
 pub struct Dispatcher {
@@ -54,19 +48,15 @@ impl Dispatcher {
         }
     }
 
-    pub async fn run(
-        &self,
-    ) -> Result<(), RuntimeError> {
+    pub async fn run(&self) -> Result<(), RuntimeError> {
         loop {
             // [BUG #5] Permit alındı — artık task ile taşınacak.
             // Drop edilmeyecek, Worker'a devredilecek.
-            let permit =
-                self.backpressure.acquire().await;
+            let permit = self.backpressure.acquire().await;
 
             let task = self.queue.pop().await?;
 
-            let worker =
-                self.acquire_worker().await?;
+            let worker = self.acquire_worker().await?;
 
             // [BUG #5] Permit task ile birlikte gönderiliyor.
             // Worker execute_task() tamamlayınca permit drop olur.
@@ -75,9 +65,7 @@ impl Dispatcher {
                 .sender
                 .send(WorkerMessage::Execute(task, permit))
                 .await
-                .map_err(|_| {
-                    RuntimeError::WorkerSubsystemFailure
-                })?;
+                .map_err(|_| RuntimeError::WorkerSubsystemFailure)?;
         }
     }
 
@@ -87,17 +75,12 @@ impl Dispatcher {
         workers.send_shutdown_all().await;
     }
 
-    async fn acquire_worker(
-        &self,
-    ) -> Result<WorkerHandle, RuntimeError> {
+    async fn acquire_worker(&self) -> Result<WorkerHandle, RuntimeError> {
         loop {
             {
-                let workers =
-                    self.workers.read().await;
+                let workers = self.workers.read().await;
 
-                if let Some(worker) =
-                    workers.next_worker()
-                {
+                if let Some(worker) = workers.next_worker() {
                     return Ok(worker.clone());
                 }
             }

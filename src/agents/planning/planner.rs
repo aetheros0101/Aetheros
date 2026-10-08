@@ -102,7 +102,11 @@ pub fn format_history(history: &[StepRecord]) -> String {
         .iter()
         .enumerate()
         .map(|(i, r)| {
-            let status = if r.success { "başarılı" } else { "başarısız" };
+            let status = if r.success {
+                "başarılı"
+            } else {
+                "başarısız"
+            };
             let output_preview: String = r.output.chars().take(200).collect();
             let call = match &r.tool_call {
                 Some(c) => format!(" [{} {:?}]", c.tool_name, c.arguments),
@@ -111,7 +115,11 @@ pub fn format_history(history: &[StepRecord]) -> String {
             if output_preview.is_empty() {
                 format!("{}. {}{call} → {status} (çıktı yok)", i + 1, r.step_name)
             } else {
-                format!("{}. {}{call} → {status}: {output_preview}", i + 1, r.step_name)
+                format!(
+                    "{}. {}{call} → {status}: {output_preview}",
+                    i + 1,
+                    r.step_name
+                )
             }
         })
         .collect::<Vec<_>>()
@@ -195,10 +203,10 @@ impl AgentPlanner {
         router: Option<Arc<ProviderRouter>>,
         tools: &[Arc<dyn AgentTool>],
     ) -> AgentPlan {
-        if let Some(router) = router {
-            if let Some(plan) = Self::ai_plan(objective.clone(), &router, tools).await {
-                return plan;
-            }
+        if let Some(router) = router
+            && let Some(plan) = Self::ai_plan(objective.clone(), &router, tools).await
+        {
+            return plan;
         }
         Self::fallback_plan(objective)
     }
@@ -234,9 +242,8 @@ Output ONLY valid JSON, no explanation."#,
             )
         };
 
-        let prompt = format!(
-            "Objective: {objective}\nCreate a concise execution plan with 2-5 steps."
-        );
+        let prompt =
+            format!("Objective: {objective}\nCreate a concise execution plan with 2-5 steps.");
 
         let request = InferenceRequest::new(prompt, 512)
             .with_system(system)
@@ -313,7 +320,9 @@ Output ONLY valid JSON, no explanation."#,
         router: &Arc<ProviderRouter>,
         tools: &[Arc<dyn AgentTool>],
     ) -> Option<NextStepDecision> {
-        Self::plan_next_detailed(objective, history, router, tools).await.ok()
+        Self::plan_next_detailed(objective, history, router, tools)
+            .await
+            .ok()
     }
 
     /// `plan_next` ile aynı, ama başarısızlıkta SEBEBİ (kullanıcıya gösterilebilir
@@ -378,7 +387,10 @@ Rules:
             .await
             .map_err(|e| format!("AI isteği başarısız: {e}"))?;
 
-        debug!(tokens = response.tokens_used, "AI plan_next response received");
+        debug!(
+            tokens = response.tokens_used,
+            "AI plan_next response received"
+        );
 
         let cleaned = extract_json_object(&response.output);
 

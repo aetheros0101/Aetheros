@@ -26,26 +26,18 @@ use tokio::sync::mpsc;
 use tokio::time::timeout;
 use uuid::Uuid;
 
-
 use crate::persistence::engine::PersistenceEngine;
 use crate::persistence::models::PersistedTask;
 use crate::runtime::api::RuntimeHandle;
 use crate::task::priority::TaskPriority;
 use crate::task::queue::PriorityTaskQueue;
 use crate::task::retry::RetryPolicy;
-use crate::task::task::{
-    TaskDefinition,
-    TaskMetadata,
-    TaskState,
-};
+use crate::task::task::{TaskDefinition, TaskMetadata, TaskState};
 use crate::types::ids::TaskId;
 
 // ── Yardımcılar ───────────────────────────────────────────
 
-fn make_task(
-    priority: TaskPriority,
-    label: &str,
-) -> TaskDefinition {
+fn make_task(priority: TaskPriority, label: &str) -> TaskDefinition {
     TaskDefinition {
         id: TaskId(Uuid::new_v4()),
         parent: None,
@@ -85,18 +77,12 @@ async fn submit_reaches_receiver() {
 
     handle.submit(task).await.unwrap();
 
-    let received = timeout(
-        Duration::from_millis(100),
-        receiver.recv(),
-    )
-    .await
-    .expect("timeout")
-    .expect("channel closed");
+    let received = timeout(Duration::from_millis(100), receiver.recv())
+        .await
+        .expect("timeout")
+        .expect("channel closed");
 
-    assert_eq!(
-        received.id, task_id,
-        "Alınan task ID eşleşmeli"
-    );
+    assert_eq!(received.id, task_id, "Alınan task ID eşleşmeli");
 }
 
 /// Birden fazla submit → kanal sırasıyla teslim eder.
@@ -106,14 +92,10 @@ async fn multiple_submits_ordered_in_channel() {
     let handle = RuntimeHandle::new(sender);
 
     let tasks: Vec<TaskDefinition> = (0..5)
-        .map(|i| make_task(
-            TaskPriority::Normal,
-            &format!("task-{}", i),
-        ))
+        .map(|i| make_task(TaskPriority::Normal, &format!("task-{}", i)))
         .collect();
 
-    let ids: Vec<TaskId> =
-        tasks.iter().map(|t| t.id).collect();
+    let ids: Vec<TaskId> = tasks.iter().map(|t| t.id).collect();
 
     for task in tasks {
         handle.submit(task).await.unwrap();
@@ -131,10 +113,22 @@ async fn queue_priority_preserved_end_to_end() {
     let queue = PriorityTaskQueue::new();
 
     // Ters sırada ekle
-    queue.push(make_task(TaskPriority::Low, "low")).await.unwrap();
-    queue.push(make_task(TaskPriority::Normal, "normal")).await.unwrap();
-    queue.push(make_task(TaskPriority::Critical, "critical")).await.unwrap();
-    queue.push(make_task(TaskPriority::High, "high")).await.unwrap();
+    queue
+        .push(make_task(TaskPriority::Low, "low"))
+        .await
+        .unwrap();
+    queue
+        .push(make_task(TaskPriority::Normal, "normal"))
+        .await
+        .unwrap();
+    queue
+        .push(make_task(TaskPriority::Critical, "critical"))
+        .await
+        .unwrap();
+    queue
+        .push(make_task(TaskPriority::High, "high"))
+        .await
+        .unwrap();
 
     let order = vec![
         queue.pop().await.unwrap().entrypoint,
@@ -146,7 +140,8 @@ async fn queue_priority_preserved_end_to_end() {
     assert_eq!(
         order,
         vec!["critical", "high", "normal", "low"],
-        "Kuyruktan çıkış sırası yanlış: {:?}", order
+        "Kuyruktan çıkış sırası yanlış: {:?}",
+        order
     );
 }
 
@@ -154,10 +149,7 @@ async fn queue_priority_preserved_end_to_end() {
 #[tokio::test]
 async fn submitted_task_persists_to_db() {
     let dir = tempdir().unwrap();
-    let db = PersistenceEngine::open(
-        dir.path().to_str().unwrap(),
-    )
-    .unwrap();
+    let db = PersistenceEngine::open(dir.path().to_str().unwrap()).unwrap();
 
     let task = make_task(TaskPriority::Normal, "persist-test");
     let task_id = task.id;
@@ -178,20 +170,14 @@ async fn submitted_task_persists_to_db() {
 
     let loaded = loaded.unwrap();
     assert_eq!(loaded.task.id, task_id);
-    assert!(matches!(
-        loaded.task.state,
-        TaskState::Queued
-    ));
+    assert!(matches!(loaded.task.state, TaskState::Queued));
 }
 
 /// Persist → state update → load: lifecycle doğrulanır.
 #[tokio::test]
 async fn task_state_lifecycle_persists_correctly() {
     let dir = tempdir().unwrap();
-    let db = PersistenceEngine::open(
-        dir.path().to_str().unwrap(),
-    )
-    .unwrap();
+    let db = PersistenceEngine::open(dir.path().to_str().unwrap()).unwrap();
 
     let task = make_task(TaskPriority::High, "lifecycle");
     let id = task.id;
@@ -228,14 +214,9 @@ async fn expired_deadline_detected() {
 
     let mut task = make_task(TaskPriority::Normal, "deadline");
     // Geçmişe deadline ver
-    task.deadline = Some(
-        Utc::now() - chrono::Duration::seconds(10),
-    );
+    task.deadline = Some(Utc::now() - chrono::Duration::seconds(10));
 
-    assert!(
-        deadline_expired(&task),
-        "Geçmiş deadline tespit edilmeli"
-    );
+    assert!(deadline_expired(&task), "Geçmiş deadline tespit edilmeli");
 }
 
 /// Gelecek deadline: deadline_expired() false dönmeli.
@@ -244,9 +225,7 @@ async fn future_deadline_not_expired() {
     use crate::task::deadline::deadline_expired;
 
     let mut task = make_task(TaskPriority::Normal, "future");
-    task.deadline = Some(
-        Utc::now() + chrono::Duration::seconds(60),
-    );
+    task.deadline = Some(Utc::now() + chrono::Duration::seconds(60));
 
     assert!(
         !deadline_expired(&task),

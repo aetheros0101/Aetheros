@@ -101,7 +101,15 @@ async fn allow_with_warning_policy_lets_high_risk_tool_run() {
     let agent_id = Uuid::new_v4();
     let risk_engine = Arc::new(RiskEngine::new());
 
-    let mut runtime = AgentRuntime::new(test_budget(), vec![tool], None, None, Some(risk_engine), None, None);
+    let mut runtime = AgentRuntime::new(
+        test_budget(),
+        vec![tool],
+        None,
+        None,
+        Some(risk_engine),
+        None,
+        None,
+    );
     runtime.set_high_risk_policy(HighRiskPolicy::AllowWithWarning);
 
     let result = runtime.invoke_best_tool(agent_id, "risky_tool").await;
@@ -125,8 +133,15 @@ async fn low_and_medium_risk_tools_are_unaffected_by_default_policy() {
         let agent_id = Uuid::new_v4();
         let risk_engine = Arc::new(RiskEngine::new());
 
-        let runtime =
-            AgentRuntime::new(test_budget(), vec![tool], None, None, Some(risk_engine), None, None);
+        let runtime = AgentRuntime::new(
+            test_budget(),
+            vec![tool],
+            None,
+            None,
+            Some(risk_engine),
+            None,
+            None,
+        );
         let result = runtime.invoke_best_tool(agent_id, "risky_tool").await;
 
         assert!(

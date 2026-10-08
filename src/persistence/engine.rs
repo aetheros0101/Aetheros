@@ -23,19 +23,13 @@
 
 use std::sync::Arc;
 
-use sled::{
-    Db,
-    Tree,
-};
+use sled::{Db, Tree};
 use tokio::task::spawn_blocking;
-use tokio::time::{
-    interval,
-    Duration,
-};
+use tokio::time::{Duration, interval};
 use tracing::{debug, warn};
 
 use crate::errors::persistence::PersistenceError;
-use crate::persistence::encryption::{cipher_from_env, AtRestCipher};
+use crate::persistence::encryption::{AtRestCipher, cipher_from_env};
 use crate::persistence::models::PersistedTask;
 use crate::task::task::TaskState;
 use crate::types::ids::TaskId;
@@ -58,18 +52,17 @@ pub struct PersistenceEngine {
     approvals: Tree,
     audit: Tree,
     /// At-rest şifreleme kancası — bkz. src/persistence/encryption.rs.
-    /// Şu an itibariyle NoopCipher (gerçek şifreleme yok, bkz. dosya
-    /// dokümantasyonu), ama tüm okuma/yazma buradan geçtiği için ileride
-    /// tek satırla değiştirilebilir.
+    /// `AETHEROS_ENCRYPTION_KEY` (64 hex) ayarlıysa AES-256-GCM; ayarlı
+    /// değilse NoopCipher (değerler düz yazılır, açılışta uyarı loglanır).
     cipher: Box<dyn AtRestCipher>,
 }
 
+/// Ham (anahtar, değer) kaydı — sled tree'den okunan şifresiz bayt çifti.
+pub type RawRecord = (Vec<u8>, Vec<u8>);
+
 impl PersistenceEngine {
-    pub fn open(
-        path: &str,
-    ) -> Result<Self, PersistenceError> {
-        let database = sled::open(path)
-            .map_err(|_| PersistenceError::StorageFailure)?;
+    pub fn open(path: &str) -> Result<Self, PersistenceError> {
+        let database = sled::open(path).map_err(|_| PersistenceError::StorageFailure)?;
 
         let tasks = database
             .open_tree("tasks_v2") // ← v2: msgpack format
@@ -119,11 +112,7 @@ impl PersistenceEngine {
         Ok(())
     }
 
-    pub fn delete_record(
-        &self,
-        kind: RecordKind,
-        key: &[u8],
-    ) -> Result<(), PersistenceError> {
+    pub fn delete_record(&self, kind: RecordKind, key: &[u8]) -> Result<(), PersistenceError> {
         self.record_tree(kind)
             .remove(key)
             .map_err(|_| PersistenceError::StorageFailure)?;
@@ -133,10 +122,7 @@ impl PersistenceEngine {
     /// Bir türün tüm kayıtları, ANAHTAR sırasıyla (sled sıralıdır) —
     /// `(anahtar, çözülmüş değer)`. Okunamayan/şifresi çözülemeyen tek bir
     /// kayıt tüm listeyi mahvetmesin diye atlanır ve loglanır.
-    pub fn load_records(
-        &self,
-        kind: RecordKind,
-    ) -> Result<Vec<(Vec<u8>, Vec<u8>)>, PersistenceError> {
+    pub fn load_records(&self, kind: RecordKind) -> Result<Vec<RawRecord>, PersistenceError> {
         let mut out = Vec::new();
         for entry in self.record_tree(kind).iter() {
             let (key, value) = match entry {
@@ -172,17 +158,12 @@ impl PersistenceEngine {
     ///
     /// rmp_serde::to_vec_named → field isimlerini korur
     /// (schema evrimi için önemli).
-    pub fn persist_task(
-        &self,
-        task: &PersistedTask,
-    ) -> Result<(), PersistenceError> {
+    pub fn persist_task(&self, task: &PersistedTask) -> Result<(), PersistenceError> {
         let key = task.task.id.0.as_bytes();
 
         // MessagePack serialize — JSON'a göre ~4x hızlı
-        let value = rmp_serde::to_vec_named(task)
-            .map_err(|_| {
-                PersistenceError::SerializationFailure
-            })?;
+        let value =
+            rmp_serde::to_vec_named(task).map_err(|_| PersistenceError::SerializationFailure)?;
 
         // At-rest şifreleme kancasından geçir (bkz. persistence/encryption.rs).
         let value = self.cipher.encrypt(&value)?;
@@ -222,11 +203,7 @@ impl PersistenceEngine {
     /// found in store"). Bridge katmanı bu mesajı doğrudan
     /// TaskStatusResponse.error_message'a yansıtır — böylece
     /// ADB olmadan gerçek hata UI'da görülebilir.
-    pub fn set_task_failed(
-        &self,
-        task_id: &TaskId,
-        error: String,
-    ) -> Result<(), PersistenceError> {
+    pub fn set_task_failed(&self, task_id: &TaskId, error: String) -> Result<(), PersistenceError> {
         let mut persisted = self
             .load_task(task_id)?
             .ok_or(PersistenceError::StorageFailure)?;
@@ -238,10 +215,7 @@ impl PersistenceEngine {
         self.persist_task(&persisted)
     }
 
-    pub fn load_task(
-        &self,
-        task_id: &TaskId,
-    ) -> Result<Option<PersistedTask>, PersistenceError> {
+    pub fn load_task(&self, task_id: &TaskId) -> Result<Option<PersistedTask>, PersistenceError> {
         let value = self
             .tasks
             .get(task_id.0.as_bytes())
@@ -252,19 +226,14 @@ impl PersistenceEngine {
                 let bytes = self.cipher.decrypt(&bytes)?;
                 // MessagePack deserialize
                 let task = rmp_serde::from_slice(&bytes)
-                    .map_err(|_| {
-                        PersistenceError::SerializationFailure
-                    })?;
+                    .map_err(|_| PersistenceError::SerializationFailure)?;
                 Ok(Some(task))
             }
             None => Ok(None),
         }
     }
 
-    pub fn delete_task(
-        &self,
-        task_id: &TaskId,
-    ) -> Result<(), PersistenceError> {
+    pub fn delete_task(&self, task_id: &TaskId) -> Result<(), PersistenceError> {
         self.tasks
             .remove(task_id.0.as_bytes())
             .map_err(|_| PersistenceError::StorageFailure)?;
@@ -272,16 +241,14 @@ impl PersistenceEngine {
         Ok(())
     }
 
-    pub fn load_all_tasks(
-        &self,
-    ) -> Result<Vec<PersistedTask>, PersistenceError> {
-        let mut tasks   = Vec::new();
+    pub fn load_all_tasks(&self) -> Result<Vec<PersistedTask>, PersistenceError> {
+        let mut tasks = Vec::new();
         let mut skipped = 0usize;
 
         for entry in self.tasks.iter() {
             let (key, value) = match entry {
-                Ok(kv)  => kv,
-                Err(e)  => {
+                Ok(kv) => kv,
+                Err(e) => {
                     warn!(err = %e, "Sled iter hatası, kayıt atlanıyor");
                     skipped += 1;
                     continue;
@@ -302,8 +269,8 @@ impl PersistenceEngine {
             };
 
             match rmp_serde::from_slice::<PersistedTask>(&decrypted) {
-                Ok(task)  => tasks.push(task),
-                Err(e)    => {
+                Ok(task) => tasks.push(task),
+                Err(e) => {
                     // Eski format (hex serde dönemi) veya schema değişikliği.
                     // Tek kayıt bozuksa tüm listeyi mahvetme — atla ve logla.
                     warn!(
@@ -324,9 +291,7 @@ impl PersistenceEngine {
     }
 
     /// Async flush — executor thread'ini bloklamaz.
-    pub async fn flush_async(
-        &self,
-    ) -> Result<(), PersistenceError> {
+    pub async fn flush_async(&self) -> Result<(), PersistenceError> {
         let tasks = self.tasks.clone();
 
         spawn_blocking(move || {
@@ -346,8 +311,7 @@ impl PersistenceEngine {
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) {
         tokio::spawn(async move {
-            let mut ticker =
-                interval(Duration::from_millis(period_ms));
+            let mut ticker = interval(Duration::from_millis(period_ms));
 
             loop {
                 tokio::select! {

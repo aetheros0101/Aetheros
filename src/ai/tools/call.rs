@@ -1,18 +1,8 @@
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
-    pub tool_name:
-        String,
+    pub tool_name: String,
 
-    pub payload:
-        String,
+    pub payload: String,
 }

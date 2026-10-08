@@ -26,10 +26,7 @@
 
 use std::cmp::Ordering;
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
 #[derive(
     Debug,
@@ -57,9 +54,9 @@ impl TaskPriority {
     pub fn weight(self) -> u8 {
         match self {
             Self::Critical => 4,
-            Self::High     => 3,
-            Self::Normal   => 2,
-            Self::Low      => 1,
+            Self::High => 3,
+            Self::Normal => 2,
+            Self::Low => 1,
         }
     }
 }
@@ -101,11 +98,14 @@ mod tests {
         ];
         priorities.sort();
         // sort() artan sıra → Low önce, Critical son
-        assert_eq!(priorities, vec![
-            TaskPriority::Low,
-            TaskPriority::Normal,
-            TaskPriority::High,
-            TaskPriority::Critical,
-        ]);
+        assert_eq!(
+            priorities,
+            vec![
+                TaskPriority::Low,
+                TaskPriority::Normal,
+                TaskPriority::High,
+                TaskPriority::Critical,
+            ]
+        );
     }
 }

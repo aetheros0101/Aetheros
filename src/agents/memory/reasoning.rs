@@ -24,7 +24,11 @@ pub struct ReasoningTrace {
 }
 
 impl ReasoningTrace {
-    pub fn new(agent_id: impl Into<String>, _phase: ReasoningPhase, decision: impl Into<String>) -> Self {
+    pub fn new(
+        agent_id: impl Into<String>,
+        _phase: ReasoningPhase,
+        decision: impl Into<String>,
+    ) -> Self {
         Self {
             agent_id: agent_id.into(),
             decision: decision.into(),
@@ -48,5 +52,9 @@ impl ReasoningLog {
 
     pub fn len(&self) -> usize {
         self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 }

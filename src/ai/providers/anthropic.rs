@@ -20,14 +20,8 @@
 // ============================================================
 
 use async_trait::async_trait;
-use serde::{
-    Deserialize,
-    Serialize,
-};
-use tracing::{
-    debug,
-    warn,
-};
+use serde::{Deserialize, Serialize};
+use tracing::{debug, warn};
 
 use crate::ai::errors::AiError;
 use crate::ai::inference::request::InferenceRequest;
@@ -83,11 +77,10 @@ pub struct AnthropicProvider {
 impl AnthropicProvider {
     /// Varsayılan model: claude-sonnet-4-6 (Haziran 2026 itibarıyla güncel).
     pub fn new() -> Result<Self, AiError> {
-        let api_key = std::env::var("ANTHROPIC_API_KEY")
-            .map_err(|_| {
-                warn!("ANTHROPIC_API_KEY not set");
-                AiError::ProviderUnavailable
-            })?;
+        let api_key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| {
+            warn!("ANTHROPIC_API_KEY not set");
+            AiError::ProviderUnavailable
+        })?;
 
         Ok(Self::from_key(api_key))
     }
@@ -104,10 +97,7 @@ impl AnthropicProvider {
     }
 
     /// Farklı bir model ile oluştur.
-    pub fn with_model(
-        mut self,
-        model: impl Into<String>,
-    ) -> Self {
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
         self.model = model.into();
         self
     }
@@ -123,10 +113,7 @@ impl ModelProvider for AnthropicProvider {
         true
     }
 
-    async fn infer(
-        &self,
-        request: InferenceRequest,
-    ) -> Result<InferenceResponse, AiError> {
+    async fn infer(&self, request: InferenceRequest) -> Result<InferenceResponse, AiError> {
         debug!(
             model = %self.model,
             max_tokens = request.max_tokens,
@@ -158,10 +145,13 @@ impl ModelProvider for AnthropicProvider {
                     warn!("Anthropic'e bağlanılamadı (ağ sorunu)");
                     AiError::ProviderFailure {
                         message: "Bağlantı kurulamadı — internet bağlantını \
-                                  kontrol et ve tekrar dene.".to_string(),
+                                  kontrol et ve tekrar dene."
+                            .to_string(),
                     }
                 } else {
-                    AiError::ProviderFailure { message: e.to_string() }
+                    AiError::ProviderFailure {
+                        message: e.to_string(),
+                    }
                 }
             })?;
 
@@ -174,20 +164,14 @@ impl ModelProvider for AnthropicProvider {
 
         if status.is_server_error() {
             return Err(AiError::ProviderFailure {
-                message: format!(
-                    "Anthropic server error: {}",
-                    status
-                ),
+                message: format!("Anthropic server error: {}", status),
             });
         }
 
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
             return Err(AiError::ProviderFailure {
-                message: format!(
-                    "Anthropic error {}: {}",
-                    status, body
-                ),
+                message: format!("Anthropic error {}: {}", status, body),
             });
         }
 
@@ -207,8 +191,7 @@ impl ModelProvider for AnthropicProvider {
             .and_then(|c| c.text.clone())
             .unwrap_or_default();
 
-        let tokens_used = anthropic_resp.usage.input_tokens
-            + anthropic_resp.usage.output_tokens;
+        let tokens_used = anthropic_resp.usage.input_tokens + anthropic_resp.usage.output_tokens;
 
         debug!(tokens_used, "Anthropic inference complete");
 

@@ -96,7 +96,7 @@ impl AgentManager {
                 active_tasks: 0,
             },
             quota_policy: QuotaPolicy {
-                max_concurrent: max_concurrent,
+                max_concurrent,
                 ..QuotaPolicy::default()
             },
             quota_usage: QuotaUsage::default(),
@@ -262,10 +262,10 @@ impl AgentManager {
             self.capacity.active_tasks = self.capacity.active_tasks.saturating_sub(1);
             self.quota_usage.release(lease.isolation.tenant());
         }
-        if let Some(a) = self.registry.get_mut(agent_id) {
-            if a.current_execution_id == Some(execution_id) {
-                a.current_execution_id = None;
-            }
+        if let Some(a) = self.registry.get_mut(agent_id)
+            && a.current_execution_id == Some(execution_id)
+        {
+            a.current_execution_id = None;
         }
     }
 
@@ -455,9 +455,13 @@ mod tests {
         let lease = m.try_acquire_execution(d.id, Uuid::new_v4()).unwrap();
 
         assert!(m.assert_isolation(lease.lease_id, &scope("t1")).is_ok());
-        let err = m.assert_isolation(lease.lease_id, &scope("t2")).unwrap_err();
+        let err = m
+            .assert_isolation(lease.lease_id, &scope("t2"))
+            .unwrap_err();
         assert_eq!(err.kind, AgentErrorKind::Capability);
-        let missing = m.assert_isolation(Uuid::new_v4(), &scope("t1")).unwrap_err();
+        let missing = m
+            .assert_isolation(Uuid::new_v4(), &scope("t1"))
+            .unwrap_err();
         assert_eq!(missing.kind, AgentErrorKind::Validation);
     }
 

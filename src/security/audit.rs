@@ -1,27 +1,14 @@
-use chrono::{
-    DateTime,
-    Utc,
-};
+use chrono::{DateTime, Utc};
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditLog {
     pub actor: String,
 
     pub action: String,
 
-    pub success:
-            bool,
+    pub success: bool,
 
-    pub timestamp:
-        DateTime<Utc>,
+    pub timestamp: DateTime<Utc>,
 }

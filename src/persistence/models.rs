@@ -1,20 +1,9 @@
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
-use crate::task::task::{
-    TaskDefinition,
-    TaskState,
-};
+use crate::task::task::{TaskDefinition, TaskState};
 use crate::types::timestamps::Timestamp;
 
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedTask {
     pub task: TaskDefinition,
     pub created_at: Timestamp,
@@ -30,14 +19,10 @@ pub struct PersistedTask {
 }
 
 impl PersistedTask {
-    pub fn is_terminal(
-        &self,
-    ) -> bool {
+    pub fn is_terminal(&self) -> bool {
         matches!(
             self.task.state,
-            TaskState::Completed
-                | TaskState::Failed
-                | TaskState::Cancelled
+            TaskState::Completed | TaskState::Failed | TaskState::Cancelled
         )
     }
 }

@@ -12,10 +12,7 @@
 // ============================================================
 
 use crate::errors::wasm::WasmError;
-use crate::task::retry::{
-    RetryClassification,
-    RetryPolicy,
-};
+use crate::task::retry::{RetryClassification, RetryPolicy};
 
 // ── Yardımcı ──────────────────────────────────────────────
 
@@ -67,11 +64,9 @@ fn invalid_module_is_permanent() {
 #[test]
 fn invalid_configuration_is_permanent() {
     assert_eq!(
-        RetryPolicy::classify_wasm_error(
-            &WasmError::InvalidConfiguration {
-                reason: "timeout_ms is 0".to_string(),
-            }
-        ),
+        RetryPolicy::classify_wasm_error(&WasmError::InvalidConfiguration {
+            reason: "timeout_ms is 0".to_string(),
+        }),
         RetryClassification::Permanent
     );
 }
@@ -127,7 +122,12 @@ fn no_retry_when_max_attempts_reached() {
 fn no_retry_for_permanent_errors() {
     let p = policy(10);
     assert!(
-        !p.should_retry(1, &WasmError::InvalidModule { reason: "test".into() }),
+        !p.should_retry(
+            1,
+            &WasmError::InvalidModule {
+                reason: "test".into()
+            }
+        ),
         "Permanent hata retry edilmemeli"
     );
     assert!(
@@ -190,7 +190,8 @@ fn delay_with_jitter_in_range() {
     // base * 2^1 = 200, jitter 0-1000 → 200..1200
     let d = p.next_delay(1).as_millis();
     assert!(
-        d >= 200 && d < 1200,
-        "Jitter'lı delay 200-1200ms arasında olmalı, ama: {}ms", d
+        (200..1200).contains(&d),
+        "Jitter'lı delay 200-1200ms arasında olmalı, ama: {}ms",
+        d
     );
 }

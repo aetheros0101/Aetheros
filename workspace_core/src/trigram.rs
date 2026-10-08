@@ -20,12 +20,6 @@ impl TrigramIndex {
         Self::default()
     }
 
-    pub fn clear(&mut self) {
-        self.postings.clear();
-        self.paths.clear();
-        self.path_ids.clear();
-    }
-
     pub fn remove(&mut self, path: &str) {
         let key = path.replace('\\', "/");
         let Some(&id) = self.path_ids.get(&key) else {
@@ -110,10 +104,6 @@ impl TrigramIndex {
                     .cloned()
             })
             .collect()
-    }
-
-    pub fn file_count(&self) -> usize {
-        self.path_ids.len()
     }
 }
 

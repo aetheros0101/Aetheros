@@ -22,34 +22,21 @@
 
 use std::collections::HashMap;
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
+use crate::task::orchestration::TaskOrchestration;
 use crate::task::priority::TaskPriority;
 use crate::task::retry::RetryPolicy;
-use crate::task::orchestration::TaskOrchestration;
 use crate::types::ids::TaskId;
 use crate::types::timestamps::Timestamp;
-use crate::wasm::module_store::ModuleHash;
+use crate::types::ids::ModuleHash;
 
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskMetadata {
     pub labels: HashMap<String, String>,
 }
 
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TaskState {
     Created,
     Persisted,
@@ -62,12 +49,7 @@ pub enum TaskState {
     Retrying,
 }
 
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskDefinition {
     pub id: TaskId,
 

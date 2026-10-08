@@ -4,14 +4,12 @@
 //! per-path update/remove. Content is kept as Arc<str> for cheap sharing.
 
 use crate::error::Result;
-use crate::models::{
-    FileMetadata, SearchMatch, SearchOptions, Symbol, SymbolQuery,
-};
+use crate::models::{FileMetadata, SearchMatch, SearchOptions, Symbol, SymbolQuery};
 use ignore::gitignore::Gitignore;
 use regex::RegexBuilder;
 use std::collections::HashMap;
 use std::fs;
- 
+
 use std::path::Path;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
@@ -145,7 +143,9 @@ impl WorkspaceIndex {
             if ignore.matched_path_or_any_parents(path, false).is_ignore() {
                 continue;
             }
-            let Ok(rel) = path.strip_prefix(root) else { continue };
+            let Ok(rel) = path.strip_prefix(root) else {
+                continue;
+            };
             let rel = rel.to_string_lossy().replace('\\', "/");
             index.index_path(root, &rel, ignore, None);
         }
@@ -155,7 +155,10 @@ impl WorkspaceIndex {
     /// Incremental: re-read one relative path. Preserves document version.
     pub fn update(&mut self, root: &Path, relative: &str, ignore: &Gitignore) {
         let key = relative.replace('\\', "/");
-        let prev_version = self.files.get(&key).map(|f| f.version)
+        let prev_version = self
+            .files
+            .get(&key)
+            .map(|f| f.version)
             .or_else(|| self.versions.get(&key).copied())
             .unwrap_or(0);
         self.remove(&key);
@@ -177,7 +180,9 @@ impl WorkspaceIndex {
         if !path.is_file() || ignore.matched_path_or_any_parents(&path, false).is_ignore() {
             return;
         }
-        let Some((text, meta)) = read_text_limited(&path) else { return };
+        let Some((text, meta)) = read_text_limited(&path) else {
+            return;
+        };
         if self.total_bytes + text.len() > MAX_INDEXED_TOTAL_BYTES {
             return;
         }
@@ -188,7 +193,9 @@ impl WorkspaceIndex {
             Some(reg) => reg
                 .read()
                 .map(|r| r.extract(&key, &text, language.as_deref()))
-                .unwrap_or_else(|_| crate::symbols::extract_heuristic(&key, &text, language.as_deref())),
+                .unwrap_or_else(|_| {
+                    crate::symbols::extract_heuristic(&key, &text, language.as_deref())
+                }),
             None => crate::symbols::extract_heuristic(&key, &text, language.as_deref()),
         };
         let version = force_version
@@ -257,12 +264,6 @@ impl WorkspaceIndex {
             .unwrap_or(0)
     }
 
-    pub fn get_text(&self, relative: &str) -> Option<Arc<str>> {
-        self.files
-            .get(&relative.replace('\\', "/"))
-            .map(|f| f.text.clone())
-    }
-
     pub fn metadata(&self, relative: &str) -> Option<FileMetadata> {
         let key = relative.replace('\\', "/");
         let f = self.files.get(&key)?;
@@ -310,12 +311,11 @@ impl WorkspaceIndex {
         let mut out = Vec::with_capacity(max.min(64));
 
         // Trigram prefilter for queries >= 3 chars
-        let candidate_set: Option<std::collections::HashSet<String>> =
-            if opts.query.len() >= 3 {
-                Some(self.trigrams.candidates(&opts.query).into_iter().collect())
-            } else {
-                None
-            };
+        let candidate_set: Option<std::collections::HashSet<String>> = if opts.query.len() >= 3 {
+            Some(self.trigrams.candidates(&opts.query).into_iter().collect())
+        } else {
+            None
+        };
 
         for (path, file) in &self.files {
             if let Some(ref cs) = candidate_set {
@@ -424,14 +424,6 @@ impl WorkspaceIndex {
 
     pub fn len(&self) -> usize {
         self.files.len()
-    }
-
-    pub fn total_bytes(&self) -> usize {
-        self.total_bytes
-    }
-
-    pub fn contains(&self, relative: &str) -> bool {
-        self.files.contains_key(&relative.replace('\\', "/"))
     }
 }
 

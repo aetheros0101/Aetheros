@@ -57,7 +57,9 @@ mod tests {
         std::env::set_var("AETHEROS_TEST_SECRET_API_KEY", "sirr");
         let c = git(Path::new("."));
         let envs: Vec<_> = c.get_envs().collect();
-        assert!(!envs.iter().any(|(k, _)| k.to_string_lossy().contains("SECRET")));
+        assert!(!envs
+            .iter()
+            .any(|(k, _)| k.to_string_lossy().contains("SECRET")));
         assert!(!envs.iter().any(|(k, _)| *k == "HOME"));
         let args: Vec<String> = c
             .get_args()

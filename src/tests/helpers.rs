@@ -6,23 +6,16 @@
 // wasm_module_hash: [0u8; 32] = "modül yok" (test için)
 // ============================================================
 
-use std::collections::HashMap;
 use chrono::Utc;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::task::priority::TaskPriority;
 use crate::task::retry::RetryPolicy;
-use crate::task::task::{
-    TaskDefinition,
-    TaskMetadata,
-    TaskState,
-};
+use crate::task::task::{TaskDefinition, TaskMetadata, TaskState};
 use crate::types::ids::TaskId;
 
-pub fn make_task(
-    priority: TaskPriority,
-    entrypoint: &str,
-) -> TaskDefinition {
+pub fn make_task(priority: TaskPriority, entrypoint: &str) -> TaskDefinition {
     TaskDefinition {
         id: TaskId(Uuid::new_v4()),
         parent: None,
@@ -49,10 +42,7 @@ pub fn make_task(
     }
 }
 
-pub fn make_task_with_hash(
-    priority: TaskPriority,
-    hash: [u8; 32],
-) -> TaskDefinition {
+pub fn make_task_with_hash(priority: TaskPriority, hash: [u8; 32]) -> TaskDefinition {
     let mut task = make_task(priority, "main");
     task.wasm_module_hash = hash;
     task

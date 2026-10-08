@@ -3,11 +3,10 @@
 // ============================================================
 
 pub mod dashboard;
+pub mod middleware;
 pub mod models;
 pub mod rest;
-pub mod routes;
 pub mod websocket;
-pub mod middleware;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -15,44 +14,39 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use tracing::info;
 
-use crate::ai::routing::router::{build_provider, ProviderRouter};
-use crate::api::rest::router::{
-    AgentRegistry,
-    WorkflowRegistry,
-    build_router,
-    AppState,
-};
-use crate::scripting::registry::ScriptRegistry;
-use crate::remote::cluster::ClusterState;
+use crate::ai::routing::router::{ProviderRouter, build_provider};
+use crate::api::rest::router::{AgentRegistry, AppState, WorkflowRegistry, build_router};
 use crate::events::bus::EventBus;
 use crate::metrics::runtime::RuntimeMetrics;
 use crate::persistence::engine::PersistenceEngine;
+use crate::remote::cluster::ClusterState;
 use crate::runtime::api::RuntimeHandle;
+use crate::scripting::registry::ScriptRegistry;
 use crate::security::capability_engine::CapabilityEngine;
 use crate::security::risk_engine::RiskEngine;
 use crate::wasm::module_store::ModuleStore;
 
 pub struct ApiServer {
     state: AppState,
-    addr:  SocketAddr,
+    addr: SocketAddr,
 }
 
 impl ApiServer {
     pub fn new(
-        runtime:      RuntimeHandle,
-        events:       EventBus,
-        persistence:  Arc<PersistenceEngine>,
-        metrics:      Arc<RuntimeMetrics>,
+        runtime: RuntimeHandle,
+        events: EventBus,
+        persistence: Arc<PersistenceEngine>,
+        metrics: Arc<RuntimeMetrics>,
         module_store: Arc<ModuleStore>,
-        addr:         SocketAddr,
+        addr: SocketAddr,
     ) -> Self {
-        let agent_registry:    AgentRegistry    = Arc::new(DashMap::new());
+        let agent_registry: AgentRegistry = Arc::new(DashMap::new());
         let workflow_registry: WorkflowRegistry = Arc::new(DashMap::new());
-        let script_registry                     = Arc::new(ScriptRegistry::new());
-        let cluster                             = Arc::new(ClusterState::new());
-        let ai_router                           = Arc::new(Self::ai_router_from_env());
-        let capability_engine                   = Arc::new(CapabilityEngine::new());
-        let risk_engine                         = Arc::new(RiskEngine::new());
+        let script_registry = Arc::new(ScriptRegistry::new());
+        let cluster = Arc::new(ClusterState::new());
+        let ai_router = Arc::new(Self::ai_router_from_env());
+        let capability_engine = Arc::new(CapabilityEngine::new());
+        let risk_engine = Arc::new(RiskEngine::new());
 
         Self {
             state: AppState {
@@ -89,9 +83,9 @@ impl ApiServer {
 
         let registrations: [(&str, &str, &str); 4] = [
             ("anthropic", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"),
-            ("openai",    "OPENAI_API_KEY",    "OPENAI_MODEL"),
-            ("gemini",    "GEMINI_API_KEY",    "GEMINI_MODEL"),
-            ("ollama",    "OLLAMA_HOST",       "OLLAMA_MODEL"),
+            ("openai", "OPENAI_API_KEY", "OPENAI_MODEL"),
+            ("gemini", "GEMINI_API_KEY", "GEMINI_MODEL"),
+            ("ollama", "OLLAMA_HOST", "OLLAMA_MODEL"),
         ];
 
         for (provider_id, primary_var, model_var) in registrations {
@@ -121,9 +115,7 @@ impl ApiServer {
         router
     }
 
-    pub async fn serve(
-        self,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn serve(self) -> Result<(), Box<dyn std::error::Error>> {
         let app = build_router().with_state(self.state);
 
         info!(addr = %self.addr, "API server listening");

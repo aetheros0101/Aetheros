@@ -13,10 +13,9 @@ use crate::agents::tools::AgentTool;
 use crate::errors::runtime::RuntimeError;
 use crate::logging::audit::AuditEventKind;
 
-use super::{now_ms, AgentRuntime, HighRiskPolicy};
+use super::{AgentRuntime, HighRiskPolicy, now_ms};
 
 impl AgentRuntime {
-
     pub fn cancellation_token(&self) -> CancellationToken {
         self.cancellation.clone()
     }
@@ -35,7 +34,11 @@ impl AgentRuntime {
 
     pub(super) fn emit(&self, context: &AgentContext, kind: AgentEventKind) {
         if let Some(sink) = &self.event_sink {
-            sink.emit(AgentEvent::new(kind, context.agent_id, context.execution_id));
+            sink.emit(AgentEvent::new(
+                kind,
+                context.agent_id,
+                context.execution_id,
+            ));
         }
     }
 
@@ -61,7 +64,8 @@ impl AgentRuntime {
                 );
                 ev.message = Some(format!("{} → {}", tr.from.label(), tr.to.label()));
                 if let Some(r) = reason {
-                    ev.attributes.insert("reason".into(), serde_json::Value::String(r));
+                    ev.attributes
+                        .insert("reason".into(), serde_json::Value::String(r));
                 }
                 self.emit_rich(ev);
             }
@@ -80,7 +84,10 @@ impl AgentRuntime {
         if !self.cancellation.is_cancelled() {
             return Ok(());
         }
-        let mode = self.cancellation.mode().unwrap_or(CancellationMode::Graceful);
+        let mode = self
+            .cancellation
+            .mode()
+            .unwrap_or(CancellationMode::Graceful);
         self.emit(context, AgentEventKind::CancellationRequested);
         self.audit(
             context.agent_id,
@@ -94,7 +101,10 @@ impl AgentRuntime {
         })
     }
 
-    pub(super) fn check_budget_accounting(&self, context: &AgentContext) -> Result<(), RuntimeError> {
+    pub(super) fn check_budget_accounting(
+        &self,
+        context: &AgentContext,
+    ) -> Result<(), RuntimeError> {
         if let Err(e) = self.accounting.check(&self.budget, now_ms()) {
             self.emit(context, AgentEventKind::BudgetExceeded);
             self.audit(
@@ -104,13 +114,10 @@ impl AgentRuntime {
                     error: e.message.clone(),
                 },
             );
-            return Err(RuntimeError::TaskExecutionFailed {
-                message: e.message,
-            });
+            return Err(RuntimeError::TaskExecutionFailed { message: e.message });
         }
         // %80 uyarı
-        let steps_ratio = self.accounting.steps_used as f32
-            / self.budget.max_steps.max(1) as f32;
+        let steps_ratio = self.accounting.steps_used as f32 / self.budget.max_steps.max(1) as f32;
         if steps_ratio >= 0.8 {
             self.emit(context, AgentEventKind::BudgetWarning);
         }
@@ -145,7 +152,11 @@ impl AgentRuntime {
             Some(engine) => self
                 .tools
                 .iter()
-                .filter(|t| engine.check(&agent_id, t.required_capability()).is_allowed())
+                .filter(|t| {
+                    engine
+                        .check(&agent_id, t.required_capability())
+                        .is_allowed()
+                })
                 .cloned()
                 .collect(),
         }
@@ -157,9 +168,10 @@ impl AgentRuntime {
         self.audit(
             context.agent_id,
             context.execution_id,
-            AuditEventKind::ExecutionFailed { error: message.clone() },
+            AuditEventKind::ExecutionFailed {
+                error: message.clone(),
+            },
         );
         RuntimeError::TaskExecutionFailed { message }
     }
-
 }

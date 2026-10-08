@@ -18,17 +18,11 @@
 // ============================================================
 
 use std::sync::Arc;
-use std::sync::atomic::{
-    AtomicU64,
-    Ordering,
-};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use tracing::debug;
 
-use crate::events::bus::{
-    EventBus,
-    SystemEvent,
-};
+use crate::events::bus::{EventBus, SystemEvent};
 use crate::events::task::TaskEvent;
 
 #[derive(Debug)]
@@ -48,6 +42,12 @@ pub struct RuntimeMetrics {
     retried_tasks: AtomicU64,
 }
 
+impl Default for RuntimeMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RuntimeMetrics {
     pub fn new() -> Self {
         Self {
@@ -64,20 +64,20 @@ impl RuntimeMetrics {
     pub fn increment_completed(&self) {
         self.completed_tasks.fetch_add(1, Ordering::Relaxed);
         // Sıfırın altına düşme koruması
-        self.queued_tasks.fetch_update(
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-            |v| Some(v.saturating_sub(1)),
-        ).ok();
+        self.queued_tasks
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+                Some(v.saturating_sub(1))
+            })
+            .ok();
     }
 
     pub fn increment_failed(&self) {
         self.failed_tasks.fetch_add(1, Ordering::Relaxed);
-        self.queued_tasks.fetch_update(
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-            |v| Some(v.saturating_sub(1)),
-        ).ok();
+        self.queued_tasks
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+                Some(v.saturating_sub(1))
+            })
+            .ok();
     }
 
     pub fn increment_queued(&self) {
@@ -96,11 +96,11 @@ impl RuntimeMetrics {
 
     pub fn snapshot(&self) -> MetricsSnapshot {
         MetricsSnapshot {
-            active_workers:  self.active_workers.load(Ordering::Relaxed),
-            queued_tasks:    self.queued_tasks.load(Ordering::Relaxed),
+            active_workers: self.active_workers.load(Ordering::Relaxed),
+            queued_tasks: self.queued_tasks.load(Ordering::Relaxed),
             completed_tasks: self.completed_tasks.load(Ordering::Relaxed),
-            failed_tasks:    self.failed_tasks.load(Ordering::Relaxed),
-            retried_tasks:   self.retried_tasks.load(Ordering::Relaxed),
+            failed_tasks: self.failed_tasks.load(Ordering::Relaxed),
+            retried_tasks: self.retried_tasks.load(Ordering::Relaxed),
         }
     }
 
@@ -110,10 +110,7 @@ impl RuntimeMetrics {
     ///
     /// Her SystemEvent::Task event'ine göre metrikleri günceller.
     /// Shutdown: bus kapanınca (RecvError::Closed) döngü çıkar.
-    pub fn start_collecting(
-        self: Arc<Self>,
-        bus: EventBus,
-    ) {
+    pub fn start_collecting(self: Arc<Self>, bus: EventBus) {
         let mut receiver = bus.subscribe();
 
         tokio::spawn(async move {
@@ -125,10 +122,7 @@ impl RuntimeMetrics {
 
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                         // Metrik toplama lag'ı — kayıp var ama runtime durmaz
-                        debug!(
-                            skipped = n,
-                            "Metrics collector lagged"
-                        );
+                        debug!(skipped = n, "Metrics collector lagged");
                     }
 
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => {
@@ -140,7 +134,7 @@ impl RuntimeMetrics {
         });
     }
 
-   pub fn process_event(&self, event: &SystemEvent) {
+    pub fn process_event(&self, event: &SystemEvent) {
         if let SystemEvent::Task(task_event) = event {
             match task_event {
                 TaskEvent::TaskQueued { .. } => {

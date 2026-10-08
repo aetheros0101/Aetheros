@@ -8,10 +8,7 @@ use chrono::Utc;
 use uuid::Uuid;
 
 use crate::remote::heartbeat::Heartbeat;
-use crate::remote::node::{
-    NodeCapability,
-    RemoteNode,
-};
+use crate::remote::node::{NodeCapability, RemoteNode};
 use crate::remote::scheduler::RemoteScheduler;
 
 // ── Yardımcılar ───────────────────────────────────────────
@@ -51,30 +48,21 @@ fn heartbeat(node_id: Uuid, cpu: f32, mem: usize, exec: usize) -> Heartbeat {
 
 #[test]
 fn node_new_is_healthy() {
-    let node = RemoteNode::new(
-        "localhost:9000",
-        vec![NodeCapability::WasmExecution],
-    );
+    let node = RemoteNode::new("localhost:9000", vec![NodeCapability::WasmExecution]);
     assert!(node.healthy);
     assert!(!node.capabilities.is_empty());
 }
 
 #[test]
 fn node_mark_unhealthy() {
-    let mut node = RemoteNode::new(
-        "localhost:9000",
-        vec![NodeCapability::WasmExecution],
-    );
+    let mut node = RemoteNode::new("localhost:9000", vec![NodeCapability::WasmExecution]);
     node.mark_unhealthy();
     assert!(!node.healthy);
 }
 
 #[test]
 fn node_touch_updates_timestamp() {
-    let mut node = RemoteNode::new(
-        "localhost:9000",
-        vec![NodeCapability::WasmExecution],
-    );
+    let mut node = RemoteNode::new("localhost:9000", vec![NodeCapability::WasmExecution]);
     let before = node.last_seen;
     std::thread::sleep(std::time::Duration::from_millis(5));
     node.touch();
@@ -92,11 +80,13 @@ fn select_any_returns_healthy() {
 
     let selected = RemoteScheduler::select_any(&nodes);
     assert!(selected.is_some());
-    assert!(nodes
-        .iter()
-        .find(|n| n.node_id == selected.unwrap())
-        .unwrap()
-        .healthy);
+    assert!(
+        nodes
+            .iter()
+            .find(|n| n.node_id == selected.unwrap())
+            .unwrap()
+            .healthy
+    );
 }
 
 #[test]
@@ -113,33 +103,21 @@ fn select_any_all_unhealthy_returns_none() {
 
 #[test]
 fn select_node_filters_by_capability() {
-    let wasm_node = healthy_node(vec![
-        NodeCapability::WasmExecution,
-    ]);
-    let agent_node = healthy_node(vec![
-        NodeCapability::AgentExecution,
-    ]);
+    let wasm_node = healthy_node(vec![NodeCapability::WasmExecution]);
+    let agent_node = healthy_node(vec![NodeCapability::AgentExecution]);
 
     let nodes = vec![wasm_node.clone(), agent_node];
-    let hbs = vec![
-        heartbeat(wasm_node.node_id, 10.0, 512, 1),
-    ];
+    let hbs = vec![heartbeat(wasm_node.node_id, 10.0, 512, 1)];
 
     // WasmExecution isteğinde wasm_node seçilmeli
-    let sel = RemoteScheduler::select_node(
-        &nodes,
-        &NodeCapability::WasmExecution,
-        &hbs,
-    );
+    let sel = RemoteScheduler::select_node(&nodes, &NodeCapability::WasmExecution, &hbs);
     assert!(sel.is_some());
     assert_eq!(sel.unwrap().node_id, wasm_node.node_id);
 }
 
 #[test]
 fn select_node_no_matching_capability_returns_none() {
-    let node = healthy_node(vec![
-        NodeCapability::WasmExecution,
-    ]);
+    let node = healthy_node(vec![NodeCapability::WasmExecution]);
 
     let sel = RemoteScheduler::select_node(
         &[node],
@@ -151,12 +129,8 @@ fn select_node_no_matching_capability_returns_none() {
 
 #[test]
 fn select_node_picks_least_loaded() {
-    let node_a = healthy_node(vec![
-        NodeCapability::WasmExecution,
-    ]);
-    let node_b = healthy_node(vec![
-        NodeCapability::WasmExecution,
-    ]);
+    let node_a = healthy_node(vec![NodeCapability::WasmExecution]);
+    let node_b = healthy_node(vec![NodeCapability::WasmExecution]);
 
     let hbs = vec![
         heartbeat(node_a.node_id, 80.0, 8192, 50), // yüklü
@@ -180,15 +154,10 @@ fn select_node_picks_least_loaded() {
 #[test]
 fn select_node_unhealthy_skipped() {
     let bad = unhealthy_node();
-    let good = healthy_node(vec![
-        NodeCapability::WasmExecution,
-    ]);
+    let good = healthy_node(vec![NodeCapability::WasmExecution]);
 
-    let sel = RemoteScheduler::select_node(
-        &[bad, good.clone()],
-        &NodeCapability::WasmExecution,
-        &[],
-    );
+    let sel =
+        RemoteScheduler::select_node(&[bad, good.clone()], &NodeCapability::WasmExecution, &[]);
 
     assert!(sel.is_some());
     assert_eq!(sel.unwrap().node_id, good.node_id);

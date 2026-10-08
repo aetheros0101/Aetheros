@@ -29,11 +29,7 @@ use crate::runtime::api::RuntimeHandle;
 use crate::runtime::lifecycle::RuntimeState;
 use crate::task::priority::TaskPriority;
 use crate::task::retry::RetryPolicy;
-use crate::task::task::{
-    TaskDefinition,
-    TaskMetadata,
-    TaskState,
-};
+use crate::task::task::{TaskDefinition, TaskMetadata, TaskState};
 use crate::types::ids::TaskId;
 
 // ── Yardımcılar ───────────────────────────────────────────
@@ -47,12 +43,7 @@ fn setup() -> (
 ) {
     let (sender, receiver) = mpsc::channel(64);
     let dir = tempdir().unwrap();
-    let db = Arc::new(
-        PersistenceEngine::open(
-            dir.path().to_str().unwrap(),
-        )
-        .unwrap(),
-    );
+    let db = Arc::new(PersistenceEngine::open(dir.path().to_str().unwrap()).unwrap());
     let events = EventBus::new(64);
     let handle = RuntimeHandle::new(sender);
     (handle, receiver, db, events, dir)
@@ -119,10 +110,7 @@ async fn api_task_state_query_returns_correct_state() {
     // API'nin yaptığı: load_task → state döndür
     let result = db.load_task(&id).unwrap();
     assert!(result.is_some());
-    assert!(matches!(
-        result.unwrap().task.state,
-        TaskState::Queued
-    ));
+    assert!(matches!(result.unwrap().task.state, TaskState::Queued));
 }
 
 /// Cancel simülasyonu: Cancelled state yazılır, is_terminal() true.
@@ -147,10 +135,7 @@ async fn api_cancel_marks_task_cancelled() {
 
     let record = db.load_task(&id).unwrap().unwrap();
     assert!(matches!(record.task.state, TaskState::Cancelled));
-    assert!(
-        record.is_terminal(),
-        "Cancelled task terminal olmalı"
-    );
+    assert!(record.is_terminal(), "Cancelled task terminal olmalı");
 }
 
 /// Kapalı kanal → submit hata döndürmeli (API: 503 senaryosu).
@@ -161,10 +146,7 @@ async fn api_submit_fails_when_runtime_down() {
     let handle = RuntimeHandle::new(sender);
 
     let result = handle.submit(make_task(TaskPriority::Normal)).await;
-    assert!(
-        result.is_err(),
-        "Runtime kapalıyken submit hata döndürmeli"
-    );
+    assert!(result.is_err(), "Runtime kapalıyken submit hata döndürmeli");
 }
 
 /// Dolu kanal → submit bloklamadan hata döner.
@@ -175,7 +157,10 @@ async fn api_submit_fails_on_full_channel_gracefully() {
     let handle = RuntimeHandle::new(sender.clone());
 
     // İlk submit başarılı (kapasite: 1)
-    handle.submit(make_task(TaskPriority::Normal)).await.unwrap();
+    handle
+        .submit(make_task(TaskPriority::Normal))
+        .await
+        .unwrap();
 
     // receiver drop edildi → ikinci submit hata verir
     drop(_receiver);
@@ -215,7 +200,7 @@ async fn concurrent_submits_no_data_loss() {
     }
 
     let mut received = 0;
-    while let Ok(_) = receiver.try_recv() {
+    while receiver.try_recv().is_ok() {
         received += 1;
     }
 

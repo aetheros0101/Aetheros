@@ -37,7 +37,7 @@ fn parse_porcelain(text: &str) -> Vec<GitBlameLine> {
     let mut final_line: u32 = 0;
 
     for line in text.lines() {
-        if line.starts_with('\t') {
+        if let Some(content) = line.strip_prefix('\t') {
             out.push(GitBlameLine {
                 commit: commit.clone(),
                 author: author.clone(),
@@ -45,7 +45,7 @@ fn parse_porcelain(text: &str) -> Vec<GitBlameLine> {
                 summary: summary.clone(),
                 line: final_line,
                 orig_line,
-                content: line[1..].to_string(),
+                content: content.to_string(),
             });
         } else if let Some(v) = line.strip_prefix("author ") {
             author = v.to_string();

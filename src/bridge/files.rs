@@ -34,7 +34,10 @@ pub fn friendly_error(e: WorkspaceError) -> String {
         WorkspaceError::NotText => "Bu dosya metin değil (ikili dosya), görüntülenemez.".into(),
         WorkspaceError::Protected(_) => ".git klasörü korumalı, değiştirilemez.".into(),
         WorkspaceError::TooLarge { limit } => {
-            format!("Dosya çok büyük (en fazla {} MB).", (limit / (1024 * 1024)).max(1))
+            format!(
+                "Dosya çok büyük (en fazla {} MB).",
+                (limit / (1024 * 1024)).max(1)
+            )
         }
         WorkspaceError::SourceInvalid(m) => m,
         WorkspaceError::VersionConflict { .. } => format!(
@@ -121,9 +124,11 @@ pub fn write(
     expected_version: Option<&str>,
 ) -> Result<WorkspaceFileResponse, String> {
     let expected = match expected_version {
-        Some(v) if !v.trim().is_empty() => {
-            Some(v.trim().parse::<u64>().map_err(|_| "Geçersiz sürüm bilgisi.".to_string())?)
-        }
+        Some(v) if !v.trim().is_empty() => Some(
+            v.trim()
+                .parse::<u64>()
+                .map_err(|_| "Geçersiz sürüm bilgisi.".to_string())?,
+        ),
         _ => None,
     };
     let resp = ws
@@ -143,7 +148,11 @@ pub fn create(ws: &Workspace, path: &str, is_dir: bool) -> Result<(), String> {
     if let Some(name) = path.rsplit('/').next() {
         check_name(name)?;
     }
-    let r = if is_dir { ws.create_dir(path) } else { ws.create_file(path) };
+    let r = if is_dir {
+        ws.create_dir(path)
+    } else {
+        ws.create_file(path)
+    };
     r.map(|_| ()).map_err(friendly_error)
 }
 
@@ -205,7 +214,11 @@ mod tests {
 
         let items = list(&w, "", false).unwrap();
         let names: Vec<_> = items.iter().map(|i| i.name.as_str()).collect();
-        assert_eq!(names, vec!["klasor", "b.txt"], "klasör önce, gizli yok, yalnız doğrudan çocuklar");
+        assert_eq!(
+            names,
+            vec!["klasor", "b.txt"],
+            "klasör önce, gizli yok, yalnız doğrudan çocuklar"
+        );
         assert!(items[0].is_dir && !items[1].is_dir);
 
         let all = list(&w, ".", true).unwrap();
@@ -231,7 +244,11 @@ mod tests {
         std::fs::write(d.path().join("n.txt"), "agent yazdi").unwrap();
         let err = write(&w, "n.txt", "ben", Some(&second.version)).unwrap_err();
         assert!(err.starts_with(CONFLICT_PREFIX), "{err}");
-        assert_eq!(read(&w, "n.txt").unwrap().content, "agent yazdi", "ezilmemeli");
+        assert_eq!(
+            read(&w, "n.txt").unwrap().content,
+            "agent yazdi",
+            "ezilmemeli"
+        );
 
         // sürümsüz (bilinçli üzerine yaz) çalışır
         write(&w, "n.txt", "ben", None).unwrap();
@@ -244,13 +261,24 @@ mod tests {
         let (d, w) = ws();
         create(&w, "klasor", true).unwrap();
         create(&w, "klasor/a.txt", false).unwrap();
-        assert!(create(&w, "klasor/a.txt", false).unwrap_err().contains("zaten var"));
+        assert!(
+            create(&w, "klasor/a.txt", false)
+                .unwrap_err()
+                .contains("zaten var")
+        );
         assert!(create(&w, "klasor/..", false).is_err());
 
         rename(&w, "klasor/a.txt", "klasor/b.txt").unwrap();
         assert!(d.path().join("klasor/b.txt").exists());
-        assert!(rename(&w, "klasor/yok.txt", "klasor/c.txt").unwrap_err().contains("bulunamadı"));
-        assert!(rename(&w, "klasor/b.txt", "klasor/ba/sd").is_ok(), "alt yola taşıma serbest");
+        assert!(
+            rename(&w, "klasor/yok.txt", "klasor/c.txt")
+                .unwrap_err()
+                .contains("bulunamadı")
+        );
+        assert!(
+            rename(&w, "klasor/b.txt", "klasor/ba/sd").is_ok(),
+            "alt yola taşıma serbest"
+        );
 
         delete(&w, "klasor").unwrap();
         assert!(!d.path().join("klasor").exists());
@@ -262,7 +290,11 @@ mod tests {
         assert!(delete(&w, ".").unwrap_err().contains("kök"));
         assert!(delete(&w, "").is_err());
         assert!(create(&w, ".git/hooks", true).unwrap_err().contains(".git"));
-        assert!(write(&w, "../kacis.txt", "x", None).unwrap_err().contains("dışında"));
+        assert!(
+            write(&w, "../kacis.txt", "x", None)
+                .unwrap_err()
+                .contains("dışında")
+        );
         assert!(read(&w, "../x").unwrap_err().contains("dışında"));
     }
 
@@ -288,11 +320,29 @@ mod tests {
         create(&w, "belge", true).unwrap();
         let p = import(&w, &src_s, "belge", "yeni.txt").unwrap();
         assert_eq!(p, "belge/yeni.txt");
-        assert_eq!(std::fs::read_to_string(d.path().join("belge/yeni.txt")).unwrap(), "dış");
+        assert_eq!(
+            std::fs::read_to_string(d.path().join("belge/yeni.txt")).unwrap(),
+            "dış"
+        );
 
-        assert!(import(&w, &src_s, "belge", "yeni.txt").unwrap_err().contains("zaten var"));
-        assert!(import(&w, &src_s, "belge", "../x.txt").is_err(), "ad tek bileşen olmalı");
-        assert!(import(&w, "/yok/yok.txt", "belge", "y.txt").unwrap_err().contains("bulunamadı"));
-        assert!(import(&w, &src_s, ".git", "x.txt").unwrap_err().contains(".git"));
+        assert!(
+            import(&w, &src_s, "belge", "yeni.txt")
+                .unwrap_err()
+                .contains("zaten var")
+        );
+        assert!(
+            import(&w, &src_s, "belge", "../x.txt").is_err(),
+            "ad tek bileşen olmalı"
+        );
+        assert!(
+            import(&w, "/yok/yok.txt", "belge", "y.txt")
+                .unwrap_err()
+                .contains("bulunamadı")
+        );
+        assert!(
+            import(&w, &src_s, ".git", "x.txt")
+                .unwrap_err()
+                .contains(".git")
+        );
     }
 }

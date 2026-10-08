@@ -9,12 +9,26 @@ use crate::{PtyEvent, SessionId};
 /// underlying broadcast channel and should recover by resyncing their state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TerminalEvent {
-    SessionCreated { session_id: SessionId },
-    SessionRemoved { session_id: SessionId },
-    PtyAttached { session_id: SessionId },
-    PtyDetached { session_id: SessionId },
-    PtyOutput { session_id: SessionId, data: Vec<u8> },
-    PtyExited { session_id: SessionId, code: Option<i32> },
+    SessionCreated {
+        session_id: SessionId,
+    },
+    SessionRemoved {
+        session_id: SessionId,
+    },
+    PtyAttached {
+        session_id: SessionId,
+    },
+    PtyDetached {
+        session_id: SessionId,
+    },
+    PtyOutput {
+        session_id: SessionId,
+        data: Vec<u8>,
+    },
+    PtyExited {
+        session_id: SessionId,
+        code: Option<i32>,
+    },
 }
 
 impl TerminalEvent {

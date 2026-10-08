@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::agents::context::AgentContext;
-use crate::agents::planner::{is_repeat_of_last, AgentPlanner, NextStepDecision, StepRecord};
+use crate::agents::planner::{AgentPlanner, NextStepDecision, StepRecord, is_repeat_of_last};
 use crate::agents::plans::AgentPlanStep;
 use crate::ai::routing::router::ProviderRouter;
 use crate::errors::runtime::RuntimeError;
@@ -41,12 +41,7 @@ impl AgentRuntime {
                 .await;
         }
 
-        let plan = AgentPlanner::plan(
-            objective.clone(),
-            self.ai_router.clone(),
-            &self.tools,
-        )
-        .await;
+        let plan = AgentPlanner::plan(objective.clone(), self.ai_router.clone(), &self.tools).await;
 
         info!(
             plan_id = %plan.id,
@@ -211,7 +206,8 @@ impl AgentRuntime {
             let mut decision: Option<NextStepDecision> = None;
             let mut plan_error = String::new();
             for attempt in 0..=PLAN_RETRIES {
-                match AgentPlanner::plan_next_detailed(objective, &history, &router, &usable).await {
+                match AgentPlanner::plan_next_detailed(objective, &history, &router, &usable).await
+                {
                     Ok(d) => {
                         decision = Some(d);
                         break;
@@ -312,18 +308,19 @@ impl AgentRuntime {
 
                     // Aynı çağrı arka arkaya iki kez BAŞARISIZ olduysa üçüncü kez denemek
                     // boşa token harcar; dürüstçe durdur.
-                    if let [.., prev, last] = history.as_slice() {
-                        if !prev.success
-                            && !last.success
-                            && last.tool_call.is_some()
-                            && prev.tool_call == last.tool_call
-                        {
-                            let err: String = last.output.chars().take(300).collect();
-                            return Err(self.fail_execution(
-                                context,
-                                format!("Aynı çağrı iki kez başarısız oldu, durduruldu. Son hata: {err}"),
-                            ));
-                        }
+                    if let [.., prev, last] = history.as_slice()
+                        && !prev.success
+                        && !last.success
+                        && last.tool_call.is_some()
+                        && prev.tool_call == last.tool_call
+                    {
+                        let err: String = last.output.chars().take(300).collect();
+                        return Err(self.fail_execution(
+                            context,
+                            format!(
+                                "Aynı çağrı iki kez başarısız oldu, durduruldu. Son hata: {err}"
+                            ),
+                        ));
                     }
                 }
             }

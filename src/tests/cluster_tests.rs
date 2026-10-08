@@ -8,24 +8,16 @@ use chrono::Utc;
 use uuid::Uuid;
 
 use crate::orchestration::election::LeaderElection;
-use crate::orchestration::quorum::{
-    QuorumPolicy,
-    QuorumState,
-};
+use crate::orchestration::quorum::{QuorumPolicy, QuorumState};
 use crate::remote::cluster::ClusterState;
 use crate::remote::cluster_health::ClusterHealth;
 use crate::remote::discovery::StaticDiscovery;
 use crate::remote::heartbeat::Heartbeat;
-use crate::remote::node::{
-    NodeCapability,
-    RemoteNode,
-};
+use crate::remote::node::{NodeCapability, RemoteNode};
 
 // ── Yardımcılar ───────────────────────────────────────────
 
-fn make_node(
-    caps: Vec<NodeCapability>,
-) -> RemoteNode {
+fn make_node(caps: Vec<NodeCapability>) -> RemoteNode {
     RemoteNode::new("127.0.0.1:9000", caps)
 }
 
@@ -33,12 +25,7 @@ fn healthy_node() -> RemoteNode {
     make_node(vec![NodeCapability::WasmExecution])
 }
 
-fn heartbeat_for(
-    node_id: Uuid,
-    cpu: f32,
-    mem: usize,
-    exec: usize,
-) -> Heartbeat {
+fn heartbeat_for(node_id: Uuid, cpu: f32, mem: usize, exec: usize) -> Heartbeat {
     Heartbeat {
         node_id,
         cpu_usage_percent: cpu,
@@ -84,19 +71,13 @@ fn cluster_health_all_healthy() {
     cluster.register(healthy_node());
     cluster.register(healthy_node());
 
-    assert!(matches!(
-        cluster.health(),
-        ClusterHealth::Healthy
-    ));
+    assert!(matches!(cluster.health(), ClusterHealth::Healthy));
 }
 
 #[test]
 fn cluster_health_empty_is_critical() {
     let cluster = ClusterState::new();
-    assert!(matches!(
-        cluster.health(),
-        ClusterHealth::Critical
-    ));
+    assert!(matches!(cluster.health(), ClusterHealth::Critical));
 }
 
 #[test]
@@ -167,24 +148,19 @@ fn cluster_heartbeat_update() {
 fn cluster_capability_filter() {
     let cluster = ClusterState::new();
 
-    let wasm_node =
-        make_node(vec![NodeCapability::WasmExecution]);
-    let agent_node =
-        make_node(vec![NodeCapability::AgentExecution]);
+    let wasm_node = make_node(vec![NodeCapability::WasmExecution]);
+    let agent_node = make_node(vec![NodeCapability::AgentExecution]);
 
     cluster.register(wasm_node);
     cluster.register(agent_node);
 
-    let wasm_capable = cluster
-        .nodes_with_capability(&NodeCapability::WasmExecution);
+    let wasm_capable = cluster.nodes_with_capability(&NodeCapability::WasmExecution);
     assert_eq!(wasm_capable.len(), 1);
 
-    let agent_capable = cluster
-        .nodes_with_capability(&NodeCapability::AgentExecution);
+    let agent_capable = cluster.nodes_with_capability(&NodeCapability::AgentExecution);
     assert_eq!(agent_capable.len(), 1);
 
-    let ai_capable = cluster
-        .nodes_with_capability(&NodeCapability::AiInference);
+    let ai_capable = cluster.nodes_with_capability(&NodeCapability::AiInference);
     assert_eq!(ai_capable.len(), 0);
 }
 
@@ -280,7 +256,9 @@ static SEEDS_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 fn static_discovery_empty_when_no_env() {
     let _guard = SEEDS_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // AETHEROS_SEEDS set değilse boş dön
-    unsafe { std::env::remove_var("AETHEROS_SEEDS"); }
+    unsafe {
+        std::env::remove_var("AETHEROS_SEEDS");
+    }
     let seeds = StaticDiscovery::from_env();
     assert!(seeds.is_empty());
 }
@@ -288,19 +266,30 @@ fn static_discovery_empty_when_no_env() {
 #[test]
 fn static_discovery_parses_seeds() {
     let _guard = SEEDS_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    unsafe { std::env::set_var("AETHEROS_SEEDS", "127.0.0.1:9001,127.0.0.1:9002,127.0.0.1:9003"); }
+    unsafe {
+        std::env::set_var(
+            "AETHEROS_SEEDS",
+            "127.0.0.1:9001,127.0.0.1:9002,127.0.0.1:9003",
+        );
+    }
     let seeds = StaticDiscovery::from_env();
     assert_eq!(seeds.len(), 3);
     assert_eq!(seeds[0], "127.0.0.1:9001");
-    unsafe { std::env::remove_var("AETHEROS_SEEDS"); }
+    unsafe {
+        std::env::remove_var("AETHEROS_SEEDS");
+    }
 }
 
 #[test]
 fn static_discovery_trims_whitespace() {
     let _guard = SEEDS_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    unsafe { std::env::set_var("AETHEROS_SEEDS", " 127.0.0.1:9001 , 127.0.0.1:9002 "); }
+    unsafe {
+        std::env::set_var("AETHEROS_SEEDS", " 127.0.0.1:9001 , 127.0.0.1:9002 ");
+    }
     let seeds = StaticDiscovery::from_env();
     assert_eq!(seeds.len(), 2);
     assert_eq!(seeds[0], "127.0.0.1:9001");
-    unsafe { std::env::remove_var("AETHEROS_SEEDS"); }
+    unsafe {
+        std::env::remove_var("AETHEROS_SEEDS");
+    }
 }

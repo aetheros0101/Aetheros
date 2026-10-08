@@ -37,22 +37,20 @@
 //   kalıcılıksız bırakıldı, geriye dönük uyumluluğu bozmaz.
 // ============================================================
 
-use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 
 use dashmap::DashMap;
-use sha2::{
-    Digest,
-    Sha256,
-};
-use tracing::{
-    debug,
-    info,
-    warn,
-};
+use sha2::{Digest, Sha256};
+use tracing::{debug, info, warn};
 
 use crate::persistence::engine::PersistenceEngine;
 
-pub type ModuleHash = [u8; 32];
+// ModuleHash tanımı `types::ids` altında (task → wasm bağımlılığını kırmak için);
+// eski yol geriye dönük uyumluluk için yeniden dışa aktarılır.
+pub use crate::types::ids::ModuleHash;
 
 #[derive(Debug, Clone)]
 pub enum ModuleStoreError {
@@ -65,10 +63,7 @@ pub enum ModuleStoreError {
 }
 
 impl std::fmt::Display for ModuleStoreError {
-    fn fmt(
-        &self,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NotFound(h) => {
                 write!(f, "Module not found: {}", hex::encode(h))
@@ -101,6 +96,12 @@ pub struct ModuleStore {
     disk: Option<ModuleDisk>,
 }
 
+impl Default for ModuleStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ModuleStore {
     pub fn new() -> Self {
         Self {
@@ -118,9 +119,7 @@ impl ModuleStore {
     /// şifrelenmiş) kalıcı hale getirir ve açılışta mevcut modülleri
     /// geri yükler. Üretim runtime'ı bunu kullanır (bkz. runtime.rs);
     /// testler ephemeral `new()`'i kullanmaya devam eder.
-    pub fn with_persistence(
-        engine: Arc<PersistenceEngine>,
-    ) -> Result<Self, ModuleStoreError> {
+    pub fn with_persistence(engine: Arc<PersistenceEngine>) -> Result<Self, ModuleStoreError> {
         let tree = engine
             .database()
             .open_tree("wasm_modules_v1")
@@ -141,7 +140,9 @@ impl ModuleStore {
     /// Açılışta sled'deki tüm modülleri DashMap'e geri yükler.
     /// `&self` yeterli: DashMap/AtomicUsize iç değişebilirlik kullanır.
     fn load_from_disk(&self) -> Result<(), ModuleStoreError> {
-        let Some(disk) = &self.disk else { return Ok(()); };
+        let Some(disk) = &self.disk else {
+            return Ok(());
+        };
 
         let mut loaded = 0usize;
         let mut total = 0usize;
@@ -186,12 +187,10 @@ impl ModuleStore {
         Ok(())
     }
 
-    fn persist_to_disk(
-        &self,
-        hash: &ModuleHash,
-        binary: &[u8],
-    ) -> Result<(), ModuleStoreError> {
-        let Some(disk) = &self.disk else { return Ok(()); };
+    fn persist_to_disk(&self, hash: &ModuleHash, binary: &[u8]) -> Result<(), ModuleStoreError> {
+        let Some(disk) = &self.disk else {
+            return Ok(());
+        };
 
         let ciphertext = disk
             .engine
@@ -209,10 +208,7 @@ impl ModuleStore {
     ///
     /// Aynı binary tekrar gönderilirse hash döner,
     /// ikinci kez depolanmaz (idempotent).
-    pub fn store(
-        &self,
-        binary: Vec<u8>,
-    ) -> Result<ModuleHash, ModuleStoreError> {
+    pub fn store(&self, binary: Vec<u8>) -> Result<ModuleHash, ModuleStoreError> {
         if binary.is_empty() {
             return Err(ModuleStoreError::InvalidBinary);
         }
@@ -235,9 +231,11 @@ impl ModuleStore {
             if new_total > self.max_total_bytes {
                 return Err(ModuleStoreError::StoreLimitExceeded);
             }
-            if self.total_bytes.compare_exchange(
-                current, new_total, Ordering::AcqRel, Ordering::Acquire
-            ).is_ok() {
+            if self
+                .total_bytes
+                .compare_exchange(current, new_total, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
                 break;
             }
         }
@@ -258,13 +256,11 @@ impl ModuleStore {
         // Kalıcılığa yaz (yapılandırılmışsa). Başarısız olursa isteği
         // reddet ve bellekten geri al — "modüller restart'tan sağ
         // çıkar" garantisini sessizce bozmamak için (bkz. madde #7).
-        if newly_inserted {
-            if let Err(e) = self.persist_to_disk(&hash, &arc_binary) {
-                self.modules.remove(&hash);
-                self.total_bytes.fetch_sub(size, Ordering::AcqRel);
-                warn!(hash = %hex::encode(hash), error = %e, "Modül diske yazılamadı, kayıt reddedildi");
-                return Err(ModuleStoreError::PersistenceFailure);
-            }
+        if newly_inserted && let Err(e) = self.persist_to_disk(&hash, &arc_binary) {
+            self.modules.remove(&hash);
+            self.total_bytes.fetch_sub(size, Ordering::AcqRel);
+            warn!(hash = %hex::encode(hash), error = %e, "Modül diske yazılamadı, kayıt reddedildi");
+            return Err(ModuleStoreError::PersistenceFailure);
         }
 
         debug!(
@@ -279,22 +275,18 @@ impl ModuleStore {
     /// Hash'e göre binary'yi al. Bellekte yoksa (ör. eager-load bir
     /// şekilde atladıysa) ve kalıcılık açıksa, sled'den lazy-load
     /// dener — normal akışta gerekmez, ek güvenlik ağıdır.
-    pub fn get(
-        &self,
-        hash: &ModuleHash,
-    ) -> Result<Arc<Vec<u8>>, ModuleStoreError> {
+    pub fn get(&self, hash: &ModuleHash) -> Result<Arc<Vec<u8>>, ModuleStoreError> {
         if let Some(entry) = self.modules.get(hash) {
             return Ok(Arc::clone(&entry));
         }
 
-        if let Some(disk) = &self.disk {
-            if let Ok(Some(ciphertext)) = disk.tree.get(hash) {
-                if let Ok(plaintext) = disk.engine.decrypt_bytes(&ciphertext) {
-                    let arc = Arc::new(plaintext);
-                    self.modules.insert(*hash, Arc::clone(&arc));
-                    return Ok(arc);
-                }
-            }
+        if let Some(disk) = &self.disk
+            && let Ok(Some(ciphertext)) = disk.tree.get(hash)
+            && let Ok(plaintext) = disk.engine.decrypt_bytes(&ciphertext)
+        {
+            let arc = Arc::new(plaintext);
+            self.modules.insert(*hash, Arc::clone(&arc));
+            return Ok(arc);
         }
 
         Err(ModuleStoreError::NotFound(*hash))
@@ -325,11 +317,8 @@ impl ModuleStore {
     }
 
     /// Hex string'i hash'e çevir (API request için).
-    pub fn hex_to_hash(
-        hex_str: &str,
-    ) -> Result<ModuleHash, ModuleStoreError> {
-        let bytes = hex::decode(hex_str)
-            .map_err(|_| ModuleStoreError::InvalidBinary)?;
+    pub fn hex_to_hash(hex_str: &str) -> Result<ModuleHash, ModuleStoreError> {
+        let bytes = hex::decode(hex_str).map_err(|_| ModuleStoreError::InvalidBinary)?;
 
         if bytes.len() != 32 {
             return Err(ModuleStoreError::InvalidBinary);
@@ -341,13 +330,8 @@ impl ModuleStore {
     }
 
     /// Belirli bir hash için binary boyutunu döndür.
-    pub fn binary_size(
-        &self,
-        hash: &ModuleHash,
-    ) -> Option<usize> {
-        self.modules
-            .get(hash)
-            .map(|b| b.len())
+    pub fn binary_size(&self, hash: &ModuleHash) -> Option<usize> {
+        self.modules.get(hash).map(|b| b.len())
     }
 
     /// Kullanılmayan modülleri temizle (Faz 9: LRU eviction).

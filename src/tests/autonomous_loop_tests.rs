@@ -17,7 +17,7 @@ use uuid::Uuid;
 use crate::agents::budget::AgentExecutionBudget;
 use crate::agents::context::AgentContext;
 use crate::agents::executor::AgentExecutor;
-use crate::agents::planner::{extract_json_object, AgentPlanner, NextStepDecision, StepRecord};
+use crate::agents::planner::{AgentPlanner, NextStepDecision, StepRecord, extract_json_object};
 use crate::agents::runtime::{AgentOutcome, AgentRuntime};
 use crate::ai::routing::router::ProviderRouter;
 use crate::errors::runtime::RuntimeError;
@@ -94,8 +94,8 @@ async fn autonomous_loop_fails_honestly_without_an_active_provider() {
 
 // ── Tekrar koruması + planlayıcı geçmişi (saf mantık, provider gerekmez) ──
 
-use crate::agents::plans::{AgentPlanStep, ToolCall};
 use crate::agents::planner::{format_history, is_repeat_of_last};
+use crate::agents::plans::{AgentPlanStep, ToolCall};
 
 fn call(tool: &str, args: &[&str]) -> ToolCall {
     ToolCall {
@@ -125,20 +125,32 @@ fn record(c: Option<ToolCall>, success: bool, output: &str) -> StepRecord {
 #[test]
 fn identical_consecutive_successful_call_is_a_repeat() {
     let history = vec![record(Some(call("terminal", &["ls"])), true, "deneme.txt")];
-    assert!(is_repeat_of_last(&history, &step_with(Some(call("terminal", &["ls"])))));
+    assert!(is_repeat_of_last(
+        &history,
+        &step_with(Some(call("terminal", &["ls"])))
+    ));
 }
 
 #[test]
 fn different_arguments_or_tool_are_not_a_repeat() {
     let history = vec![record(Some(call("terminal", &["ls"])), true, "x")];
-    assert!(!is_repeat_of_last(&history, &step_with(Some(call("terminal", &["ls", "-a"])))));
-    assert!(!is_repeat_of_last(&history, &step_with(Some(call("baska", &["ls"])))));
+    assert!(!is_repeat_of_last(
+        &history,
+        &step_with(Some(call("terminal", &["ls", "-a"])))
+    ));
+    assert!(!is_repeat_of_last(
+        &history,
+        &step_with(Some(call("baska", &["ls"])))
+    ));
 }
 
 #[test]
 fn failed_previous_call_may_be_retried() {
     let history = vec![record(Some(call("terminal", &["ls"])), false, "hata")];
-    assert!(!is_repeat_of_last(&history, &step_with(Some(call("terminal", &["ls"])))));
+    assert!(!is_repeat_of_last(
+        &history,
+        &step_with(Some(call("terminal", &["ls"])))
+    ));
 }
 
 #[test]
@@ -148,12 +160,18 @@ fn only_the_immediately_preceding_step_counts() {
         record(Some(call("terminal", &["ls"])), true, "a"),
         record(Some(call("terminal", &["touch", "x"])), true, ""),
     ];
-    assert!(!is_repeat_of_last(&history, &step_with(Some(call("terminal", &["ls"])))));
+    assert!(!is_repeat_of_last(
+        &history,
+        &step_with(Some(call("terminal", &["ls"])))
+    ));
 }
 
 #[test]
 fn empty_history_and_tool_less_steps_are_never_repeats() {
-    assert!(!is_repeat_of_last(&[], &step_with(Some(call("terminal", &["ls"])))));
+    assert!(!is_repeat_of_last(
+        &[],
+        &step_with(Some(call("terminal", &["ls"])))
+    ));
     let history = vec![record(None, true, "")];
     assert!(!is_repeat_of_last(&history, &step_with(None)));
 }
@@ -164,28 +182,30 @@ fn history_text_shows_the_executed_command_and_marks_empty_output() {
         record(Some(call("terminal", &["touch", "deneme.txt"])), true, ""),
         record(Some(call("terminal", &["ls"])), true, "deneme.txt"),
     ]);
-    assert!(text.contains(r#"[terminal ["touch", "deneme.txt"]]"#), "{text}");
+    assert!(
+        text.contains(r#"[terminal ["touch", "deneme.txt"]]"#),
+        "{text}"
+    );
     assert!(text.contains("çıktı yok"), "{text}");
     assert!(text.contains("başarılı: deneme.txt"), "{text}");
     assert_eq!(format_history(&[]), "(henüz hiçbir adım atılmadı)");
 }
 
-
 // ── Senaryolu sahte provider: onay sonrası devam (B6) ──
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 
 use crate::agents::approval::ApprovalStore;
 use crate::agents::capabilities::AgentCapability;
-use crate::security::capability_engine::CapabilityEngine;
 use crate::ai::errors::AiError;
 use crate::ai::inference::request::InferenceRequest;
 use crate::ai::inference::response::InferenceResponse;
 use crate::ai::providers::provider::ModelProvider;
+use crate::security::capability_engine::CapabilityEngine;
 use crate::security::risk_engine::RiskEngine;
 use crate::types::agent_tool::{AgentTool, RiskLevel};
 
@@ -217,7 +237,10 @@ impl ModelProvider for ScriptedProvider {
             .unwrap()
             .pop_front()
             .unwrap_or_else(|| r#"{"done": true}"#.to_string());
-        Ok(InferenceResponse { output: next, tokens_used: 1 })
+        Ok(InferenceResponse {
+            output: next,
+            tokens_used: 1,
+        })
     }
 }
 
@@ -263,15 +286,16 @@ impl AgentTool for CountTool {
 }
 
 fn ctx() -> AgentContext {
-    AgentContext { agent_id: Uuid::new_v4(), execution_id: Uuid::new_v4(), workflow_id: None }
+    AgentContext {
+        agent_id: Uuid::new_v4(),
+        execution_id: Uuid::new_v4(),
+        workflow_id: None,
+    }
 }
 
-const STEP_RISKY: &str =
-    r#"{"done": false, "name": "riskli", "retryable": false, "tool_name": "risky", "arguments": ["a"]}"#;
-const STEP_SECOND_RETRYABLE: &str =
-    r#"{"done": false, "name": "ikinci", "retryable": true, "tool_name": "second", "arguments": ["b"]}"#;
-const STEP_SECOND: &str =
-    r#"{"done": false, "name": "ikinci", "retryable": false, "tool_name": "second", "arguments": ["b"]}"#;
+const STEP_RISKY: &str = r#"{"done": false, "name": "riskli", "retryable": false, "tool_name": "risky", "arguments": ["a"]}"#;
+const STEP_SECOND_RETRYABLE: &str = r#"{"done": false, "name": "ikinci", "retryable": true, "tool_name": "second", "arguments": ["b"]}"#;
+const STEP_SECOND: &str = r#"{"done": false, "name": "ikinci", "retryable": false, "tool_name": "second", "arguments": ["b"]}"#;
 
 #[tokio::test]
 async fn autonomous_loop_continues_after_an_approved_step() {
@@ -279,8 +303,20 @@ async fn autonomous_loop_continues_after_an_approved_step() {
     let second_calls = Arc::new(AtomicUsize::new(0));
     let mk_tools = || -> Vec<Arc<dyn AgentTool>> {
         vec![
-            Arc::new(CountTool { name: "risky", risk: RiskLevel::High, calls: risky_calls.clone(), fail: false, cap: None }),
-            Arc::new(CountTool { name: "second", risk: RiskLevel::Low, calls: second_calls.clone(), fail: false, cap: None }),
+            Arc::new(CountTool {
+                name: "risky",
+                risk: RiskLevel::High,
+                calls: risky_calls.clone(),
+                fail: false,
+                cap: None,
+            }),
+            Arc::new(CountTool {
+                name: "second",
+                risk: RiskLevel::Low,
+                calls: second_calls.clone(),
+                fail: false,
+                cap: None,
+            }),
         ]
     };
     let (router, prompts) = scripted_router(&[STEP_RISKY, STEP_SECOND, r#"{"done": true}"#]);
@@ -324,8 +360,16 @@ async fn autonomous_loop_continues_after_an_approved_step() {
     .expect("resume hatasız ilerlemeli");
 
     assert_eq!(outcome, AgentOutcome::Completed);
-    assert_eq!(risky_calls.load(Ordering::SeqCst), 1, "onaylanan adım bir kez çalışmalı");
-    assert_eq!(second_calls.load(Ordering::SeqCst), 1, "onaydan sonra döngü devam etmeli");
+    assert_eq!(
+        risky_calls.load(Ordering::SeqCst),
+        1,
+        "onaylanan adım bir kez çalışmalı"
+    );
+    assert_eq!(
+        second_calls.load(Ordering::SeqCst),
+        1,
+        "onaydan sonra döngü devam etmeli"
+    );
 
     // Planlayıcı, onaylanan adımın sonucunu geçmişte görmüş olmalı.
     let seen = prompts.lock().unwrap();
@@ -363,22 +407,34 @@ async fn failing_every_step_is_reported_as_failure_not_completed() {
     )
     .await;
 
-    assert!(result.is_err(), "hiçbir adım başarılı olmadıysa başarısız sayılmalı: {result:?}");
-    assert!(audit
-        .list_for_execution(exec_id)
-        .iter()
-        .any(|e| matches!(e.kind, AuditEventKind::ExecutionFailed { .. })));
+    assert!(
+        result.is_err(),
+        "hiçbir adım başarılı olmadıysa başarısız sayılmalı: {result:?}"
+    );
+    assert!(
+        audit
+            .list_for_execution(exec_id)
+            .iter()
+            .any(|e| matches!(e.kind, AuditEventKind::ExecutionFailed { .. }))
+    );
 }
-
 
 // ── Dayanıklılık: bozuk yanıt, yeniden deneme, yetki filtresi ──
 
 #[test]
 fn extract_json_object_handles_fences_and_prose() {
-    assert_eq!(extract_json_object(r#"{"done": true}"#), r#"{"done": true}"#);
-    assert_eq!(extract_json_object("```json\n{\"done\": true}\n```"), r#"{"done": true}"#);
     assert_eq!(
-        extract_json_object("Tabii! İşte karar: {\"done\": false, \"name\": \"x\"} umarım yardımcı olur"),
+        extract_json_object(r#"{"done": true}"#),
+        r#"{"done": true}"#
+    );
+    assert_eq!(
+        extract_json_object("```json\n{\"done\": true}\n```"),
+        r#"{"done": true}"#
+    );
+    assert_eq!(
+        extract_json_object(
+            "Tabii! İşte karar: {\"done\": false, \"name\": \"x\"} umarım yardımcı olur"
+        ),
         r#"{"done": false, "name": "x"}"#
     );
     assert_eq!(extract_json_object("JSON yok"), "JSON yok");
@@ -413,10 +469,14 @@ async fn plan_next_tolerates_prose_missing_done_and_non_string_arguments() {
 #[tokio::test]
 async fn plan_next_detailed_explains_why_it_failed() {
     let (router, _p) = scripted_router(&["tamamen düz metin, JSON yok"]);
-    let err = AgentPlanner::plan_next_detailed("hedef", &[], &router, &[]).await.unwrap_err();
+    let err = AgentPlanner::plan_next_detailed("hedef", &[], &router, &[])
+        .await
+        .unwrap_err();
     assert!(err.contains("geçerli JSON değil"), "{err}");
     let empty = Arc::new(ProviderRouter::new());
-    let err = AgentPlanner::plan_next_detailed("hedef", &[], &empty, &[]).await.unwrap_err();
+    let err = AgentPlanner::plan_next_detailed("hedef", &[], &empty, &[])
+        .await
+        .unwrap_err();
     assert!(err.contains("AI isteği başarısız"), "{err}");
 }
 
@@ -514,8 +574,16 @@ async fn planner_only_sees_tools_the_agent_may_use() {
     .unwrap();
     assert_eq!(outcome, AgentOutcome::Completed);
     let seen = prompts.lock().unwrap();
-    assert!(seen[0].contains("okuyucu") && seen[0].contains("serbest"), "{}", seen[0]);
-    assert!(!seen[0].contains("yazici"), "yetkisiz araç gösterilmemeli: {}", seen[0]);
+    assert!(
+        seen[0].contains("okuyucu") && seen[0].contains("serbest"),
+        "{}",
+        seen[0]
+    );
+    assert!(
+        !seen[0].contains("yazici"),
+        "yetkisiz araç gösterilmemeli: {}",
+        seen[0]
+    );
 }
 
 #[tokio::test]

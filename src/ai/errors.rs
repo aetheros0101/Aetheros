@@ -2,30 +2,18 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum AiError {
-    #[error(
-        "provider unavailable"
-    )]
+    #[error("provider unavailable")]
     ProviderUnavailable,
 
-    #[error(
-        "rate limit exceeded"
-    )]
+    #[error("rate limit exceeded")]
     RateLimited,
 
-    #[error(
-        "token budget exceeded"
-    )]
+    #[error("token budget exceeded")]
     TokenBudgetExceeded,
 
-    #[error(
-        "invalid structured output"
-    )]
+    #[error("invalid structured output")]
     InvalidStructuredOutput,
 
-    #[error(
-        "provider failure: {message}"
-    )]
-    ProviderFailure {
-        message: String,
-    },
+    #[error("provider failure: {message}")]
+    ProviderFailure { message: String },
 }

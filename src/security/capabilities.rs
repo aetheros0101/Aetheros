@@ -1,24 +1,12 @@
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CapabilitySet {
-    pub filesystem:
-        bool,
+    pub filesystem: bool,
 
-    pub networking:
-        bool,
+    pub networking: bool,
 
-    pub process_execution:
-        bool,
+    pub process_execution: bool,
 
-    pub ai_inference:
-        bool,
+    pub ai_inference: bool,
 }

@@ -1,0 +1,10 @@
+# Docker build context'ini küçük tut (cache + hız)
+target/
+.git/
+.github/
+flutter_app/
+**/*.md
+!README.md
+.env*
+*.db
+*.log

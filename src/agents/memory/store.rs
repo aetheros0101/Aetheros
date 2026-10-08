@@ -126,10 +126,8 @@ impl AgentMemory {
 
     pub fn remove(&self, key: &str) -> bool {
         let removed = self.entries.remove(key).is_some();
-        if removed {
-            if let Some(v) = &self.vector {
-                v.remove(key);
-            }
+        if removed && let Some(v) = &self.vector {
+            v.remove(key);
         }
         removed
     }
@@ -257,7 +255,11 @@ impl AgentMemory {
         let mut parts: Vec<String> = Vec::new();
         let mut used = 0usize;
 
-        for r in self.records_by_layer(MemoryLayer::Summary).into_iter().rev() {
+        for r in self
+            .records_by_layer(MemoryLayer::Summary)
+            .into_iter()
+            .rev()
+        {
             let s = format!("[summary] {}", value_as_str(&r.value));
             if used + s.chars().count() > max_chars {
                 break;
@@ -272,7 +274,11 @@ impl AgentMemory {
             .rev()
             .take(10)
         {
-            let s = format!("[episodic:{}] {}", r.key, truncate_chars(&value_as_str(&r.value), 160));
+            let s = format!(
+                "[episodic:{}] {}",
+                r.key,
+                truncate_chars(&value_as_str(&r.value), 160)
+            );
             if used + s.chars().count() > max_chars {
                 break;
             }
@@ -286,7 +292,11 @@ impl AgentMemory {
             .rev()
             .take(20)
         {
-            let s = format!("[working:{}] {}", r.key, truncate_chars(&value_as_str(&r.value), 160));
+            let s = format!(
+                "[working:{}] {}",
+                r.key,
+                truncate_chars(&value_as_str(&r.value), 160)
+            );
             if used + s.chars().count() > max_chars {
                 break;
             }
@@ -375,7 +385,7 @@ impl VectorMemoryPort for InMemoryVectorPort {
                 Some((score, e.clone()))
             })
             .collect();
-        scored.sort_by(|a, b| b.0.cmp(&a.0));
+        scored.sort_by_key(|a| std::cmp::Reverse(a.0));
         scored.into_iter().take(limit).map(|(_, r)| r).collect()
     }
 
@@ -536,8 +546,16 @@ mod tests {
     #[test]
     fn in_memory_vector_port_ranks_by_matching_words() {
         let port = InMemoryVectorPort::default();
-        port.upsert(&AgentMemoryRecord::new("one", json!("alpha"), MemoryLayer::Working));
-        port.upsert(&AgentMemoryRecord::new("two", json!("alpha beta"), MemoryLayer::Working));
+        port.upsert(&AgentMemoryRecord::new(
+            "one",
+            json!("alpha"),
+            MemoryLayer::Working,
+        ));
+        port.upsert(&AgentMemoryRecord::new(
+            "two",
+            json!("alpha beta"),
+            MemoryLayer::Working,
+        ));
         let hits = port.search("alpha beta", 5);
         assert_eq!(hits.len(), 2);
         assert_eq!(hits[0].key, "two");

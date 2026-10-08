@@ -58,11 +58,7 @@ impl WorkspaceWatcher {
     }
 
     /// Drain + coalesce by path (last event wins per path). Rename keeps old_path.
-    pub fn drain_coalesced(
-        &self,
-        wait: Duration,
-        max_events: usize,
-    ) -> Vec<WorkspaceWatchEvent> {
+    pub fn drain_coalesced(&self, wait: Duration, max_events: usize) -> Vec<WorkspaceWatchEvent> {
         let raw = self.drain(wait, max_events);
         coalesce_events(raw.into_iter().filter_map(|r| r.ok()).collect())
     }

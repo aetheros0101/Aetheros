@@ -13,6 +13,12 @@ pub struct ScriptRegistry {
     scripts: DashMap<String, ScriptDefinition>,
 }
 
+impl Default for ScriptRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScriptRegistry {
     pub fn new() -> Self {
         Self {
@@ -22,15 +28,11 @@ impl ScriptRegistry {
 
     /// Script'i ismiyle kaydet.
     pub fn register(&self, script: ScriptDefinition) {
-        self.scripts
-            .insert(script.name.clone(), script);
+        self.scripts.insert(script.name.clone(), script);
     }
 
     /// İsimle script'i bul.
-    pub fn get(
-        &self,
-        name: &str,
-    ) -> Option<ScriptDefinition> {
+    pub fn get(&self, name: &str) -> Option<ScriptDefinition> {
         self.scripts.get(name).map(|s| s.clone())
     }
 
@@ -39,10 +41,7 @@ impl ScriptRegistry {
     }
 
     pub fn list(&self) -> Vec<ScriptDefinition> {
-        self.scripts
-            .iter()
-            .map(|e| e.value().clone())
-            .collect()
+        self.scripts.iter().map(|e| e.value().clone()).collect()
     }
 
     pub fn count(&self) -> usize {

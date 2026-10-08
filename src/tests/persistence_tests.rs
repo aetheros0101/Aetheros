@@ -22,21 +22,14 @@ use crate::persistence::models::PersistedTask;
 use crate::persistence::recovery::RecoveryEngine;
 use crate::task::priority::TaskPriority;
 use crate::task::retry::RetryPolicy;
-use crate::task::task::{
-    TaskDefinition,
-    TaskMetadata,
-    TaskState,
-};
+use crate::task::task::{TaskDefinition, TaskMetadata, TaskState};
 use crate::types::ids::TaskId;
 
 // ── Yardımcılar ───────────────────────────────────────────
 
 fn test_db() -> (PersistenceEngine, tempfile::TempDir) {
     let dir = tempdir().unwrap();
-    let db = PersistenceEngine::open(
-        dir.path().to_str().unwrap(),
-    )
-    .unwrap();
+    let db = PersistenceEngine::open(dir.path().to_str().unwrap()).unwrap();
     (db, dir)
 }
 
@@ -172,9 +165,7 @@ fn update_state_failed() {
     db.update_task_state(&id, TaskState::Failed).unwrap();
 
     let loaded = db.load_task(&id).unwrap().unwrap();
-    assert!(
-        matches!(loaded.task.state, TaskState::Failed)
-    );
+    assert!(matches!(loaded.task.state, TaskState::Failed));
 }
 
 // ── is_terminal() Testleri ────────────────────────────────
@@ -215,16 +206,17 @@ fn executing_is_not_terminal() {
 #[test]
 fn recovery_skips_terminal_tasks() {
     let tasks = vec![
-        make_persisted(TaskState::Completed, 0),  // skip
-        make_persisted(TaskState::Failed, 2),      // skip
-        make_persisted(TaskState::Cancelled, 0),   // skip
-        make_persisted(TaskState::Queued, 0),      // dahil
-        make_persisted(TaskState::Executing, 1),   // dahil
+        make_persisted(TaskState::Completed, 0), // skip
+        make_persisted(TaskState::Failed, 2),    // skip
+        make_persisted(TaskState::Cancelled, 0), // skip
+        make_persisted(TaskState::Queued, 0),    // dahil
+        make_persisted(TaskState::Executing, 1), // dahil
     ];
 
     let recoverable = RecoveryEngine::recoverable_tasks(tasks);
     assert_eq!(
-        recoverable.len(), 2,
+        recoverable.len(),
+        2,
         "Sadece non-terminal task'lar recovery'e girmeli"
     );
 }
@@ -236,8 +228,8 @@ fn recovery_skips_exhausted_attempts() {
     exhausted.task.retry_policy.max_attempts = 3;
 
     let tasks = vec![
-        exhausted,                                  // skip (3 >= 3)
-        make_persisted(TaskState::Queued, 0),       // dahil
+        exhausted,                            // skip (3 >= 3)
+        make_persisted(TaskState::Queued, 0), // dahil
     ];
 
     let recoverable = RecoveryEngine::recoverable_tasks(tasks);

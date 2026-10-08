@@ -4,6 +4,8 @@ pub mod bootstrap;
 pub mod config;
 pub mod dispatcher;
 pub mod lifecycle;
+// `runtime::runtime`-tarzı adlandırma bilinçli (genel API yolu); yeniden adlandırma Faz 1/2.
+#[allow(clippy::module_inception)]
 pub mod runtime;
 pub mod scheduler;
 pub mod shutdown;

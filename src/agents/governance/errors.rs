@@ -35,10 +35,7 @@ pub struct AgentError {
 impl AgentError {
     pub fn new(kind: AgentErrorKind, message: impl Into<String>) -> Self {
         let message = message.into();
-        let retryable = matches!(
-            kind,
-            AgentErrorKind::Timeout | AgentErrorKind::Persistence
-        );
+        let retryable = matches!(kind, AgentErrorKind::Timeout | AgentErrorKind::Persistence);
         Self {
             kind,
             message,

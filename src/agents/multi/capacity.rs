@@ -105,12 +105,12 @@ impl QuotaUsage {
 
     pub fn release(&mut self, tenant: Option<&str>) {
         self.global_active = self.global_active.saturating_sub(1);
-        if let Some(t) = tenant {
-            if let Some(n) = self.per_tenant.get_mut(t) {
-                *n = n.saturating_sub(1);
-                if *n == 0 {
-                    self.per_tenant.remove(t);
-                }
+        if let Some(t) = tenant
+            && let Some(n) = self.per_tenant.get_mut(t)
+        {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                self.per_tenant.remove(t);
             }
         }
     }

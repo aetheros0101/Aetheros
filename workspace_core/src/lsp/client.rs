@@ -68,8 +68,7 @@ impl StdioLanguageServer {
     }
 
     fn write_message(&mut self, msg: &Value) -> Result<()> {
-        let body = serde_json::to_string(msg)
-            .map_err(|e| WorkspaceError::Lsp(e.to_string()))?;
+        let body = serde_json::to_string(msg).map_err(|e| WorkspaceError::Lsp(e.to_string()))?;
         let header = format!("Content-Length: {}\r\n\r\n", body.len());
         let stdin = self
             .stdin
@@ -96,7 +95,9 @@ impl StdioLanguageServer {
             }
             // stash publishDiagnostics if needed — for now ignore
         }
-        Err(WorkspaceError::Lsp("timeout waiting for LSP response".into()))
+        Err(WorkspaceError::Lsp(
+            "timeout waiting for LSP response".into(),
+        ))
     }
 
     fn read_message(&mut self) -> Result<Value> {
@@ -104,8 +105,9 @@ impl StdioLanguageServer {
             .reader
             .as_mut()
             .ok_or_else(|| WorkspaceError::Lsp("server not started".into()))?;
-        let mut guard = reader
-            .lock()
+        // `&mut self` zaten dışlayıcı erişim sağlıyor → kilitlemek yerine get_mut.
+        let guard = reader
+            .get_mut()
             .map_err(|_| WorkspaceError::Lsp("reader lock poisoned".into()))?;
 
         let mut content_length: Option<usize> = None;
@@ -117,15 +119,12 @@ impl StdioLanguageServer {
             if line == "\r\n" || line == "\n" || line.is_empty() {
                 break;
             }
-            if let Some(v) = line
-                .to_lowercase()
-                .strip_prefix("content-length:")
-            {
+            if let Some(v) = line.to_lowercase().strip_prefix("content-length:") {
                 content_length = v.trim().parse().ok();
             }
         }
-        let len = content_length
-            .ok_or_else(|| WorkspaceError::Lsp("missing Content-Length".into()))?;
+        let len =
+            content_length.ok_or_else(|| WorkspaceError::Lsp("missing Content-Length".into()))?;
         let mut buf = vec![0u8; len];
         guard
             .read_exact(&mut buf)
@@ -275,14 +274,19 @@ impl LanguageServer for StdioLanguageServer {
                 let parts: Vec<String> = arr
                     .iter()
                     .filter_map(|v| {
-                        v.as_str()
-                            .map(|s| s.to_string())
-                            .or_else(|| v.get("value").and_then(|x| x.as_str()).map(|s| s.to_string()))
+                        v.as_str().map(|s| s.to_string()).or_else(|| {
+                            v.get("value")
+                                .and_then(|x| x.as_str())
+                                .map(|s| s.to_string())
+                        })
                     })
                     .collect();
                 Ok(Some(parts.join("\n")))
             }
-            Some(v) => Ok(v.get("value").and_then(|x| x.as_str()).map(|s| s.to_string())),
+            Some(v) => Ok(v
+                .get("value")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string())),
             None => Ok(None),
         }
     }
@@ -324,10 +328,7 @@ impl LanguageServer for StdioLanguageServer {
                 "position": { "line": pos.line, "character": pos.character }
             }),
         )?;
-        let items = result
-            .get("items")
-            .cloned()
-            .unwrap_or(result);
+        let items = result.get("items").cloned().unwrap_or(result);
         let arr = match items {
             Value::Array(a) => a,
             _ => return Ok(Vec::new()),
@@ -338,7 +339,10 @@ impl LanguageServer for StdioLanguageServer {
                 Some(CompletionItem {
                     label: v.get("label")?.as_str()?.to_string(),
                     kind: v.get("kind").map(|k| k.to_string()),
-                    detail: v.get("detail").and_then(|d| d.as_str()).map(|s| s.to_string()),
+                    detail: v
+                        .get("detail")
+                        .and_then(|d| d.as_str())
+                        .map(|s| s.to_string()),
                     insert_text: v
                         .get("insertText")
                         .and_then(|d| d.as_str())
@@ -378,7 +382,10 @@ impl LanguageServer for StdioLanguageServer {
                 let edits = extract_edits(v);
                 Some(CodeAction {
                     title,
-                    kind: v.get("kind").and_then(|k| k.as_str()).map(|s| s.to_string()),
+                    kind: v
+                        .get("kind")
+                        .and_then(|k| k.as_str())
+                        .map(|s| s.to_string()),
                     path: path.to_string(),
                     range: range.clone(),
                     is_preferred: v
@@ -456,9 +463,7 @@ fn extract_edits(action: &Value) -> Vec<TextEdit> {
 fn text_edit_from_json(uri: &str, e: &Value) -> Option<TextEdit> {
     let range = location_range(e)?;
     let new_text = e.get("newText")?.as_str()?.to_string();
-    let path = uri
-        .trim_start_matches("file://")
-        .to_string();
+    let path = uri.trim_start_matches("file://").to_string();
     Some(TextEdit {
         path,
         range,

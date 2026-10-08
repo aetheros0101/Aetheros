@@ -52,16 +52,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // ── 3. Bootstrap ──────────────────────────────────────
-    let bootstrap = RuntimeBootstrap::build(config)
-        .map_err(|e| {
-            error!(error = ?e, "Failed to build runtime");
-            Box::new(e) as Box<dyn std::error::Error>
-        })?;
+    let bootstrap = RuntimeBootstrap::build(config).map_err(|e| {
+        error!(error = ?e, "Failed to build runtime");
+        Box::new(e) as Box<dyn std::error::Error>
+    })?;
 
-    let handle       = bootstrap.runtime_handle();
-    let runtime      = bootstrap.runtime();
-    let events       = runtime.events();
-    let persistence  = runtime.persistence();
+    let handle = bootstrap.runtime_handle();
+    let runtime = bootstrap.runtime();
+    let events = runtime.events();
+    let persistence = runtime.persistence();
     let module_store = runtime.module_store();
 
     // ── 4. Metrics Collector ──────────────────────────────
@@ -101,10 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let _ = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        runtime_join,
-    ).await;
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(10), runtime_join).await;
 
     info!("AetherOS stopped");
     Ok(())
@@ -120,14 +116,16 @@ fn env_usize(key: &str, default: usize) -> usize {
 async fn shutdown_signal() {
     #[cfg(unix)]
     {
-        use tokio::signal::unix::{signal, SignalKind};
+        use tokio::signal::unix::{SignalKind, signal};
         let mut sigterm = signal(SignalKind::terminate()).unwrap();
-        let mut sigint  = signal(SignalKind::interrupt()).unwrap();
+        let mut sigint = signal(SignalKind::interrupt()).unwrap();
         tokio::select! {
             _ = sigterm.recv() => info!("SIGTERM received"),
             _ = sigint.recv()  => info!("SIGINT received"),
         }
     }
     #[cfg(not(unix))]
-    { tokio::signal::ctrl_c().await.ok(); }
+    {
+        tokio::signal::ctrl_c().await.ok();
+    }
 }

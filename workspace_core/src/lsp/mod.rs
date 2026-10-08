@@ -160,7 +160,13 @@ impl LspRegistry {
         Ok(())
     }
 
-    pub fn did_change(&mut self, path: &str, language_id: &str, text: &str, version: u64) -> Result<()> {
+    pub fn did_change(
+        &mut self,
+        path: &str,
+        language_id: &str,
+        text: &str,
+        version: u64,
+    ) -> Result<()> {
         if let Some(s) = self.find_mut(language_id) {
             s.did_change(path, text, version)?;
             if let Ok(diags) = s.diagnostics(path) {
@@ -182,7 +188,12 @@ impl LspRegistry {
         Ok(())
     }
 
-    pub fn hover(&mut self, path: &str, language_id: &str, pos: Position) -> Result<Option<String>> {
+    pub fn hover(
+        &mut self,
+        path: &str,
+        language_id: &str,
+        pos: Position,
+    ) -> Result<Option<String>> {
         match self.find_mut(language_id) {
             Some(s) => s.hover(path, pos),
             None => Ok(None),

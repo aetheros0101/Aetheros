@@ -19,25 +19,17 @@ pub struct EventBus {
 }
 
 impl EventBus {
-    pub fn new(
-        capacity: usize,
-    ) -> Self {
-        let (sender, _) =
-            broadcast::channel(capacity);
+    pub fn new(capacity: usize) -> Self {
+        let (sender, _) = broadcast::channel(capacity);
 
         Self { sender }
     }
 
-    pub fn publish(
-        &self,
-        event: SystemEvent,
-    ) {
+    pub fn publish(&self, event: SystemEvent) {
         let _ = self.sender.send(event);
     }
 
-    pub fn subscribe(
-        &self,
-    ) -> broadcast::Receiver<SystemEvent> {
+    pub fn subscribe(&self) -> broadcast::Receiver<SystemEvent> {
         self.sender.subscribe()
     }
 }

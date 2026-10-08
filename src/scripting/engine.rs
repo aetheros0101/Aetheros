@@ -11,10 +11,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use chrono::Utc;
-use tracing::{
-    debug,
-    info,
-};
+use tracing::{debug, info};
 use uuid::Uuid;
 
 use crate::errors::wasm::WasmError;
@@ -22,11 +19,7 @@ use crate::scripting::definition::ScriptDefinition;
 use crate::scripting::result::ScriptResult;
 use crate::task::priority::TaskPriority;
 use crate::task::retry::RetryPolicy;
-use crate::task::task::{
-    TaskDefinition,
-    TaskMetadata,
-    TaskState,
-};
+use crate::task::task::{TaskDefinition, TaskMetadata, TaskState};
 use crate::types::ids::TaskId;
 use crate::wasm::WasmExecutor;
 
@@ -43,10 +36,7 @@ impl ScriptEngine {
     ///
     /// Execution süresi ölçülür.
     /// WasmEngine hatası → WasmError olarak iletilir.
-    pub async fn run(
-        &self,
-        script: &ScriptDefinition,
-    ) -> Result<ScriptResult, WasmError> {
+    pub async fn run(&self, script: &ScriptDefinition) -> Result<ScriptResult, WasmError> {
         info!(
             script_name = %script.name,
             entrypoint = %script.entrypoint,
@@ -80,10 +70,7 @@ impl ScriptEngine {
     ///
     /// Script'ler Normal öncelikle çalışır.
     /// Retry yok (script'ler idempotent değil sayılır).
-    fn to_task(
-        &self,
-        script: &ScriptDefinition,
-    ) -> TaskDefinition {
+    fn to_task(&self, script: &ScriptDefinition) -> TaskDefinition {
         TaskDefinition {
             id: TaskId(Uuid::new_v4()),
             parent: None,
@@ -98,12 +85,9 @@ impl ScriptEngine {
                 jitter: false,
             },
             metadata: TaskMetadata {
-                labels: [(
-                    "script_name".to_string(),
-                    script.name.clone(),
-                )]
-                .into_iter()
-                .collect(),
+                labels: [("script_name".to_string(), script.name.clone())]
+                    .into_iter()
+                    .collect(),
             },
             wasm_module_hash: {
                 use sha2::{Digest, Sha256};

@@ -40,11 +40,8 @@ fn bridge_pipeline_register_grant_and_run() {
     // (bkz. bridge/state.rs'teki tokio.enter() düzeltmesi) — bu
     // yüzden burada özel bir ortam kurmamıza gerek yok, düz bir
     // çağrı yeterli.
-    crate::bridge::state::init_mobile_runtime(
-        db_path.display().to_string(),
-        2,
-    )
-    .expect("runtime başlatılabilmeli");
+    crate::bridge::state::init_mobile_runtime(db_path.display().to_string(), 2)
+        .expect("runtime başlatılabilmeli");
 
     // Async adımları sürmek için KENDİ runtime'ımızı kuruyoruz —
     // init_mobile_runtime'ınkiyle çakışmaz, çünkü o zaten döndü.
@@ -72,22 +69,16 @@ fn bridge_pipeline_register_grant_and_run() {
         )
         .expect("script kaydedilebilmeli");
 
-        let scripts =
-            crate::bridge::api::list_agent_scripts().expect("liste alınabilmeli");
+        let scripts = crate::bridge::api::list_agent_scripts().expect("liste alınabilmeli");
         assert!(
             scripts.contains(&"noop_script".to_string()),
             "kaydedilen script listede görünmeli"
         );
 
         // ── Adım 3: agent'ı başlat ─────────────────────────────
-        let start = crate::bridge::api::start_agent(
-            "deneme".to_string(),
-            5,
-            1_000,
-            vec![],
-        )
-        .await
-        .expect("agent başlatılabilmeli");
+        let start = crate::bridge::api::start_agent("deneme".to_string(), 5, 1_000, vec![])
+            .await
+            .expect("agent başlatılabilmeli");
 
         // ── Adım 4: capability'yi HEMEN grant et ──────────────
         // start_agent döner dönmez, arada başka bir await olmadan —
@@ -103,10 +94,8 @@ fn bridge_pipeline_register_grant_and_run() {
         // ── Adım 5: durumu poll et ─────────────────────────────
         let mut final_status = None;
         for _ in 0..100 {
-            let status = crate::bridge::api::get_agent_status(
-                start.execution_id.clone(),
-            )
-            .expect("agent kaydı bulunabilmeli");
+            let status = crate::bridge::api::get_agent_status(start.execution_id.clone())
+                .expect("agent kaydı bulunabilmeli");
 
             if status.status != "running" {
                 final_status = Some(status);
@@ -140,8 +129,7 @@ fn bridge_pipeline_register_grant_and_run() {
         // kurduğu aynı script_registry/script_engine/capability_engine
         // üzerinden, yapısal bir ToolCall'ı elle tetikleyip agent'ın
         // gerçekten çalışabileceğini kanıtlıyoruz.
-        let rt = crate::bridge::state::get_runtime()
-            .expect("runtime hâlâ ayakta olmalı");
+        let rt = crate::bridge::state::get_runtime().expect("runtime hâlâ ayakta olmalı");
 
         let tools: Vec<std::sync::Arc<dyn crate::types::agent_tool::AgentTool>> = rt
             .script_registry
@@ -224,19 +212,15 @@ fn bridge_pipeline_register_grant_and_run() {
             Dec::Allowed
         ));
         assert!(matches!(
-            rt.capability_engine.check(&gid, Some(Cap::TerminalExecution)),
+            rt.capability_engine
+                .check(&gid, Some(Cap::TerminalExecution)),
             Dec::Denied { .. }
         ));
 
         // Yetkisiz başlatılan agent hiçbir şeye sahip değil.
-        let none = crate::bridge::api::start_agent(
-            "yetkisiz".to_string(),
-            5,
-            1_000,
-            vec![],
-        )
-        .await
-        .unwrap();
+        let none = crate::bridge::api::start_agent("yetkisiz".to_string(), 5, 1_000, vec![])
+            .await
+            .unwrap();
         let nid = uuid::Uuid::parse_str(&none.agent_id).unwrap();
         assert!(matches!(
             rt.capability_engine.check(&nid, Some(Cap::WasmExecution)),
@@ -271,8 +255,8 @@ fn bridge_pipeline_register_grant_and_run() {
 
         // Workspace init'te {workspace_dir} üzerinde açılmış olmalı ve
         // agent araç listesine tüm workspace araçları eklenmeli.
-        let root = crate::bridge::state::workspace_root()
-            .expect("workspace init'te açılmış olmalı");
+        let root =
+            crate::bridge::state::workspace_root().expect("workspace init'te açılmış olmalı");
         assert!(!root.is_empty());
         let mut tools: Vec<std::sync::Arc<dyn crate::types::agent_tool::AgentTool>> = Vec::new();
         crate::bridge::api::append_workspace_tools(rt, &mut tools);

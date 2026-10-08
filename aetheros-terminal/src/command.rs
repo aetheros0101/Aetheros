@@ -101,5 +101,7 @@ impl CommandBuilder {
         self
     }
 
-    pub fn build(self) -> CommandSpec { self.0 }
+    pub fn build(self) -> CommandSpec {
+        self.0
+    }
 }

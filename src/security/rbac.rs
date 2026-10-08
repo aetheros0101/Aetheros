@@ -65,17 +65,12 @@ impl Role {
 
             Role::Viewer => matches!(
                 action,
-                Action::TaskRead
-                    | Action::WorkflowRead
-                    | Action::AgentRead
-                    | Action::SystemRead
+                Action::TaskRead | Action::WorkflowRead | Action::AgentRead | Action::SystemRead
             ),
 
             Role::Agent => matches!(
                 action,
-                Action::TaskSubmit
-                    | Action::TaskRead
-                    | Action::AgentRead
+                Action::TaskSubmit | Action::TaskRead | Action::AgentRead
             ),
         }
     }
@@ -83,10 +78,10 @@ impl Role {
     /// Role hiyerarşi seviyesi (yüksek = daha yetkili).
     pub fn level(&self) -> u8 {
         match self {
-            Role::Admin    => 4,
+            Role::Admin => 4,
             Role::Operator => 3,
-            Role::Agent    => 2,
-            Role::Viewer   => 1,
+            Role::Agent => 2,
+            Role::Viewer => 1,
         }
     }
 
@@ -131,10 +126,7 @@ pub struct RbacGuard;
 
 impl RbacGuard {
     /// Tek kontrol noktası.
-    pub fn authorize(
-        role: &Role,
-        action: &Action,
-    ) -> Result<(), AuthzError> {
+    pub fn authorize(role: &Role, action: &Action) -> Result<(), AuthzError> {
         if role.can(action) {
             Ok(())
         } else {

@@ -10,7 +10,6 @@
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-
 use crate::agents::approval::ApprovalStore;
 use crate::agents::budget::{AgentExecutionBudget, BudgetAccounting};
 use crate::agents::cancellation::CancellationToken;
@@ -25,12 +24,12 @@ use crate::security::capability_engine::CapabilityEngine;
 use crate::security::governor::SecurityGovernor;
 use crate::security::risk_engine::RiskEngine;
 
-pub mod outcome;
 pub mod control;
 pub mod entry;
-pub mod loops;
-pub mod step;
 pub mod executor;
+pub mod loops;
+pub mod outcome;
+pub mod step;
 
 pub use outcome::AgentOutcome;
 pub(crate) use outcome::StepOutcome;
@@ -90,6 +89,7 @@ impl AgentRuntime {
     }
 
     /// Kontrol düzlemi ile oluştur (cancel token + event sink).
+    #[allow(clippy::too_many_arguments)] // TODO(Faz 2): parametre struct'ı
     pub fn new_with_control(
         budget: AgentExecutionBudget,
         tools: Vec<Arc<dyn AgentTool>>,

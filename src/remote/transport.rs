@@ -15,10 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use tracing::{
-    debug,
-    warn,
-};
+use tracing::{debug, warn};
 
 use crate::remote::cluster::ClusterState;
 use crate::remote::protocol::RemoteCommand;
@@ -40,7 +37,9 @@ pub struct HttpTransport {
 /// üretimde her iki tarafta da aynı değerin ayarlanması ZORUNLUDUR,
 /// aksi halde /remote/command tamamen açık kalır.
 fn cluster_token_header() -> Option<String> {
-    std::env::var("AETHEROS_CLUSTER_TOKEN").ok().filter(|s| !s.is_empty())
+    std::env::var("AETHEROS_CLUSTER_TOKEN")
+        .ok()
+        .filter(|s| !s.is_empty())
 }
 
 impl HttpTransport {
@@ -55,23 +54,15 @@ impl HttpTransport {
     }
 
     /// Belirli adrese komut gönder.
-    async fn send_to(
-        &self,
-        address: &str,
-        command: &RemoteCommand,
-    ) -> bool {
-        let url =
-            format!("http://{}/remote/command", address);
+    async fn send_to(&self, address: &str, command: &RemoteCommand) -> bool {
+        let url = format!("http://{}/remote/command", address);
 
         let mut request = self.client.post(&url).json(command);
         if let Some(token) = cluster_token_header() {
             request = request.header("X-Cluster-Token", token);
         }
 
-        match request
-            .send()
-            .await
-        {
+        match request.send().await {
             Ok(resp) if resp.status().is_success() => {
                 debug!(
                     addr = %address,
@@ -122,10 +113,7 @@ impl RemoteTransport for HttpTransport {
                     .find(|n| n.node_id == hb.node_id)
                     .map(|n| (hb.cpu_usage_percent, n))
             })
-            .min_by(|a, b| {
-                a.0.partial_cmp(&b.0)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
+            .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
             .map(|(_, n)| n)
             .unwrap_or(&nodes[0]);
 
@@ -151,8 +139,7 @@ impl RemoteTransport for HttpTransport {
 
             let token = cluster_token_header();
             handles.push(tokio::spawn(async move {
-                let url =
-                    format!("http://{}/remote/command", addr);
+                let url = format!("http://{}/remote/command", addr);
                 let mut req = c.post(&url).json(&cmd);
                 if let Some(t) = token {
                     req = req.header("X-Cluster-Token", t);

@@ -41,9 +41,7 @@ impl LeaderElection {
     /// Gerçek dağıtık sistemde bu kısmi — tam Raft/Paxos
     /// her node'un oy gondermesi gerektirir. Bu implementasyon
     /// coordinator tarafından çalıştırılan merkezi versiyondur.
-    pub fn elect(
-        cluster: &ClusterState,
-    ) -> Option<ElectionResult> {
+    pub fn elect(cluster: &ClusterState) -> Option<ElectionResult> {
         // Quorum kontrolü
         if !cluster.has_quorum() {
             return None;
@@ -59,24 +57,16 @@ impl LeaderElection {
         let heartbeats = cluster.all_heartbeats();
 
         // Her aday için skor hesapla — düşük skor = iyi aday
-        let winner = candidates
-            .iter()
-            .min_by(|a, b| {
-                let score_a = Self::candidate_score(
-                    a,
-                    &heartbeats,
-                );
-                let score_b = Self::candidate_score(
-                    b,
-                    &heartbeats,
-                );
+        let winner = candidates.iter().min_by(|a, b| {
+            let score_a = Self::candidate_score(a, &heartbeats);
+            let score_b = Self::candidate_score(b, &heartbeats);
 
-                score_a
-                    .partial_cmp(&score_b)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-                    // Tie-break: UUID lexicographic
-                    .then(a.node_id.cmp(&b.node_id))
-            })?;
+            score_a
+                .partial_cmp(&score_b)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                // Tie-break: UUID lexicographic
+                .then(a.node_id.cmp(&b.node_id))
+        })?;
 
         Some(ElectionResult {
             winner: winner.node_id,
@@ -94,13 +84,8 @@ impl LeaderElection {
 
     /// Aday skoru: düşük = tercih edilir.
     /// cpu * 0.4 + mem_norm * 0.3 + exec_norm * 0.3
-    fn candidate_score(
-        node: &RemoteNode,
-        heartbeats: &[Heartbeat],
-    ) -> f32 {
-        let hb = heartbeats
-            .iter()
-            .find(|h| h.node_id == node.node_id);
+    fn candidate_score(node: &RemoteNode, heartbeats: &[Heartbeat]) -> f32 {
+        let hb = heartbeats.iter().find(|h| h.node_id == node.node_id);
 
         match hb {
             None => f32::MAX, // Heartbeat yok → en kötü aday

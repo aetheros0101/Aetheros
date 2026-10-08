@@ -113,7 +113,10 @@ impl DenyRule {
         let args_hit = !args_cond
             || args.iter().any(|a| {
                 self.args_any.iter().any(|x| x == a)
-                    || self.args_prefix_any.iter().any(|x| a.starts_with(x.as_str()))
+                    || self
+                        .args_prefix_any
+                        .iter()
+                        .any(|x| a.starts_with(x.as_str()))
             });
 
         prog_hit && args_hit
@@ -129,10 +132,11 @@ impl AllowRule {
         if !self.programs.iter().any(|p| p == program) {
             return false;
         }
-        if args
-            .iter()
-            .any(|a| self.unless_args_prefix.iter().any(|x| a.starts_with(x.as_str())))
-        {
+        if args.iter().any(|a| {
+            self.unless_args_prefix
+                .iter()
+                .any(|x| a.starts_with(x.as_str()))
+        }) {
             return false;
         }
         if self.subcommands.is_empty() {
@@ -239,9 +243,30 @@ impl CommandPolicy {
             DenyRule {
                 reason: "kabuk/yorumlayıcı keyfi kod çalıştırır".into(),
                 programs: v(&[
-                    "sh", "bash", "zsh", "dash", "ash", "ksh", "csh", "tcsh", "fish", "busybox",
-                    "python", "perl", "ruby", "node", "nodejs", "deno", "bun", "php", "lua",
-                    "tclsh", "powershell", "pwsh", "cmd", "osascript",
+                    "sh",
+                    "bash",
+                    "zsh",
+                    "dash",
+                    "ash",
+                    "ksh",
+                    "csh",
+                    "tcsh",
+                    "fish",
+                    "busybox",
+                    "python",
+                    "perl",
+                    "ruby",
+                    "node",
+                    "nodejs",
+                    "deno",
+                    "bun",
+                    "php",
+                    "lua",
+                    "tclsh",
+                    "powershell",
+                    "pwsh",
+                    "cmd",
+                    "osascript",
                 ]),
                 ..Default::default()
             },
@@ -303,7 +328,12 @@ impl CommandPolicy {
                 programs: v(&["git"]),
                 subcommands: v(&["status", "diff", "log", "show", "rev-parse", "ls-files"]),
                 // Dosyaya yazan / harici program çalıştıran okuma bayrakları
-                unless_args_prefix: v(&["--output", "--ext-diff", "--textconv", "--open-files-in-pager"]),
+                unless_args_prefix: v(&[
+                    "--output",
+                    "--ext-diff",
+                    "--textconv",
+                    "--open-files-in-pager",
+                ]),
             },
             AllowRule {
                 programs: v(&["ls", "pwd", "echo", "date", "uname", "whoami"]),
@@ -370,7 +400,9 @@ mod tests {
 
     #[test]
     fn find_exec_denied_plain_find_asks() {
-        assert!(is_deny(p().assess(&a(&["find", ".", "-exec", "sh", "{}", ";"]))));
+        assert!(is_deny(
+            p().assess(&a(&["find", ".", "-exec", "sh", "{}", ";"]))
+        ));
         assert!(is_deny(p().assess(&a(&["find", ".", "-delete"]))));
         assert!(is_ask(p().assess(&a(&["find", ".", "-name", "*.rs"]))));
     }
@@ -378,8 +410,16 @@ mod tests {
     #[test]
     fn git_config_injection_denied() {
         assert!(is_deny(p().assess(&a(&["git", "-c", "alias.x=!sh", "x"]))));
-        assert!(is_deny(p().assess(&a(&["git", "status", "--exec-path=/tmp"]))));
-        assert!(is_deny(p().assess(&a(&["git", "fetch", "--upload-pack=evil"]))));
+        assert!(is_deny(p().assess(&a(&[
+            "git",
+            "status",
+            "--exec-path=/tmp"
+        ]))));
+        assert!(is_deny(p().assess(&a(&[
+            "git",
+            "fetch",
+            "--upload-pack=evil"
+        ]))));
     }
 
     #[test]
@@ -395,7 +435,9 @@ mod tests {
 
     #[test]
     fn git_mutating_or_unknown_subcommands_ask() {
-        for sub in ["commit", "push", "reset", "checkout", "clean", "branch", "config"] {
+        for sub in [
+            "commit", "push", "reset", "checkout", "clean", "branch", "config",
+        ] {
             assert!(is_ask(p().assess(&a(&["git", sub]))), "{sub}");
         }
     }
@@ -422,7 +464,12 @@ mod tests {
 
     #[test]
     fn simple_readonly_programs_allowed() {
-        for cmd in [vec!["ls", "-la"], vec!["pwd"], vec!["echo", "merhaba"], vec!["date"]] {
+        for cmd in [
+            vec!["ls", "-la"],
+            vec!["pwd"],
+            vec!["echo", "merhaba"],
+            vec!["date"],
+        ] {
             assert_eq!(p().assess(&a(&cmd)), CallVerdict::Allow, "{cmd:?}");
         }
     }
@@ -437,7 +484,11 @@ mod tests {
     fn destructive_commands_denied() {
         assert!(is_deny(p().assess(&a(&["rm", "-rf", "/"]))));
         assert!(is_deny(p().assess(&a(&["rm", "-rf", "~"]))));
-        assert!(is_deny(p().assess(&a(&["dd", "if=/dev/zero", "of=/dev/sda"]))));
+        assert!(is_deny(p().assess(&a(&[
+            "dd",
+            "if=/dev/zero",
+            "of=/dev/sda"
+        ]))));
         assert!(is_deny(p().assess(&a(&["mkfs.ext4", "/dev/sda1"]))));
         // Hedefsiz rm → insan karar versin
         assert!(is_ask(p().assess(&a(&["rm", "dosya.txt"]))));
@@ -446,7 +497,9 @@ mod tests {
     #[test]
     fn whole_command_line_in_one_argument_is_denied_with_guidance() {
         match p().assess(&a(&["touch deneme.txt"])) {
-            CallVerdict::Deny { reason } => assert!(reason.contains("ayrı argümanlarla"), "{reason}"),
+            CallVerdict::Deny { reason } => {
+                assert!(reason.contains("ayrı argümanlarla"), "{reason}")
+            }
             other => panic!("{other:?}"),
         }
         assert!(is_deny(p().assess(&a(&["git status"]))));

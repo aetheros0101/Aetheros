@@ -17,20 +17,20 @@ mod atomic;
 mod error;
 mod git;
 mod index;
-mod symbols;
-mod trigram;
 pub mod lsp;
 mod models;
 mod path_guard;
+mod symbols;
 mod tools;
+mod trigram;
 #[cfg(feature = "watcher")]
 mod watcher;
 
 pub use error::{Result, WorkspaceError};
-pub use models::*;
-pub use tools::{PatchEdit, WorkspaceToolRequest, WorkspaceToolResponse};
-pub use symbols::{SymbolParser, SymbolRegistry, SharedSymbolRegistry};
 pub use lsp::StdioLanguageServer;
+pub use models::*;
+pub use symbols::{SharedSymbolRegistry, SymbolParser, SymbolRegistry};
+pub use tools::{PatchEdit, WorkspaceToolRequest, WorkspaceToolResponse};
 #[cfg(feature = "watcher")]
 pub use watcher::{coalesce_events, Debouncer, WorkspaceWatcher};
 
@@ -112,7 +112,10 @@ impl Workspace {
     }
 
     /// Register a symbol parser (e.g. tree-sitter backed) and rebuild index.
-    pub fn register_symbol_parser(&self, parser: std::sync::Arc<dyn crate::symbols::SymbolParser>) -> Result<()> {
+    pub fn register_symbol_parser(
+        &self,
+        parser: std::sync::Arc<dyn crate::symbols::SymbolParser>,
+    ) -> Result<()> {
         self.symbols
             .write()
             .map_err(|_| WorkspaceError::Symbol("registry lock poisoned".into()))?
@@ -324,9 +327,16 @@ impl Workspace {
     /// çakışma denetimi (`expected_version`) aksi halde hiç tetiklenmezdi.
     /// Yalnızca indekslenmiş dosyalar için çalışır; okunamayan dosya sessizce atlanır.
     fn detect_external_change(&self, relative: &str) -> Result<()> {
-        let Ok(path) = self.resolve(relative) else { return Ok(()) };
-        let Ok(bytes) = fs::read(&path) else { return Ok(()) };
-        let indexed_hash = self.index_read()?.metadata(relative).map(|m| m.content_hash);
+        let Ok(path) = self.resolve(relative) else {
+            return Ok(());
+        };
+        let Ok(bytes) = fs::read(&path) else {
+            return Ok(());
+        };
+        let indexed_hash = self
+            .index_read()?
+            .metadata(relative)
+            .map(|m| m.content_hash);
         if let Some(h) = indexed_hash {
             if h != content_hash(&bytes) {
                 let mut idx = self.index_write()?;
@@ -596,7 +606,7 @@ fn load_ignore(root: &Path) -> Result<Gitignore> {
     let _ = builder.add_line(None, ".git/");
     builder
         .build()
-        .map_err(|e| WorkspaceError::Io(io::Error::new(io::ErrorKind::Other, e.to_string())))
+        .map_err(|e| WorkspaceError::Io(io::Error::other(e.to_string())))
 }
 
 #[cfg(test)]

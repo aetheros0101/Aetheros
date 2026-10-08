@@ -97,37 +97,21 @@ pub struct PatchEdit {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WorkspaceToolResponse {
     File(FileDocument),
-    Entries {
-        entries: Vec<WorkspaceEntry>,
-    },
-    Search {
-        matches: Vec<SearchMatch>,
-    },
+    Entries { entries: Vec<WorkspaceEntry> },
+    Search { matches: Vec<SearchMatch> },
     Created(CreateResult),
     Written(FileDocument),
     Patched(FileDocument),
     Ok,
     Git(GitStatus),
     Diff(GitDiff),
-    Worktrees {
-        worktrees: Vec<GitWorktree>,
-    },
+    Worktrees { worktrees: Vec<GitWorktree> },
     Metadata(FileMetadata),
-    MetadataList {
-        files: Vec<FileMetadata>,
-    },
-    Symbols {
-        symbols: Vec<Symbol>,
-    },
-    Diagnostics {
-        diagnostics: Vec<Diagnostic>,
-    },
-    Blame {
-        lines: Vec<GitBlameLine>,
-    },
-    Log {
-        commits: Vec<GitCommit>,
-    },
+    MetadataList { files: Vec<FileMetadata> },
+    Symbols { symbols: Vec<Symbol> },
+    Diagnostics { diagnostics: Vec<Diagnostic> },
+    Blame { lines: Vec<GitBlameLine> },
+    Log { commits: Vec<GitCommit> },
 }
 
 impl Workspace {
@@ -206,7 +190,7 @@ impl Workspace {
             WorkspaceToolRequest::FileMetadata { path } => {
                 let meta = self
                     .file_metadata(&path)?
-                    .ok_or_else(|| WorkspaceError::NotFound(path))?;
+                    .ok_or(WorkspaceError::NotFound(path))?;
                 Ok(WorkspaceToolResponse::Metadata(meta))
             }
             WorkspaceToolRequest::ListMetadata => Ok(WorkspaceToolResponse::MetadataList {
@@ -228,9 +212,7 @@ impl Workspace {
             WorkspaceToolRequest::FileSymbols { path } => Ok(WorkspaceToolResponse::Symbols {
                 symbols: self.file_symbols(&path)?,
             }),
-            WorkspaceToolRequest::GitStatus => {
-                Ok(WorkspaceToolResponse::Git(self.git_status()?))
-            }
+            WorkspaceToolRequest::GitStatus => Ok(WorkspaceToolResponse::Git(self.git_status()?)),
             WorkspaceToolRequest::GitDiff { staged, path } => Ok(WorkspaceToolResponse::Diff(
                 self.git_diff(staged.unwrap_or(false), path.as_deref())?,
             )),

@@ -16,22 +16,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
-use tracing::{
-    debug,
-    info,
-    warn,
-};
+use serde::{Deserialize, Serialize};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::remote::cluster::ClusterState;
-use crate::remote::node::{
-    NodeCapability,
-    RemoteNode,
-};
+use crate::remote::node::{NodeCapability, RemoteNode};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscoveryRecord {
@@ -105,10 +95,8 @@ impl DiscoveryService {
                 Ok(true) => {
                     info!(seed = %seed, "Seed node reachable");
                     // Seed'i cluster'a ekle
-                    let seed_node = RemoteNode::new(
-                        seed.clone(),
-                        vec![NodeCapability::WasmExecution],
-                    );
+                    let seed_node =
+                        RemoteNode::new(seed.clone(), vec![NodeCapability::WasmExecution]);
                     self.cluster.register(seed_node);
                 }
                 Ok(false) => {
@@ -120,10 +108,7 @@ impl DiscoveryService {
             }
         }
 
-        info!(
-            cluster_size = self.cluster.size(),
-            "Cluster join complete"
-        );
+        info!(cluster_size = self.cluster.size(), "Cluster join complete");
     }
 
     /// Cluster'dan temiz ayrıl.
@@ -136,10 +121,7 @@ impl DiscoveryService {
     }
 
     /// Node canlı mı? GET /health endpoint'ini kontrol et.
-    pub async fn probe(
-        &self,
-        address: &str,
-    ) -> Result<bool, String> {
+    pub async fn probe(&self, address: &str) -> Result<bool, String> {
         let url = format!("http://{}/health", address);
 
         match self.client.get(&url).send().await {
@@ -163,9 +145,7 @@ impl DiscoveryService {
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) {
         tokio::spawn(async move {
-            let mut ticker = tokio::time::interval(
-                Duration::from_secs(interval_secs),
-            );
+            let mut ticker = tokio::time::interval(Duration::from_secs(interval_secs));
 
             loop {
                 tokio::select! {
@@ -174,19 +154,19 @@ impl DiscoveryService {
 
                         // Sağlıksız seed'leri yeniden dene
                         for seed in &self.seeds {
-                            if let Ok(true) = self.probe(seed).await {
-                                if !self.cluster
+                            if let Ok(true) = self.probe(seed).await
+                                && !self
+                                    .cluster
                                     .nodes()
                                     .iter()
                                     .any(|n| n.address == *seed)
-                                {
-                                    info!(seed = %seed, "Seed node recovered");
-                                    let node = RemoteNode::new(
-                                        seed.clone(),
-                                        vec![NodeCapability::WasmExecution],
-                                    );
-                                    self.cluster.register(node);
-                                }
+                            {
+                                info!(seed = %seed, "Seed node recovered");
+                                let node = RemoteNode::new(
+                                    seed.clone(),
+                                    vec![NodeCapability::WasmExecution],
+                                );
+                                self.cluster.register(node);
                             }
                         }
 

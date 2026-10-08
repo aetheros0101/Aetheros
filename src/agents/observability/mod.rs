@@ -145,7 +145,7 @@ impl AgentEvent {
                 .unwrap_or(0);
             format!("{n:016x}")
         };
-        let start = (self.timestamp.timestamp_nanos_opt().unwrap_or(0) as u64) as u64;
+        let start = self.timestamp.timestamp_nanos_opt().unwrap_or(0) as u64;
         let mut attrs = self.attributes.clone();
         attrs.insert(
             "agent.id".into(),
@@ -166,10 +166,12 @@ impl AgentEvent {
             attrs.insert("duration_ms".into(), serde_json::Value::from(d));
         }
         let status = match self.kind {
-            AgentEventKind::ExecutionFailed | AgentEventKind::StepFailed | AgentEventKind::BudgetExceeded => {
-                "ERROR"
+            AgentEventKind::ExecutionFailed
+            | AgentEventKind::StepFailed
+            | AgentEventKind::BudgetExceeded => "ERROR",
+            AgentEventKind::ExecutionCancelled | AgentEventKind::CancellationRequested => {
+                "CANCELLED"
             }
-            AgentEventKind::ExecutionCancelled | AgentEventKind::CancellationRequested => "CANCELLED",
             _ => "OK",
         };
         let end = self.duration_ms.map(|ms| start + ms * 1_000_000);
@@ -224,13 +226,13 @@ impl Default for JsonlAuditSink {
 impl AgentEventSink for JsonlAuditSink {
     fn emit(&self, event: AgentEvent) {
         let span = event.to_otel_span();
-        if let Ok(line) = serde_json::to_string(&span) {
-            if let Ok(mut g) = self.lines.lock() {
-                g.push(line);
-                if g.len() > self.max_lines {
-                    let excess = g.len() - self.max_lines;
-                    g.drain(0..excess);
-                }
+        if let Ok(line) = serde_json::to_string(&span)
+            && let Ok(mut g) = self.lines.lock()
+        {
+            g.push(line);
+            if g.len() > self.max_lines {
+                let excess = g.len() - self.max_lines;
+                g.drain(0..excess);
             }
         }
     }
@@ -288,9 +290,6 @@ impl AgentEventSink for MetricsEventSink {
 
 impl MetricsEventSink {
     pub fn snapshot(&self) -> AgentMetrics {
-        self.metrics
-            .lock()
-            .map(|m| m.clone())
-            .unwrap_or_default()
+        self.metrics.lock().map(|m| m.clone()).unwrap_or_default()
     }
 }

@@ -12,37 +12,29 @@
 // ============================================================
 
 use std::sync::Arc;
-use std::sync::atomic::{
-    AtomicU8,
-    Ordering,
-};
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use tokio::select;
-use tokio::sync::{
-    mpsc,
-    RwLock,
-};
+use tokio::sync::{RwLock, mpsc};
 
+use crate::errors::persistence::PersistenceError;
 use crate::errors::runtime::RuntimeError;
-use crate::errors::persistence::PersistenceError;use crate::events::bus::{
-    EventBus,
-    SystemEvent,
-};
+use crate::events::bus::{EventBus, SystemEvent};
 use crate::events::runtime::RuntimeEvent;
-use crate::runtime::config::RuntimeConfig;
-use crate::runtime::dispatcher::Dispatcher;
-use crate::runtime::scheduler::Scheduler;
-use crate::runtime::shutdown::ShutdownController;
-use crate::runtime::backpressure::BackpressureController;
-use crate::runtime::lifecycle::RuntimeState;
-use crate::task::queue::PriorityTaskQueue;
-use crate::task::task::TaskDefinition;
-use crate::wasm::WasmExecutor;
-use crate::worker::manager::WorkerManager;
 use crate::persistence::engine::PersistenceEngine;
 use crate::persistence::models::PersistedTask;
 use crate::persistence::recovery::RecoveryEngine;
+use crate::runtime::backpressure::BackpressureController;
+use crate::runtime::config::RuntimeConfig;
+use crate::runtime::dispatcher::Dispatcher;
+use crate::runtime::lifecycle::RuntimeState;
+use crate::runtime::scheduler::Scheduler;
+use crate::runtime::shutdown::ShutdownController;
+use crate::task::queue::PriorityTaskQueue;
+use crate::task::task::TaskDefinition;
+use crate::wasm::WasmExecutor;
 use crate::wasm::module_store::ModuleStore;
+use crate::worker::manager::WorkerManager;
 
 // ── Backend import'ları ───────────────────────────────────
 #[cfg(feature = "backend-wasmtime")]
@@ -70,32 +62,21 @@ impl Runtime {
         config: RuntimeConfig,
         task_receiver: mpsc::Receiver<TaskDefinition>,
     ) -> Result<Self, RuntimeError> {
-        let event_bus = EventBus::new(
-            config.event_channel_capacity,
-        );
+        let event_bus = EventBus::new(config.event_channel_capacity);
 
-        let queue = Arc::new(
-            PriorityTaskQueue::new(),
-        );
+        let queue = Arc::new(PriorityTaskQueue::new());
 
-        let scheduler =
-            Arc::new(Scheduler::new(queue.clone()));
+        let scheduler = Arc::new(Scheduler::new(queue.clone()));
 
-        let persistence = Arc::new(
-            PersistenceEngine::open(
-                &config.persistence_path,
-            )?,
-        );
+        let persistence = Arc::new(PersistenceEngine::open(&config.persistence_path)?);
 
         // DÜZELTME (madde #7): ModuleStore artık `persistence` ile aynı
         // sled veritabanına write-through yapıyor ve açılışta mevcut
         // modülleri geri yüklüyor — restart sonrası "module not found
         // in store" ile başarısız olan recovered task'lar sorunu çözüldü.
         let module_store = Arc::new(
-            crate::wasm::module_store::ModuleStore::with_persistence(
-                Arc::clone(&persistence),
-            )
-            .map_err(|_| RuntimeError::Persistence(PersistenceError::StorageFailure))?
+            crate::wasm::module_store::ModuleStore::with_persistence(Arc::clone(&persistence))
+                .map_err(|_| RuntimeError::Persistence(PersistenceError::StorageFailure))?,
         );
 
         // ── WASM Engine — derleme zamanında seçilir ───────────
@@ -107,24 +88,23 @@ impl Runtime {
         //   Geri kalan runtime kodu backend'i bilmez.
 
         #[cfg(feature = "backend-wasmtime")]
-        let engine: Arc<dyn WasmExecutor> = Arc::new(
-            WasmEngine::new(SandboxLimits {
+        let engine: Arc<dyn WasmExecutor> = Arc::new(WasmEngine::new(
+            SandboxLimits {
                 memory_limit_bytes: 64 * 1024 * 1024,
                 execution_timeout: std::time::Duration::from_secs(30),
                 fuel_limit: 10_000_000,
-            }, module_store.clone())?
-        );
+            },
+            module_store.clone(),
+        )?);
 
         #[cfg(feature = "backend-wasmi")]
-        let engine: Arc<dyn WasmExecutor> = Arc::new(
-            WasmiEngine::new(
-                WasmiSandboxLimits {
-                    fuel_limit:        10_000_000,
-                    execution_timeout: std::time::Duration::from_secs(30),
-                },
-                module_store.clone(),
-            )
-        );
+        let engine: Arc<dyn WasmExecutor> = Arc::new(WasmiEngine::new(
+            WasmiSandboxLimits {
+                fuel_limit: 10_000_000,
+                execution_timeout: std::time::Duration::from_secs(30),
+            },
+            module_store.clone(),
+        ));
 
         let mut manager = WorkerManager::new();
 
@@ -137,21 +117,14 @@ impl Runtime {
             queue.clone(),
         );
 
-        let workers =
-            Arc::new(RwLock::new(manager));
+        let workers = Arc::new(RwLock::new(manager));
 
-        let backpressure = BackpressureController::new(
-            config.max_concurrent_tasks,
-        );
+        let backpressure = BackpressureController::new(config.max_concurrent_tasks);
 
-        let dispatcher = Arc::new(
-            Dispatcher::new(queue, workers, backpressure),
-        );
+        let dispatcher = Arc::new(Dispatcher::new(queue, workers, backpressure));
 
         Ok(Self {
-            state: Arc::new(AtomicU8::new(
-                RuntimeState::Created as u8,
-            )),
+            state: Arc::new(AtomicU8::new(RuntimeState::Created as u8)),
             config,
             event_bus,
             shutdown: ShutdownController::new(),
@@ -163,9 +136,7 @@ impl Runtime {
         })
     }
 
-    pub async fn start(
-        mut self,
-    ) -> Result<(), RuntimeError> {
+    pub async fn start(mut self) -> Result<(), RuntimeError> {
         // ── 1. Starting ───────────────────────────────────────
         self.set_state(RuntimeState::Starting);
 
@@ -174,11 +145,9 @@ impl Runtime {
         // DÜZELTME: Orijinalde state Running'e çekildikten SONRA
         // recovery yapılıyordu. Dışarıya "hazırım" sinyali
         // vermeden önce tüm kurtarma adımları tamamlanmalı.
-        let recovered_tasks =
-            self.persistence.load_all_tasks()?;
+        let recovered_tasks = self.persistence.load_all_tasks()?;
 
-        let recovered =
-            RecoveryEngine::recoverable_tasks(recovered_tasks);
+        let recovered = RecoveryEngine::recoverable_tasks(recovered_tasks);
 
         for mut task in recovered {
             RecoveryEngine::mark_recovered(&mut task);
@@ -188,17 +157,13 @@ impl Runtime {
         // ── 3. Dispatcher başlat ──────────────────────────────
         let dispatcher = self.dispatcher.clone();
 
-        let dispatcher_handle =
-            tokio::spawn(async move {
-                dispatcher.run().await
-            });
+        let dispatcher_handle = tokio::spawn(async move { dispatcher.run().await });
 
         // ── 4. Running — recovery + dispatcher hazır ─────────
         self.set_state(RuntimeState::Running);
 
-        self.event_bus.publish(
-            SystemEvent::Runtime(RuntimeEvent::RuntimeStarted),
-        );
+        self.event_bus
+            .publish(SystemEvent::Runtime(RuntimeEvent::RuntimeStarted));
 
         // ── 5. Ana döngü ──────────────────────────────────────
         //
@@ -274,9 +239,8 @@ impl Runtime {
         // ── 7. Durduruldu ─────────────────────────────────────
         self.set_state(RuntimeState::Stopped);
 
-        self.event_bus.publish(
-            SystemEvent::Runtime(RuntimeEvent::RuntimeStopped),
-        );
+        self.event_bus
+            .publish(SystemEvent::Runtime(RuntimeEvent::RuntimeStopped));
 
         Ok(())
     }
@@ -310,9 +274,7 @@ impl Runtime {
     }
 
     pub fn state(&self) -> RuntimeState {
-        RuntimeState::from_u8(
-            self.state.load(Ordering::SeqCst),
-        )
+        RuntimeState::from_u8(self.state.load(Ordering::SeqCst))
     }
 
     // State geçişini tek yerden yap — tekrar azaltır.

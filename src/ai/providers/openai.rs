@@ -84,11 +84,10 @@ pub struct OpenAiProvider {
 impl OpenAiProvider {
     /// OPENAI_API_KEY environment variable'dan oluştur (sunucu/dev).
     pub fn new() -> Result<Self, AiError> {
-        let api_key = std::env::var("OPENAI_API_KEY")
-            .map_err(|_| {
-                warn!("OPENAI_API_KEY not set");
-                AiError::ProviderUnavailable
-            })?;
+        let api_key = std::env::var("OPENAI_API_KEY").map_err(|_| {
+            warn!("OPENAI_API_KEY not set");
+            AiError::ProviderUnavailable
+        })?;
 
         Ok(Self::from_key(api_key))
     }
@@ -122,10 +121,7 @@ impl ModelProvider for OpenAiProvider {
         false
     }
 
-    async fn infer(
-        &self,
-        request: InferenceRequest,
-    ) -> Result<InferenceResponse, AiError> {
+    async fn infer(&self, request: InferenceRequest) -> Result<InferenceResponse, AiError> {
         debug!(
             model = %self.model,
             max_tokens = request.max_tokens,
@@ -164,10 +160,13 @@ impl ModelProvider for OpenAiProvider {
                     warn!("OpenAI'a bağlanılamadı (ağ sorunu)");
                     AiError::ProviderFailure {
                         message: "Bağlantı kurulamadı — internet bağlantını \
-                                  kontrol et ve tekrar dene.".to_string(),
+                                  kontrol et ve tekrar dene."
+                            .to_string(),
                     }
                 } else {
-                    AiError::ProviderFailure { message: e.to_string() }
+                    AiError::ProviderFailure {
+                        message: e.to_string(),
+                    }
                 }
             })?;
 
@@ -191,12 +190,13 @@ impl ModelProvider for OpenAiProvider {
             });
         }
 
-        let openai_resp: OpenAiResponse = response
-            .json()
-            .await
-            .map_err(|e| AiError::ProviderFailure {
-                message: e.to_string(),
-            })?;
+        let openai_resp: OpenAiResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| AiError::ProviderFailure {
+                    message: e.to_string(),
+                })?;
 
         let output = openai_resp
             .choices

@@ -1,3 +1,57 @@
+# Faz 1 / Adım 1 — Döngüsel bağımlılıkların kırılması
+
+**Derlenmedi:** derleyicisiz, statik analizle hazırlandı. Uygulamadan sonra
+`cargo test --lib` çalıştırın (beklenen: önceki test sayısı + 5 mimari test).
+
+Üst düzey modüller arası bağımlılık grafiğinde 9 modüllük bir döngüsel blok
+(`agents, ai, events, logging, persistence, security, task, types, wasm`) vardı.
+Artık graf **döngüsüz**:
+
+- `AgentCapability`, `AgentCapabilities`, `PolicyProfile` → `types/capability.rs`
+  (saf veri). `agents::capabilities` eski yolu yeniden dışa aktarır; mevcut
+  `use` satırları değişmeden çalışır. Kopan bağlar: `types → agents`,
+  `security → agents`.
+- `ModuleHash` → `types/ids.rs`. `wasm::module_store::ModuleHash` yeniden dışa
+  aktarım olarak durur. Kopan bağ: `task → wasm`.
+- **Mimari testleri** (`src/tests/architecture_tests.rs`): graf döngüsüz kalmalı;
+  `types` ve `errors` hiçbir iç modüle bağlanamaz; `bridge` hiçbir yerden import
+  edilemez, `api` yalnızca `bridge`'den kullanılabilir.
+
+---
+
+# Faz 0 — Hijyen (ölü kod, Docker, bağımlılıklar)
+
+**Derlenmedi:** Bu faz da derleyicisiz, statik analizle hazırlandı.
+Uygulamadan sonra `cargo build` ve `cargo test --lib` çalıştırın;
+`Cargo.toml` değiştiği için `Cargo.lock` bir kez güncellenmelidir
+(`cargo build` yeterli) ve **commit edilmelidir** (Dockerfile `--locked` kullanır).
+
+- **Ölü kod:** üretimde hiçbir yerden referans almayan 103 dosya (~3,3 bin satır)
+  silindi: `orchestration` (31), `workflows` (15), `logging` (10), `ai` (13),
+  `security` (6: `signatures`, `identity`, `isolation`, `secrets`,
+  `authentication`, `authorization`), `api` (5), `wasm` (4), `plugins` (7),
+  `registry` (3), `remote` (3), `task` (3), `metrics` (2), `types` (1).
+  Ayrıca hiç derlenmeyen 3 yetim dosya (`ai/inference/traits.rs`,
+  `ai/planner/execution.rs`, `ai/routing/policy.rs`).
+  `plugins`, `registry` ve `config` modülleri tamamen kaldırıldı.
+  Test kodunda kullanılan `quorum`, `election`, `discovery` korundu.
+- **SDK:** `src/sdk/` derleme ağacından çıkarıp kök `sdk/` dizinine taşındı
+  (Python/TypeScript iskeletleri + Rust HTTP istemcisi; henüz ayrı crate değil).
+- **workspace_core:** hiç kullanılmayan 6 metot kaldırıldı (`get_text`,
+  `total_bytes()`, `contains`, `kind_from_capture`, `TrigramIndex::clear/file_count`);
+  derleyici uyarıları kapandı.
+- **Bağımlılıklar:** kullanılmayan `bytes`, `smallvec`, `semver`, `anyhow`,
+  `wasmtime-wasi` kaldırıldı.
+- **Docker:** workspace path crate'leri (`aetheros-terminal`, `workspace_core`)
+  ve `benches/` build context'ine eklendi (önceden build düşerdi); gereksiz
+  `libssl3` çıkarıldı; HEALTHCHECK `curl` ile düzeltildi (slim imajda `wget`
+  yoktu); BuildKit cache mount'ları; `.dockerignore` eklendi;
+  compose'da `.env.local` artık opsiyonel.
+- **CI:** bilgilendirici `cargo machete` işi eklendi.
+- **Depo düzeni:** `verify_all.sh` ve `stress_test_final.sh` → `scripts/`.
+
+---
+
 # Değişiklik Özeti — Güvenlik Sertleştirmesi ve Kalite İyileştirmeleri
 
 Bu doküman, ilk kod incelemesinde tespit edilen eksikler ile bunlara

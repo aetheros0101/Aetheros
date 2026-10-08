@@ -30,6 +30,7 @@ use crate::security::risk_engine::RiskEngine;
 pub struct AgentExecutor;
 
 impl AgentExecutor {
+    #[allow(clippy::too_many_arguments)] // TODO(Faz 2): parametre struct'ı
     pub async fn execute(
         context: AgentContext,
         objective: String,

@@ -11,8 +11,8 @@
 // invoke'da yalnızca kaydeden bir sahte "terminal" tool'u kullanılır.
 // ============================================================
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -76,7 +76,12 @@ fn step(args: &[&str]) -> AgentPlanStep {
     }
 }
 
-fn setup() -> (AgentRuntime, Arc<ApprovalStore>, Arc<AtomicUsize>, Arc<dyn AgentTool>) {
+fn setup() -> (
+    AgentRuntime,
+    Arc<ApprovalStore>,
+    Arc<AtomicUsize>,
+    Arc<dyn AgentTool>,
+) {
     let invoked = Arc::new(AtomicUsize::new(0));
     let tool: Arc<dyn AgentTool> = Arc::new(ProbeTerminal {
         policy: CommandPolicy::default_policy(),
@@ -129,7 +134,10 @@ async fn git_commit_pauses_for_approval_with_arguments_kept() {
     assert_eq!(invoked.load(Ordering::SeqCst), 0);
     let pending = store.list();
     assert_eq!(pending.len(), 1);
-    assert_eq!(pending[0].tool_call.arguments, vec!["git", "commit", "-m", "x"]);
+    assert_eq!(
+        pending[0].tool_call.arguments,
+        vec!["git", "commit", "-m", "x"]
+    );
 }
 
 #[tokio::test]
@@ -171,7 +179,11 @@ async fn resume_cannot_bypass_a_policy_deny() {
     let result = AgentRuntime::resume(pending, vec![tool], None, None, None, None, None).await;
     // Hata dönebilir ya da Completed (hata audit'e yazılır); önemli olan ÇALIŞMAMASI.
     let _ = result;
-    assert_eq!(invoked.load(Ordering::SeqCst), 0, "Deny resume ile aşılmamalı");
+    assert_eq!(
+        invoked.load(Ordering::SeqCst),
+        0,
+        "Deny resume ile aşılmamalı"
+    );
 }
 
 // ── B7: resume capability'yi atlamaz ─────────────────────────
@@ -220,7 +232,9 @@ async fn resume_respects_revoked_capability() {
     // Onay verildiği anda agent'ın capability'si yok (geri alınmış / hiç yok):
     // onay, capability reddini AŞAMAZ.
     let invoked = Arc::new(AtomicUsize::new(0));
-    let tool: Arc<dyn AgentTool> = Arc::new(CapProbe { invoked: invoked.clone() });
+    let tool: Arc<dyn AgentTool> = Arc::new(CapProbe {
+        invoked: invoked.clone(),
+    });
     let cap_engine = Arc::new(crate::security::capability_engine::CapabilityEngine::new());
 
     let _ = AgentRuntime::resume(
@@ -234,14 +248,20 @@ async fn resume_respects_revoked_capability() {
     )
     .await;
 
-    assert_eq!(invoked.load(Ordering::SeqCst), 0, "capability yokken resume çalıştırmamalı");
+    assert_eq!(
+        invoked.load(Ordering::SeqCst),
+        0,
+        "capability yokken resume çalıştırmamalı"
+    );
 }
 
 #[tokio::test]
 async fn resume_fail_closed_without_capability_engine() {
     // Motor hiç bağlı değilse (None) capability isteyen tool resume'da da çalışmaz.
     let invoked = Arc::new(AtomicUsize::new(0));
-    let tool: Arc<dyn AgentTool> = Arc::new(CapProbe { invoked: invoked.clone() });
+    let tool: Arc<dyn AgentTool> = Arc::new(CapProbe {
+        invoked: invoked.clone(),
+    });
 
     let _ = AgentRuntime::resume(cap_pending(), vec![tool], None, None, None, None, None).await;
 

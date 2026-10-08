@@ -56,32 +56,32 @@ use crate::wasm::wasmi_engine::{WasmiEngine, WasmiSandboxLimits};
 static MOBILE_RUNTIME: OnceLock<MobileRuntime> = OnceLock::new();
 
 pub struct MobileRuntime {
-    pub handle:            RuntimeHandle,
-    pub events:            EventBus,
-    pub persistence:       Arc<PersistenceEngine>,
-    pub metrics:           Arc<RuntimeMetrics>,
-    pub module_store:      Arc<ModuleStore>,
-    pub log_buffer:        LogBuffer,
+    pub handle: RuntimeHandle,
+    pub events: EventBus,
+    pub persistence: Arc<PersistenceEngine>,
+    pub metrics: Arc<RuntimeMetrics>,
+    pub module_store: Arc<ModuleStore>,
+    pub log_buffer: LogBuffer,
     /// WASM binary'lerinin kalıcı dizini: {docDir}/modules/
-    pub modules_dir:       String,
+    pub modules_dir: String,
     /// Terminal aracının çalışma dizini ve HOME'u: {docDir}/workspace/.
     /// Android'de süreç cwd'si "/" (salt-okunur) olduğundan komutlar
     /// burada koşar; böylece `touch x`, `ls` vb. yazılabilir bir yerde çalışır.
-    pub workspace_dir:     String,
+    pub workspace_dir: String,
     /// `workspace_dir` üzerinde açılmış güvenli dosya katmanı. Açılamazsa None:
     /// agent'lar workspace aracı almadan çalışır (terminal etkilenmez).
-    pub workspace:         Option<Arc<aetheros_workspace::Workspace>>,
+    pub workspace: Option<Arc<aetheros_workspace::Workspace>>,
     /// Agent execution kaydı (in-memory, Faz-2'de persist)
-    pub agent_registry:    AgentRegistry,
+    pub agent_registry: AgentRegistry,
     /// Workflow execution kaydı (in-memory, Faz-2'de persist)
     pub workflow_registry: WorkflowRegistry,
     /// Cluster state — local/remote dispatch
-    pub cluster:           Arc<crate::remote::cluster::ClusterState>,
+    pub cluster: Arc<crate::remote::cluster::ClusterState>,
     /// AI provider registry + aktif provider seçimi.
     /// Boş başlar — Flutter, Ayarlar'da kayıtlı provider'ları
     /// initialize_runtime() sonrası configure_ai_provider() ile
     /// tek tek bu router'a kaydeder.
-    pub ai_router:         Arc<ProviderRouter>,
+    pub ai_router: Arc<ProviderRouter>,
     /// V10 Sprint 1: agent'lara verilmiş capability grant'leri.
     /// Deny-by-default: hiçbir agent, burada açıkça grant edilmemiş
     /// bir capability'yi gerektiren tool'u çalıştıramaz. Grant etme
@@ -91,23 +91,23 @@ pub struct MobileRuntime {
     /// V10 Sprint 3: her tool çağrısına tool-bazlı bir risk seviyesi
     /// atayan Risk Engine. Sadece değerlendirir — bloklama kararı
     /// AgentRuntime'ın (geçici) HighRiskPolicy'sinde.
-    pub risk_engine:       Arc<RiskEngine>,
+    pub risk_engine: Arc<RiskEngine>,
     /// V10 Sprint 5: RequiresApproval durumunda duraklatılan
     /// execution'ların kaydı. respond_to_approval() bunu okuyup
     /// AgentRuntime::resume() ile devam ettirir ya da kalıcı olarak
     /// reddeder.
-    pub approval_store:    Arc<ApprovalStore>,
+    pub approval_store: Arc<ApprovalStore>,
     /// V10 Sprint 6: Governor kararlarının, tool çağrılarının ve
     /// pause/resume olaylarının kaydedildiği denetim izi.
-    pub audit_log:         Arc<AuditLog>,
+    pub audit_log: Arc<AuditLog>,
     /// V10 Sprint 1b: agent'ların çağırabileceği isimlendirilmiş
     /// WASM script'lerinin kaydı — bkz. register_agent_script().
-    pub script_registry:   Arc<ScriptRegistry>,
+    pub script_registry: Arc<ScriptRegistry>,
     /// ScriptTool'ların paylaştığı gerçek WASM çalıştırıcı.
     /// module_store ile aynı KV deposunu kullanır — task execution
     /// engine'inden bağımsız, ayrı bir Arc<dyn WasmExecutor> örneği.
-    pub script_engine:     Arc<ScriptEngine>,
-    pub tokio:             TokioRuntime,
+    pub script_engine: Arc<ScriptEngine>,
+    pub tokio: TokioRuntime,
 }
 
 // ── Public API ────────────────────────────────────────────
@@ -116,10 +116,7 @@ pub struct MobileRuntime {
 ///
 /// Flutter tarafından uygulama açılışında bir kez çağrılır.
 /// İkinci çağrı AlreadyInitialized hatası döner.
-pub fn init_mobile_runtime(
-    db_path: String,
-    worker_count: usize,
-) -> Result<(), String> {
+pub fn init_mobile_runtime(db_path: String, worker_count: usize) -> Result<(), String> {
     if MOBILE_RUNTIME.get().is_some() {
         return Err("Runtime zaten başlatılmış".into());
     }
@@ -132,21 +129,21 @@ pub fn init_mobile_runtime(
 
     let config = RuntimeConfig {
         worker_count,
-        task_channel_capacity:  512,
+        task_channel_capacity: 512,
         event_channel_capacity: 1024,
-        max_concurrent_tasks:   64,
-        persistence_path:       db_path.clone(),
-        shutdown_timeout:       std::time::Duration::from_secs(10),
+        max_concurrent_tasks: 64,
+        persistence_path: db_path.clone(),
+        shutdown_timeout: std::time::Duration::from_secs(10),
     };
 
     let bootstrap = tokio
         .block_on(async { RuntimeBootstrap::build(config) })
         .map_err(|e| format!("Bootstrap hatası: {e}"))?;
 
-    let handle       = bootstrap.runtime_handle();
-    let runtime      = bootstrap.runtime();
-    let events       = runtime.events();
-    let persistence  = runtime.persistence();
+    let handle = bootstrap.runtime_handle();
+    let runtime = bootstrap.runtime();
+    let events = runtime.events();
+    let persistence = runtime.persistence();
     let module_store = runtime.module_store();
 
     // ── Modules dizini ───────────────────────────────────
@@ -169,7 +166,7 @@ pub fn init_mobile_runtime(
         .map_err(|e| format!("Workspace dizini oluşturulamadı: {e}"))?;
 
     let workspace = match aetheros_workspace::Workspace::open(&workspace_dir) {
-        Ok(w)  => Some(Arc::new(w)),
+        Ok(w) => Some(Arc::new(w)),
         Err(e) => {
             tracing::warn!(error = %e, "Workspace açılamadı — workspace araçları devre dışı");
             None
@@ -258,7 +255,10 @@ pub fn init_mobile_runtime(
     }
     let expired = expire_stale_approvals(&approval_store, &audit_log, &agent_registry);
     if expired > 0 {
-        info!(expired, "Önceki oturumdan kalan süresi dolmuş onaylar temizlendi");
+        info!(
+            expired,
+            "Önceki oturumdan kalan süresi dolmuş onaylar temizlendi"
+        );
     }
 
     let mobile = MobileRuntime {
@@ -273,10 +273,10 @@ pub fn init_mobile_runtime(
         workspace,
         agent_registry,
         workflow_registry: Arc::new(dashmap::DashMap::new()),
-        cluster:           Arc::new(crate::remote::cluster::ClusterState::new()),
-        ai_router:         Arc::new(ProviderRouter::new()),
+        cluster: Arc::new(crate::remote::cluster::ClusterState::new()),
+        ai_router: Arc::new(ProviderRouter::new()),
         capability_engine: Arc::new(CapabilityEngine::new()),
-        risk_engine:       Arc::new(RiskEngine::new()),
+        risk_engine: Arc::new(RiskEngine::new()),
         approval_store,
         audit_log,
         script_registry,
@@ -308,9 +308,8 @@ pub(crate) fn expire_stale_approvals(
                 reason: message.clone(),
             },
         );
-        let mut entry = registry
-            .entry(p.context.execution_id)
-            .or_insert_with(|| crate::bridge::agent::AgentEntry {
+        let mut entry = registry.entry(p.context.execution_id).or_insert_with(|| {
+            crate::bridge::agent::AgentEntry {
                 execution_id: p.context.execution_id,
                 agent_id: p.context.agent_id,
                 objective: p.objective.clone(),
@@ -319,7 +318,8 @@ pub(crate) fn expire_stale_approvals(
                 started_at: p.created_at,
                 finished_at: None,
                 pending_approval_id: Some(p.id),
-            });
+            }
+        });
         entry.status = "denied".into();
         entry.error = Some(message);
         entry.finished_at = Some(chrono::Utc::now());
@@ -393,7 +393,5 @@ where
 {
     // FRB async context'te zaten tokio var; bu sadece fallback.
     // Normalde bridge/api.rs'deki `async fn`'ler doğrudan await kullanır.
-    tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current().block_on(fut)
-    })
+    tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(fut))
 }

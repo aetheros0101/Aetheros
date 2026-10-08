@@ -22,17 +22,15 @@
 // ============================================================
 
 use axum::{
+    Json,
     extract::Request,
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     middleware::Next,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::security::auth::token::{
-    constant_time_eq, ApiKeyStore, TokenError, TokenManager,
-};
+use crate::security::auth::token::{ApiKeyStore, TokenError, TokenManager, constant_time_eq};
 use crate::security::rbac::Role;
 
 /// Bir isteğin kimliği doğrulandıktan sonra taşınan bağlam.
@@ -92,6 +90,8 @@ fn role_from_setting(setting: Option<&str>) -> Role {
 /// Bir isteği X-Cluster-Token, X-Api-Key veya Authorization: Bearer
 /// header'ına göre doğrular. Hiçbiri yoksa/başarısızsa uygun bir 401
 /// Response döner.
+// Err = hazır 401 Response (axum idiomu); boyutu bilinçli.
+#[allow(clippy::result_large_err)]
 pub fn authenticate(headers: &header::HeaderMap) -> Result<AuthContext, Response> {
     // 0) X-Cluster-Token — node-to-node (cluster) çağrıları için paylaşımlı
     // sır. Bkz. src/remote/transport.rs (HttpTransport bu header'ı ekler).
@@ -145,12 +145,12 @@ pub fn authenticate(headers: &header::HeaderMap) -> Result<AuthContext, Response
         Some(_) => {
             return Err(unauthorized(
                 "Invalid authorization format. Use: Bearer <token>",
-            ))
+            ));
         }
         None => {
             return Err(unauthorized(
                 "Authentication required: provide X-Api-Key or Authorization: Bearer <token>",
-            ))
+            ));
         }
     };
 
@@ -290,7 +290,7 @@ pub async fn issue_token_handler(Json(req): Json<IssueTokenRequest>) -> Response
                     error: "role must be one of: admin, operator, viewer, agent".into(),
                 }),
             )
-                .into_response()
+                .into_response();
         }
     };
 

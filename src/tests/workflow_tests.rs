@@ -4,14 +4,9 @@
 // SPRINT 4 — Workflow Compiler & Validator Testleri
 // ============================================================
 
-use crate::workflows::compiler::{
-    CompilerError,
-    StepDsl,
-    WorkflowCompiler,
-    WorkflowDsl,
-};
-use crate::workflows::validation::WorkflowValidator;
+use crate::workflows::compiler::{CompilerError, StepDsl, WorkflowCompiler, WorkflowDsl};
 use crate::workflows::topology::WorkflowTopology;
+use crate::workflows::validation::WorkflowValidator;
 
 // ── Yardımcılar ───────────────────────────────────────────
 
@@ -23,21 +18,13 @@ fn simple_dsl(steps: Vec<StepDsl>) -> WorkflowDsl {
     }
 }
 
-fn step(
-    id: &str,
-    name: &str,
-    kind: &str,
-    depends_on: Vec<&str>,
-) -> StepDsl {
+fn step(id: &str, name: &str, kind: &str, depends_on: Vec<&str>) -> StepDsl {
     StepDsl {
         id: id.to_string(),
         name: name.to_string(),
         kind: kind.to_string(),
         entrypoint: Some("main".to_string()),
-        depends_on: depends_on
-            .into_iter()
-            .map(String::from)
-            .collect(),
+        depends_on: depends_on.into_iter().map(String::from).collect(),
         retryable: true,
         labels: Default::default(),
     }
@@ -47,9 +34,7 @@ fn step(
 
 #[test]
 fn compile_single_node() {
-    let dsl = simple_dsl(vec![
-        step("s1", "fetch", "wasm", vec![]),
-    ]);
+    let dsl = simple_dsl(vec![step("s1", "fetch", "wasm", vec![])]);
     let result = WorkflowCompiler::compile_dsl(&dsl);
     assert!(result.is_ok());
     let graph = result.unwrap();
@@ -60,9 +45,9 @@ fn compile_single_node() {
 #[test]
 fn compile_linear_chain() {
     let dsl = simple_dsl(vec![
-        step("s1", "step1", "wasm",  vec![]),
+        step("s1", "step1", "wasm", vec![]),
         step("s2", "step2", "agent", vec!["s1"]),
-        step("s3", "step3", "task",  vec!["s2"]),
+        step("s3", "step3", "task", vec!["s2"]),
     ]);
     let graph = WorkflowCompiler::compile_dsl(&dsl).unwrap();
     assert_eq!(graph.nodes.len(), 3);
@@ -73,9 +58,9 @@ fn compile_linear_chain() {
 fn compile_fan_out() {
     // s1 → s2, s1 → s3 (parallel)
     let dsl = simple_dsl(vec![
-        step("s1", "root",    "wasm",  vec![]),
-        step("s2", "branch-a","agent", vec!["s1"]),
-        step("s3", "branch-b","task",  vec!["s1"]),
+        step("s1", "root", "wasm", vec![]),
+        step("s2", "branch-a", "agent", vec!["s1"]),
+        step("s3", "branch-b", "task", vec!["s1"]),
     ]);
     let graph = WorkflowCompiler::compile_dsl(&dsl).unwrap();
     assert_eq!(graph.nodes.len(), 3);
@@ -86,8 +71,8 @@ fn compile_fan_out() {
 fn compile_fan_in() {
     // s1, s2 → s3 (join)
     let dsl = simple_dsl(vec![
-        step("s1", "a", "wasm",  vec![]),
-        step("s2", "b", "wasm",  vec![]),
+        step("s1", "a", "wasm", vec![]),
+        step("s2", "b", "wasm", vec![]),
         step("s3", "c", "agent", vec!["s1", "s2"]),
     ]);
     let graph = WorkflowCompiler::compile_dsl(&dsl).unwrap();
@@ -104,51 +89,38 @@ fn compile_empty_returns_error() {
 
 #[test]
 fn compile_unknown_dependency_returns_error() {
-    let dsl = simple_dsl(vec![
-        step("s1", "step", "wasm", vec!["nonexistent"]),
-    ]);
+    let dsl = simple_dsl(vec![step("s1", "step", "wasm", vec!["nonexistent"])]);
     let err = WorkflowCompiler::compile_dsl(&dsl).unwrap_err();
-    assert!(matches!(
-        err,
-        CompilerError::UnknownDependency { .. }
-    ));
+    assert!(matches!(err, CompilerError::UnknownDependency { .. }));
 }
 
 #[test]
 fn compile_unknown_kind_returns_error() {
-    let dsl = simple_dsl(vec![
-        step("s1", "step", "unknown_type", vec![]),
-    ]);
+    let dsl = simple_dsl(vec![step("s1", "step", "unknown_type", vec![])]);
     let err = WorkflowCompiler::compile_dsl(&dsl).unwrap_err();
-    assert!(matches!(
-        err,
-        CompilerError::UnknownNodeKind { .. }
-    ));
+    assert!(matches!(err, CompilerError::UnknownNodeKind { .. }));
 }
 
 #[test]
 fn compile_cyclic_dependency_detected() {
     // s1 → s2 → s1 (döngü)
     let dsl = simple_dsl(vec![
-        step("s1", "a", "wasm",  vec!["s2"]),
+        step("s1", "a", "wasm", vec!["s2"]),
         step("s2", "b", "agent", vec!["s1"]),
     ]);
     let err = WorkflowCompiler::compile_dsl(&dsl).unwrap_err();
-    assert!(matches!(
-        err,
-        CompilerError::CyclicDependency(_)
-    ));
+    assert!(matches!(err, CompilerError::CyclicDependency(_)));
 }
 
 #[test]
 fn compile_all_node_kinds() {
     let dsl = simple_dsl(vec![
-        step("s1", "wasm-step",   "wasm",    vec![]),
-        step("s2", "agent-step",  "agent",   vec!["s1"]),
-        step("s3", "ai-step",     "ai",      vec!["s2"]),
-        step("s4", "task-step",   "task",    vec!["s3"]),
-        step("s5", "plugin-step", "plugin",  vec!["s4"]),
-        step("s6", "remote-step", "remote",  vec!["s5"]),
+        step("s1", "wasm-step", "wasm", vec![]),
+        step("s2", "agent-step", "agent", vec!["s1"]),
+        step("s3", "ai-step", "ai", vec!["s2"]),
+        step("s4", "task-step", "task", vec!["s3"]),
+        step("s5", "plugin-step", "plugin", vec!["s4"]),
+        step("s6", "remote-step", "remote", vec!["s5"]),
     ]);
     let graph = WorkflowCompiler::compile_dsl(&dsl).unwrap();
     assert_eq!(graph.nodes.len(), 6);
@@ -185,7 +157,7 @@ fn compile_json_invalid_returns_error() {
 #[test]
 fn validate_valid_graph_passes() {
     let dsl = simple_dsl(vec![
-        step("s1", "a", "wasm",  vec![]),
+        step("s1", "a", "wasm", vec![]),
         step("s2", "b", "agent", vec!["s1"]),
     ]);
     let graph = WorkflowCompiler::compile_dsl(&dsl).unwrap();
@@ -194,9 +166,7 @@ fn validate_valid_graph_passes() {
 
 #[test]
 fn validate_full_single_node_passes() {
-    let dsl = simple_dsl(vec![
-        step("s1", "solo", "wasm", vec![]),
-    ]);
+    let dsl = simple_dsl(vec![step("s1", "solo", "wasm", vec![])]);
     let graph = WorkflowCompiler::compile_dsl(&dsl).unwrap();
     // Tek node'lu graph isolated node hatasına düşmemeli
     assert!(WorkflowValidator::validate_full(&graph).is_ok());
@@ -207,9 +177,9 @@ fn validate_full_single_node_passes() {
 #[test]
 fn topology_roots_correct() {
     let dsl = simple_dsl(vec![
-        step("s1", "root-1", "wasm",  vec![]),
-        step("s2", "root-2", "wasm",  vec![]),
-        step("s3", "child",  "agent", vec!["s1", "s2"]),
+        step("s1", "root-1", "wasm", vec![]),
+        step("s2", "root-2", "wasm", vec![]),
+        step("s3", "child", "agent", vec!["s1", "s2"]),
     ]);
     let graph = WorkflowCompiler::compile_dsl(&dsl).unwrap();
     let roots = WorkflowTopology::roots(&graph);
@@ -219,9 +189,9 @@ fn topology_roots_correct() {
 #[test]
 fn topology_leaves_correct() {
     let dsl = simple_dsl(vec![
-        step("s1", "a", "wasm",  vec![]),
+        step("s1", "a", "wasm", vec![]),
         step("s2", "b", "agent", vec!["s1"]),
-        step("s3", "c", "task",  vec!["s1"]),
+        step("s3", "c", "task", vec!["s1"]),
     ]);
     let graph = WorkflowCompiler::compile_dsl(&dsl).unwrap();
     let leaves = WorkflowTopology::leaves(&graph);
@@ -231,15 +201,18 @@ fn topology_leaves_correct() {
 #[test]
 fn topology_adjacency_correct() {
     let dsl = simple_dsl(vec![
-        step("s1", "a", "wasm",  vec![]),
+        step("s1", "a", "wasm", vec![]),
         step("s2", "b", "agent", vec!["s1"]),
     ]);
     let graph = WorkflowCompiler::compile_dsl(&dsl).unwrap();
     let adj = WorkflowTopology::adjacency(&graph);
     // s1'den s2'ye bir kenar olmalı
-    let s1_id = graph.nodes.iter()
+    let s1_id = graph
+        .nodes
+        .iter()
         .find(|n| n.metadata.name == "a")
-        .unwrap().id;
+        .unwrap()
+        .id;
     assert!(adj.contains_key(&s1_id));
     assert_eq!(adj[&s1_id].len(), 1);
 }

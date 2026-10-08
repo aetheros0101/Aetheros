@@ -4,26 +4,16 @@
 // Optimizasyon #2: JSON vs MessagePack karşılaştırması eklendi
 // ============================================================
 
-use criterion::{
-    criterion_group,
-    criterion_main,
-    BenchmarkId,
-    Criterion,
-    Throughput,
-};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use std::hint::black_box;
 
 use chrono::Utc;
-use uuid::Uuid;
 use rmp_serde;
+use uuid::Uuid;
 
 use aetheros::task::priority::TaskPriority;
 use aetheros::task::retry::RetryPolicy;
-use aetheros::task::task::{
-    TaskDefinition,
-    TaskMetadata,
-    TaskState,
-};
+use aetheros::task::task::{TaskDefinition, TaskMetadata, TaskState};
 use aetheros::types::ids::TaskId;
 
 fn make_task(priority: TaskPriority) -> TaskDefinition {
@@ -75,8 +65,7 @@ fn bench_queue(c: &mut Criterion) {
             rt.block_on(async {
                 let q = aetheros::task::queue::PriorityTaskQueue::new();
                 for _ in 0..100 {
-                    q.push(make_task(TaskPriority::Normal))
-                        .await.unwrap();
+                    q.push(make_task(TaskPriority::Normal)).await.unwrap();
                 }
                 for _ in 0..100 {
                     q.pop().await.unwrap();
@@ -127,9 +116,7 @@ fn bench_retry_delay(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("next_delay", attempt),
             &attempt,
-            |b, &attempt| {
-                b.iter(|| policy.next_delay(black_box(attempt)))
-            },
+            |b, &attempt| b.iter(|| policy.next_delay(black_box(attempt))),
         );
     }
 
@@ -153,12 +140,7 @@ fn bench_serde(c: &mut Criterion) {
     });
 
     group.bench_function("json_deserialize", |b| {
-        b.iter(|| {
-            serde_json::from_str::<TaskDefinition>(
-                black_box(&json),
-            )
-            .unwrap()
-        })
+        b.iter(|| serde_json::from_str::<TaskDefinition>(black_box(&json)).unwrap())
     });
 
     // MessagePack
@@ -167,12 +149,7 @@ fn bench_serde(c: &mut Criterion) {
     });
 
     group.bench_function("msgpack_deserialize", |b| {
-        b.iter(|| {
-            rmp_serde::from_slice::<TaskDefinition>(
-                black_box(&msgpack),
-            )
-            .unwrap()
-        })
+        b.iter(|| rmp_serde::from_slice::<TaskDefinition>(black_box(&msgpack)).unwrap())
     });
 
     group.finish();

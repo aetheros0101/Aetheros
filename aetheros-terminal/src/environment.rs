@@ -7,7 +7,9 @@ pub struct Environment {
 }
 
 impl Environment {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn clear(mut self) -> Self {
         self.clear = true;

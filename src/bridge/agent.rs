@@ -16,12 +16,12 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct AgentEntry {
     pub execution_id: Uuid,
-    pub agent_id:     Uuid,
-    pub objective:    String,
-    pub status:       String,   // "running" | "completed" | "failed" | "pending_approval"
-    pub error:        Option<String>,
-    pub started_at:   DateTime<Utc>,
-    pub finished_at:  Option<DateTime<Utc>>,
+    pub agent_id: Uuid,
+    pub objective: String,
+    pub status: String, // "running" | "completed" | "failed" | "pending_approval"
+    pub error: Option<String>,
+    pub started_at: DateTime<Utc>,
+    pub finished_at: Option<DateTime<Utc>>,
     /// V10 Sprint 5: status "pending_approval" olduğunda dolu —
     /// respond_to_approval()'a geçilecek kimlik.
     pub pending_approval_id: Option<Uuid>,
@@ -34,10 +34,10 @@ pub type AgentRegistry = Arc<DashMap<Uuid, AgentEntry>>;
 #[derive(Debug, Clone)]
 pub struct WorkflowEntry {
     pub workflow_id: Uuid,
-    pub name:        String,
-    pub status:      String,   // "running" | "completed" | "failed"
-    pub error:       Option<String>,
-    pub started_at:  DateTime<Utc>,
+    pub name: String,
+    pub status: String, // "running" | "completed" | "failed"
+    pub error: Option<String>,
+    pub started_at: DateTime<Utc>,
     pub finished_at: Option<DateTime<Utc>>,
 }
 

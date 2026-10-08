@@ -173,10 +173,16 @@ mod tests {
         symlink(&out, root.join("linkdir")).unwrap();
 
         // ara klasör YOK → eski sürüm burada izin veriyordu
-        assert_eq!(resolve(&root, "linkdir/yeni/f.txt", true), Err(GuardError::Outside));
+        assert_eq!(
+            resolve(&root, "linkdir/yeni/f.txt", true),
+            Err(GuardError::Outside)
+        );
         // ara klasör VAR
         fs::write(out.join("s.txt"), "x").unwrap();
-        assert_eq!(resolve(&root, "linkdir/s.txt", true), Err(GuardError::Outside));
+        assert_eq!(
+            resolve(&root, "linkdir/s.txt", true),
+            Err(GuardError::Outside)
+        );
         // normal iç yol serbest
         assert!(resolve(&root, "yeni/f.txt", true).is_ok());
     }

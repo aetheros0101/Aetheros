@@ -18,7 +18,7 @@ use std::sync::RwLock;
 
 use uuid::Uuid;
 
-use crate::agents::capabilities::{AgentCapabilities, AgentCapability};
+use crate::types::capability::{AgentCapabilities, AgentCapability};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CapabilityDecision {
@@ -95,9 +95,7 @@ impl CapabilityEngine {
         let grants = self.grants.read().unwrap();
         let Some(caps) = grants.get(agent_id) else {
             return CapabilityDecision::Denied {
-                reason: format!(
-                    "agent {agent_id} için hiç capability grant kaydı yok"
-                ),
+                reason: format!("agent {agent_id} için hiç capability grant kaydı yok"),
             };
         };
 
@@ -168,12 +166,16 @@ mod tests {
                 workspace_mutate: false,
             },
         );
-        assert!(engine
-            .check(&agent_id, Some(AgentCapability::WasmExecution))
-            .is_allowed());
-        assert!(!engine
-            .check(&agent_id, Some(AgentCapability::RemoteExecution))
-            .is_allowed());
+        assert!(
+            engine
+                .check(&agent_id, Some(AgentCapability::WasmExecution))
+                .is_allowed()
+        );
+        assert!(
+            !engine
+                .check(&agent_id, Some(AgentCapability::RemoteExecution))
+                .is_allowed()
+        );
     }
 
     #[test]
@@ -183,14 +185,20 @@ mod tests {
         engine.grant_capability(agent_id, AgentCapability::WasmExecution);
         engine.grant_capability(agent_id, AgentCapability::AiReasoning);
 
-        assert!(engine
-            .check(&agent_id, Some(AgentCapability::WasmExecution))
-            .is_allowed());
-        assert!(engine
-            .check(&agent_id, Some(AgentCapability::AiReasoning))
-            .is_allowed());
-        assert!(!engine
-            .check(&agent_id, Some(AgentCapability::RemoteExecution))
-            .is_allowed());
+        assert!(
+            engine
+                .check(&agent_id, Some(AgentCapability::WasmExecution))
+                .is_allowed()
+        );
+        assert!(
+            engine
+                .check(&agent_id, Some(AgentCapability::AiReasoning))
+                .is_allowed()
+        );
+        assert!(
+            !engine
+                .check(&agent_id, Some(AgentCapability::RemoteExecution))
+                .is_allowed()
+        );
     }
 }

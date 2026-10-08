@@ -14,28 +14,17 @@
 //   - Geçersiz değer → Failed (panic yerine güvenli fallback)
 // ============================================================
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RuntimeState {
-    Created,   // 0
-    Starting,  // 1
-    Running,   // 2
-    Draining,  // 3
-    Stopping,  // 4
-    Stopped,   // 5
-    Failed,    // 6 — ve bilinmeyen tüm değerler
+    Created,  // 0
+    Starting, // 1
+    Running,  // 2
+    Draining, // 3
+    Stopping, // 4
+    Stopped,  // 5
+    Failed,   // 6 — ve bilinmeyen tüm değerler
 }
 
 impl RuntimeState {

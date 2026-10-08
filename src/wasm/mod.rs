@@ -10,18 +10,13 @@
 // ─────────────────────────────────────────────────────────
 
 pub mod capabilities;
-pub mod errors;
-pub mod memory;
 pub mod module_store;
-pub mod state;
 
 // ── wasmtime backend (varsayılan: server / desktop) ───────
 #[cfg(feature = "backend-wasmtime")]
 pub mod engine;
 #[cfg(feature = "backend-wasmtime")]
 pub mod host;
-#[cfg(feature = "backend-wasmtime")]
-pub mod linker;
 #[cfg(feature = "backend-wasmtime")]
 pub mod sandbox;
 
@@ -43,8 +38,5 @@ use crate::task::task::TaskDefinition;
 /// tutar; hangi backend'in derlendiğini bilmek zorunda değildir.
 #[async_trait]
 pub trait WasmExecutor: Send + Sync {
-    async fn execute(
-        &self,
-        task: TaskDefinition,
-    ) -> Result<Vec<u8>, WasmError>;
+    async fn execute(&self, task: TaskDefinition) -> Result<Vec<u8>, WasmError>;
 }

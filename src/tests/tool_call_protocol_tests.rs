@@ -123,7 +123,15 @@ async fn invoke_tool_call_still_respects_capability_engine() {
     let agent_id = Uuid::new_v4();
     let engine = Arc::new(CapabilityEngine::new()); // grant yok
 
-    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, Some(engine), None, None, None);
+    let runtime = AgentRuntime::new(
+        test_budget(),
+        vec![tool],
+        None,
+        Some(engine),
+        None,
+        None,
+        None,
+    );
     let call = ToolCall {
         tool_name: "risky_echo".to_string(),
         arguments: vec![],

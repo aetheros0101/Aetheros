@@ -9,10 +9,7 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> Result<()> {
     let parent = path.parent().ok_or(WorkspaceError::InvalidPath)?;
     fs::create_dir_all(parent)?;
 
-    let name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("file");
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
     let tmp = path.with_file_name(format!(
         ".{}.aetheros-write-{}.tmp",
         name,

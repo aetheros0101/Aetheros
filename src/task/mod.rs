@@ -1,12 +1,11 @@
-pub mod context;
 pub mod deadline;
 pub mod lease;
 pub mod orchestration;
-pub mod output;
 pub mod priority;
 pub mod queue;
-pub mod result;
 pub mod retry;
+// `runtime::runtime`-tarzı adlandırma bilinçli (genel API yolu); yeniden adlandırma Faz 1/2.
+#[allow(clippy::module_inception)]
 pub mod task;
 
 use async_trait::async_trait;

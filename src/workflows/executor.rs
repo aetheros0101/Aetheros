@@ -19,10 +19,7 @@
 // ============================================================
 use std::sync::Arc;
 
-use tracing::{
-    info,
-    warn,
-};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::agents::budget::AgentExecutionBudget;
@@ -31,16 +28,12 @@ use crate::agents::executor::AgentExecutor;
 use crate::ai::inference::request::InferenceRequest;
 use crate::ai::routing::router::ProviderRouter;
 use crate::errors::runtime::RuntimeError;
+use crate::orchestration::coordination::ExecutionCoordinator;
 use crate::orchestration::graph::ExecutionNodeKind;
 use crate::runtime::api::RuntimeHandle;
 use crate::task::priority::TaskPriority;
 use crate::task::retry::RetryPolicy;
-use crate::task::task::{
-    TaskDefinition,
-    TaskMetadata,
-    TaskState,
-};
-use crate::orchestration::coordination::ExecutionCoordinator;
+use crate::task::task::{TaskDefinition, TaskMetadata, TaskState};
 use crate::types::ids::TaskId;
 use crate::workflows::execution_graph::WorkflowExecutionGraph;
 
@@ -59,10 +52,7 @@ impl WorkflowExecutor {
         }
     }
 
-    pub async fn execute(
-        &mut self,
-        graph: WorkflowExecutionGraph,
-    ) -> Result<(), RuntimeError> {
+    pub async fn execute(&mut self, graph: WorkflowExecutionGraph) -> Result<(), RuntimeError> {
         info!(
             graph_id = %graph.id,
             node_count = graph.nodes.len(),
@@ -75,8 +65,7 @@ impl WorkflowExecutor {
                 break;
             }
 
-            let ready =
-                self.coordinator.ready_nodes(&graph);
+            let ready = self.coordinator.ready_nodes(&graph);
 
             if ready.is_empty() {
                 warn!(
@@ -87,11 +76,7 @@ impl WorkflowExecutor {
             }
 
             for node_id in ready {
-                let node = match graph
-                    .nodes
-                    .iter()
-                    .find(|n| n.id == node_id)
-                {
+                let node = match graph.nodes.iter().find(|n| n.id == node_id) {
                     Some(n) => n,
                     None => continue,
                 };
@@ -103,12 +88,8 @@ impl WorkflowExecutor {
                     "Dispatching node"
                 );
 
-                self.dispatch_node(
-                    node_id,
-                    &node.kind,
-                    &node.metadata.name,
-                )
-                .await?;
+                self.dispatch_node(node_id, &node.kind, &node.metadata.name)
+                    .await?;
 
                 self.coordinator.mark_completed(node_id);
             }
@@ -126,22 +107,14 @@ impl WorkflowExecutor {
         match kind {
             // ── WASM: RuntimeHandle üzerinden task submit ───
             ExecutionNodeKind::Wasm => {
-                let task = self.build_task(
-                    node_id,
-                    name,
-                    TaskPriority::Normal,
-                );
+                let task = self.build_task(node_id, name, TaskPriority::Normal);
                 self.runtime.submit(task).await?;
                 info!(node_id = %node_id, "WASM node submitted");
             }
 
             // ── Task: genel amaçlı runtime task ─────────────
             ExecutionNodeKind::Task => {
-                let task = self.build_task(
-                    node_id,
-                    name,
-                    TaskPriority::Normal,
-                );
+                let task = self.build_task(node_id, name, TaskPriority::Normal);
                 self.runtime.submit(task).await?;
                 info!(node_id = %node_id, "Task node submitted");
             }
@@ -205,30 +178,20 @@ impl WorkflowExecutor {
 
             // ── Plugin: entrypoint üzerinden runtime task ───
             ExecutionNodeKind::Plugin => {
-                let mut task = self.build_task(
-                    node_id,
-                    name,
-                    TaskPriority::Low,
-                );
-                task.metadata.labels.insert(
-                    "node_type".to_string(),
-                    "plugin".to_string(),
-                );
+                let mut task = self.build_task(node_id, name, TaskPriority::Low);
+                task.metadata
+                    .labels
+                    .insert("node_type".to_string(), "plugin".to_string());
                 self.runtime.submit(task).await?;
                 info!(node_id = %node_id, "Plugin node submitted");
             }
 
             // ── RemoteTask: remote flag ile task submit ──────
             ExecutionNodeKind::RemoteTask => {
-                let mut task = self.build_task(
-                    node_id,
-                    name,
-                    TaskPriority::Normal,
-                );
-                task.metadata.labels.insert(
-                    "remote".to_string(),
-                    "true".to_string(),
-                );
+                let mut task = self.build_task(node_id, name, TaskPriority::Normal);
+                task.metadata
+                    .labels
+                    .insert("remote".to_string(), "true".to_string());
                 self.runtime.submit(task).await?;
                 info!(node_id = %node_id, "RemoteTask node submitted");
             }

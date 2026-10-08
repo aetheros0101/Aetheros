@@ -107,7 +107,7 @@ fn extract_rust(path: &str, text: &str) -> Vec<Symbol> {
         // Rough container tracking via impl / mod blocks
         if let Some(rest) = body.strip_prefix("impl ") {
             let name = rest
-                .split(|c: char| c == '<' || c == '{' || c == ' ')
+                .split(['<', '{', ' '])
                 .find(|s| !s.is_empty() && *s != "for")
                 .unwrap_or("")
                 .trim();
@@ -115,7 +115,7 @@ fn extract_rust(path: &str, text: &str) -> Vec<Symbol> {
             let name = if rest.contains(" for ") {
                 rest.split(" for ")
                     .nth(1)
-                    .and_then(|s| s.split(|c: char| c == '<' || c == '{').next())
+                    .and_then(|s| s.split(['<', '{']).next())
                     .unwrap_or(name)
                     .trim()
             } else {
@@ -175,7 +175,15 @@ fn extract_rust(path: &str, text: &str) -> Vec<Symbol> {
             );
         } else if let Some(rest) = body.strip_prefix("mod ") {
             let name = take_ident(rest.trim_start());
-            push_sym(&mut out, path, line_no, line, SymbolKind::Module, name, None);
+            push_sym(
+                &mut out,
+                path,
+                line_no,
+                line,
+                SymbolKind::Module,
+                name,
+                None,
+            );
             if trimmed.ends_with('{') {
                 container_stack.push((line_no, name.to_string()));
             }
@@ -583,9 +591,15 @@ impl Foo {
 fn free() {}
 "#;
         let syms = extract_rust("a.rs", src);
-        assert!(syms.iter().any(|s| s.name == "Foo" && s.kind == SymbolKind::Struct));
-        assert!(syms.iter().any(|s| s.name == "bar" && s.kind == SymbolKind::Method));
-        assert!(syms.iter().any(|s| s.name == "free" && s.kind == SymbolKind::Function));
+        assert!(syms
+            .iter()
+            .any(|s| s.name == "Foo" && s.kind == SymbolKind::Struct));
+        assert!(syms
+            .iter()
+            .any(|s| s.name == "bar" && s.kind == SymbolKind::Method));
+        assert!(syms
+            .iter()
+            .any(|s| s.name == "free" && s.kind == SymbolKind::Function));
     }
 
     #[test]
@@ -593,7 +607,11 @@ fn free() {}
         let src = "class A:\n    def meth(self):\n        pass\n\ndef top():\n    pass\n";
         let syms = extract_python("a.py", src);
         assert!(syms.iter().any(|s| s.name == "A"));
-        assert!(syms.iter().any(|s| s.name == "meth" && s.container.as_deref() == Some("A")));
-        assert!(syms.iter().any(|s| s.name == "top" && s.kind == SymbolKind::Function));
+        assert!(syms
+            .iter()
+            .any(|s| s.name == "meth" && s.container.as_deref() == Some("A")));
+        assert!(syms
+            .iter()
+            .any(|s| s.name == "top" && s.kind == SymbolKind::Function));
     }
 }

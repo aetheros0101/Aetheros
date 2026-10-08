@@ -14,23 +14,13 @@
 //   - Node türü → ExecutionNodeKind mapping
 // ============================================================
 
-use std::collections::{
-    HashMap,
-    HashSet,
-};
+use std::collections::{HashMap, HashSet};
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::orchestration::graph::{
-    ExecutionEdge,
-    ExecutionGraph,
-    ExecutionMetadata,
-    ExecutionNode,
-    ExecutionNodeKind,
+    ExecutionEdge, ExecutionGraph, ExecutionMetadata, ExecutionNode, ExecutionNodeKind,
 };
 use crate::workflows::execution_graph::WorkflowExecutionGraph;
 use crate::workflows::graph::WorkflowGraph;
@@ -87,10 +77,7 @@ pub enum CompilerError {
 }
 
 impl std::fmt::Display for CompilerError {
-    fn fmt(
-        &self,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::EmptyWorkflow => {
                 write!(f, "Workflow has no steps")
@@ -99,21 +86,13 @@ impl std::fmt::Display for CompilerError {
                 write!(f, "Duplicate step id: {}", id)
             }
             Self::UnknownDependency { step, dep } => {
-                write!(
-                    f,
-                    "Step '{}' depends on unknown step '{}'",
-                    step, dep
-                )
+                write!(f, "Step '{}' depends on unknown step '{}'", step, dep)
             }
             Self::CyclicDependency(cycle) => {
                 write!(f, "Cyclic dependency: {:?}", cycle)
             }
             Self::UnknownNodeKind { step, kind } => {
-                write!(
-                    f,
-                    "Step '{}' has unknown type '{}'",
-                    step, kind
-                )
+                write!(f, "Step '{}' has unknown type '{}'", step, kind)
             }
         }
     }
@@ -125,9 +104,7 @@ pub struct WorkflowCompiler;
 
 impl WorkflowCompiler {
     /// WorkflowDsl (JSON/YAML kaynaklı) → ExecutionGraph.
-    pub fn compile_dsl(
-        dsl: &WorkflowDsl,
-    ) -> Result<WorkflowExecutionGraph, CompilerError> {
+    pub fn compile_dsl(dsl: &WorkflowDsl) -> Result<WorkflowExecutionGraph, CompilerError> {
         if dsl.steps.is_empty() {
             return Err(CompilerError::EmptyWorkflow);
         }
@@ -143,48 +120,35 @@ impl WorkflowCompiler {
         let mut seen = HashSet::new();
         for step in &dsl.steps {
             if !seen.insert(&step.id) {
-                return Err(CompilerError::DuplicateStepId(
-                    step.id.clone(),
-                ));
+                return Err(CompilerError::DuplicateStepId(step.id.clone()));
             }
         }
 
         // Node'ları oluştur
         let mut nodes = Vec::new();
         for step in &dsl.steps {
-            let kind = Self::map_kind(&step.kind)
-                .ok_or_else(|| {
-                    CompilerError::UnknownNodeKind {
-                        step: step.id.clone(),
-                        kind: step.kind.clone(),
-                    }
+            let kind =
+                Self::map_kind(&step.kind).ok_or_else(|| CompilerError::UnknownNodeKind {
+                    step: step.id.clone(),
+                    kind: step.kind.clone(),
                 })?;
 
             // Bağımlılıkları UUID'e çevir
             let mut deps = Vec::new();
             for dep_id in &step.depends_on {
-                let dep_uuid = id_map
-                    .get(dep_id)
-                    .copied()
-                    .ok_or_else(|| {
-                        CompilerError::UnknownDependency {
-                            step: step.id.clone(),
-                            dep: dep_id.clone(),
-                        }
-                    })?;
+                let dep_uuid = id_map.get(dep_id).copied().ok_or_else(|| {
+                    CompilerError::UnknownDependency {
+                        step: step.id.clone(),
+                        dep: dep_id.clone(),
+                    }
+                })?;
                 deps.push(dep_uuid);
             }
 
             let mut labels = step.labels.clone();
-            labels.insert(
-                "step_id".to_string(),
-                step.id.clone(),
-            );
+            labels.insert("step_id".to_string(), step.id.clone());
             if let Some(ep) = &step.entrypoint {
-                labels.insert(
-                    "entrypoint".to_string(),
-                    ep.clone(),
-                );
+                labels.insert("entrypoint".to_string(), ep.clone());
             }
 
             nodes.push(ExecutionNode {
@@ -204,11 +168,9 @@ impl WorkflowCompiler {
         let edges: Vec<ExecutionEdge> = nodes
             .iter()
             .flat_map(|node| {
-                node.dependencies.iter().map(move |dep| {
-                    ExecutionEdge {
-                        from: *dep,
-                        to: node.id,
-                    }
+                node.dependencies.iter().map(move |dep| ExecutionEdge {
+                    from: *dep,
+                    to: node.id,
                 })
             })
             .collect();
@@ -228,9 +190,7 @@ impl WorkflowCompiler {
 
     /// WorkflowGraph (eski struct format) → ExecutionGraph.
     /// Geriye dönük uyumluluk.
-    pub fn compile(
-        graph: &WorkflowGraph,
-    ) -> WorkflowExecutionGraph {
+    pub fn compile(graph: &WorkflowGraph) -> WorkflowExecutionGraph {
         let nodes = graph
             .nodes
             .iter()
@@ -250,11 +210,9 @@ impl WorkflowCompiler {
         let edges = nodes
             .iter()
             .flat_map(|node| {
-                node.dependencies.iter().map(move |dep| {
-                    ExecutionEdge {
-                        from: *dep,
-                        to: node.id,
-                    }
+                node.dependencies.iter().map(move |dep| ExecutionEdge {
+                    from: *dep,
+                    to: node.id,
                 })
             })
             .collect();
@@ -268,53 +226,38 @@ impl WorkflowCompiler {
     }
 
     /// JSON string → ExecutionGraph.
-    pub fn from_json(
-        json: &str,
-    ) -> Result<WorkflowExecutionGraph, String> {
-        let dsl: WorkflowDsl = serde_json::from_str(json)
-            .map_err(|e| format!("JSON parse error: {}", e))?;
-        Self::compile_dsl(&dsl)
-            .map_err(|e| e.to_string())
+    pub fn from_json(json: &str) -> Result<WorkflowExecutionGraph, String> {
+        let dsl: WorkflowDsl =
+            serde_json::from_str(json).map_err(|e| format!("JSON parse error: {}", e))?;
+        Self::compile_dsl(&dsl).map_err(|e| e.to_string())
     }
 
     // ── Yardımcılar ───────────────────────────────────────
 
     fn map_kind(kind: &str) -> Option<ExecutionNodeKind> {
         match kind.to_lowercase().as_str() {
-            "wasm"      => Some(ExecutionNodeKind::Wasm),
-            "agent"     => Some(ExecutionNodeKind::Agent),
-            "ai" | "ai_inference" | "aiinference"
-                        => Some(ExecutionNodeKind::AiInference),
-            "task"      => Some(ExecutionNodeKind::Task),
-            "plugin"    => Some(ExecutionNodeKind::Plugin),
-            "remote" | "remote_task" | "remotetask"
-                        => Some(ExecutionNodeKind::RemoteTask),
-            "workflow"  => Some(ExecutionNodeKind::Workflow),
+            "wasm" => Some(ExecutionNodeKind::Wasm),
+            "agent" => Some(ExecutionNodeKind::Agent),
+            "ai" | "ai_inference" | "aiinference" => Some(ExecutionNodeKind::AiInference),
+            "task" => Some(ExecutionNodeKind::Task),
+            "plugin" => Some(ExecutionNodeKind::Plugin),
+            "remote" | "remote_task" | "remotetask" => Some(ExecutionNodeKind::RemoteTask),
+            "workflow" => Some(ExecutionNodeKind::Workflow),
             _ => None,
         }
     }
 
     /// DFS tabanlı döngü tespiti.
-    fn detect_cycles(
-        graph: &ExecutionGraph,
-    ) -> Result<(), CompilerError> {
+    fn detect_cycles(graph: &ExecutionGraph) -> Result<(), CompilerError> {
         let mut visited: HashSet<Uuid> = HashSet::new();
         let mut stack: HashSet<Uuid> = HashSet::new();
         let mut path: Vec<String> = Vec::new();
 
         for node in &graph.nodes {
-            if !visited.contains(&node.id) {
-                if let Some(cycle) = Self::dfs(
-                    node.id,
-                    graph,
-                    &mut visited,
-                    &mut stack,
-                    &mut path,
-                ) {
-                    return Err(
-                        CompilerError::CyclicDependency(cycle),
-                    );
-                }
+            if !visited.contains(&node.id)
+                && let Some(cycle) = Self::dfs(node.id, graph, &mut visited, &mut stack, &mut path)
+            {
+                return Err(CompilerError::CyclicDependency(cycle));
             }
         }
 
@@ -340,14 +283,10 @@ impl WorkflowCompiler {
 
         path.push(name);
 
-        if let Some(node) =
-            graph.nodes.iter().find(|n| n.id == current)
-        {
+        if let Some(node) = graph.nodes.iter().find(|n| n.id == current) {
             for &dep in &node.dependencies {
                 if !visited.contains(&dep) {
-                    if let Some(cycle) = Self::dfs(
-                        dep, graph, visited, stack, path,
-                    ) {
+                    if let Some(cycle) = Self::dfs(dep, graph, visited, stack, path) {
                         return Some(cycle);
                     }
                 } else if stack.contains(&dep) {

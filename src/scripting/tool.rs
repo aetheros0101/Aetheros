@@ -24,10 +24,7 @@ pub struct ScriptTool {
 }
 
 impl ScriptTool {
-    pub fn new(
-        script: ScriptDefinition,
-        engine: Arc<ScriptEngine>,
-    ) -> Self {
+    pub fn new(script: ScriptDefinition, engine: Arc<ScriptEngine>) -> Self {
         Self { script, engine }
     }
 }
@@ -55,10 +52,7 @@ impl AgentTool for ScriptTool {
         crate::types::agent_tool::RiskLevel::High
     }
 
-    async fn invoke(
-        &self,
-        _args: Vec<String>,
-    ) -> Result<String, String> {
+    async fn invoke(&self, _args: Vec<String>) -> Result<String, String> {
         match self.engine.run(&self.script).await {
             Ok(result) => Ok(result.output_as_string()),
             Err(e) => {

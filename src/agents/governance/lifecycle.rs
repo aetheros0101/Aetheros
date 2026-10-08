@@ -41,16 +41,19 @@ impl AgentLifecycle {
         if from.is_terminal() {
             return to == Registered;
         }
-        match (from, to) {
-            (Registered, Initializing | Cancelled) => true,
-            (Initializing, Planning | Failed | Cancelled) => true,
-            (Planning, Executing | Failed | Cancelled | Waiting) => true,
-            (Executing, Waiting | Retrying | Completed | Failed | Cancelled | Suspended) => true,
-            (Waiting, Executing | Cancelled | Failed | Suspended) => true,
-            (Retrying, Executing | Failed | Cancelled) => true,
-            (Suspended, Executing | Cancelled | Failed) => true,
-            _ => false,
-        }
+        matches!(
+            (from, to),
+            (Registered, Initializing | Cancelled)
+                | (Initializing, Planning | Failed | Cancelled)
+                | (Planning, Executing | Failed | Cancelled | Waiting)
+                | (
+                    Executing,
+                    Waiting | Retrying | Completed | Failed | Cancelled | Suspended
+                )
+                | (Waiting, Executing | Cancelled | Failed | Suspended)
+                | (Retrying, Executing | Failed | Cancelled)
+                | (Suspended, Executing | Cancelled | Failed)
+        )
     }
 
     pub fn transition(

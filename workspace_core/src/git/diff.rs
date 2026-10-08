@@ -48,9 +48,7 @@ fn parse_unified_diff(text: &str) -> Vec<GitDiffFile> {
                 .unwrap_or_default();
             current = Some(GitDiffFile {
                 path,
-                old_path: parts
-                    .get(2)
-                    .map(|p| p.trim_start_matches("a/").to_string()),
+                old_path: parts.get(2).map(|p| p.trim_start_matches("a/").to_string()),
                 status: "modified".into(),
                 hunks: Vec::new(),
             });

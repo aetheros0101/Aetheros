@@ -5,41 +5,34 @@ pub struct ShutdownController {
     token: CancellationToken,
 }
 
+impl Default for ShutdownController {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ShutdownController {
     pub fn new() -> Self {
         Self {
-            token:
-                CancellationToken::new(),
+            token: CancellationToken::new(),
         }
     }
 
-    pub fn cancel(
-        &self,
-    ) {
+    pub fn cancel(&self) {
         self.token.cancel();
     }
 
-    pub async fn wait(
-        &self,
-    ) {
+    pub async fn wait(&self) {
         self.token.cancelled().await;
     }
 
-    pub async fn wait_timeout(
-        &self,
-        duration: std::time::Duration,
-    ) -> bool {
-        tokio::time::timeout(
-            duration,
-            self.token.cancelled(),
-        )
-        .await
-        .is_ok()
+    pub async fn wait_timeout(&self, duration: std::time::Duration) -> bool {
+        tokio::time::timeout(duration, self.token.cancelled())
+            .await
+            .is_ok()
     }
 
-    pub fn child_token(
-        &self,
-    ) -> CancellationToken {
+    pub fn child_token(&self) -> CancellationToken {
         self.token.child_token()
     }
 }

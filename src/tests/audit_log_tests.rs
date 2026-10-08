@@ -95,14 +95,15 @@ async fn successful_run_writes_governor_allow_tool_invoked_and_completed() {
         "allow kararı denetime yazılmalı: {events:?}"
     );
     assert!(
-        events.iter().any(|e| matches!(
-            &e.kind,
-            AuditEventKind::ToolInvoked { success: true, .. }
-        )),
+        events
+            .iter()
+            .any(|e| matches!(&e.kind, AuditEventKind::ToolInvoked { success: true, .. })),
         "başarılı tool çağrısı denetime yazılmalı: {events:?}"
     );
     assert!(
-        events.iter().any(|e| matches!(&e.kind, AuditEventKind::ExecutionCompleted)),
+        events
+            .iter()
+            .any(|e| matches!(&e.kind, AuditEventKind::ExecutionCompleted)),
         "tamamlanma denetime yazılmalı: {events:?}"
     );
 }
@@ -213,9 +214,12 @@ async fn audit_records_arguments_masked_and_output_summary() {
     let (inv_args, out) = events
         .iter()
         .find_map(|e| match &e.kind {
-            AuditEventKind::ToolInvoked { arguments, output, success: true, .. } => {
-                Some((arguments.clone(), output.clone()))
-            }
+            AuditEventKind::ToolInvoked {
+                arguments,
+                output,
+                success: true,
+                ..
+            } => Some((arguments.clone(), output.clone())),
             _ => None,
         })
         .expect("başarılı ToolInvoked olayı yok");

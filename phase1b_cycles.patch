@@ -1,0 +1,770 @@
+diff -ruN Aetheros/CHANGES.md Aetheros/CHANGES.md
+--- Aetheros/CHANGES.md	2026-10-08 05:43:55.035544673 +0000
++++ Aetheros/CHANGES.md	2026-10-08 05:43:55.040078527 +0000
+@@ -1,3 +1,24 @@
++# Faz 1 / Adım 1 — Döngüsel bağımlılıkların kırılması
++
++**Derlenmedi:** derleyicisiz, statik analizle hazırlandı. Uygulamadan sonra
++`cargo test --lib` çalıştırın (beklenen: önceki test sayısı + 5 mimari test).
++
++Üst düzey modüller arası bağımlılık grafiğinde 9 modüllük bir döngüsel blok
++(`agents, ai, events, logging, persistence, security, task, types, wasm`) vardı.
++Artık graf **döngüsüz**:
++
++- `AgentCapability`, `AgentCapabilities`, `PolicyProfile` → `types/capability.rs`
++  (saf veri). `agents::capabilities` eski yolu yeniden dışa aktarır; mevcut
++  `use` satırları değişmeden çalışır. Kopan bağlar: `types → agents`,
++  `security → agents`.
++- `ModuleHash` → `types/ids.rs`. `wasm::module_store::ModuleHash` yeniden dışa
++  aktarım olarak durur. Kopan bağ: `task → wasm`.
++- **Mimari testleri** (`src/tests/architecture_tests.rs`): graf döngüsüz kalmalı;
++  `types` ve `errors` hiçbir iç modüle bağlanamaz; `bridge` hiçbir yerden import
++  edilemez, `api` yalnızca `bridge`'den kullanılabilir.
++
++---
++
+ # Faz 0 — Hijyen (ölü kod, Docker, bağımlılıklar)
+ 
+ **Derlenmedi:** Bu faz da derleyicisiz, statik analizle hazırlandı.
+diff -ruN Aetheros/docs/ROADMAP.md Aetheros/docs/ROADMAP.md
+--- Aetheros/docs/ROADMAP.md	2026-10-08 05:43:55.038096667 +0000
++++ Aetheros/docs/ROADMAP.md	2026-10-08 05:43:55.041863394 +0000
+@@ -21,7 +21,8 @@
+ ## Fazlar
+ 
+ - **Faz 0 — Hijyen (tamam):** ölü kod, Docker, bağımlılıklar. Bkz. `CHANGES.md`.
+-- **Faz 1 — Birleştirme:** `ai/{memory,planner,tools,context}` ile `agents/*`
++- **Faz 1 — Birleştirme (devam ediyor):** `types → agents` ve diğer modül
++  döngüleri kırıldı (bkz. `CHANGES.md`, mimari testleri korur). Kalan: `ai/{memory,planner,tools,context}` ile `agents/*`
+   çakışmasını gider; `types → agents` döngüsünü kır; `unreachable_pub` uyarısını
+   aç, gereksiz `pub`'ları daralt.
+ - **Faz 2 — Servis katmanı:** `bridge/api.rs`'i domain'lere böl; global
+diff -ruN Aetheros/src/agents/governance/capabilities.rs Aetheros/src/agents/governance/capabilities.rs
+--- Aetheros/src/agents/governance/capabilities.rs	2026-10-08 05:43:55.001416167 +0000
++++ Aetheros/src/agents/governance/capabilities.rs	2026-10-08 05:43:55.027524084 +0000
+@@ -1,180 +1,4 @@
+-//! Agent yetenek çipleri ve politika profilleri (P2).
++//! Geriye dönük uyumluluk: tipler `crate::types::capability` altına taşındı
++//! (bkz. orası: `types → agents` döngüsünü kırmak için).
+ 
+-use serde::{Deserialize, Serialize};
+-
+-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+-pub struct AgentCapabilities {
+-    pub workflow_execution: bool,
+-    pub wasm_execution: bool,
+-    pub ai_reasoning: bool,
+-    pub remote_execution: bool,
+-    pub terminal_execution: bool,
+-    #[serde(default)]
+-    pub workspace_read: bool,
+-    #[serde(default)]
+-    pub workspace_write: bool,
+-    #[serde(default)]
+-    pub workspace_mutate: bool,
+-}
+-
+-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+-#[serde(rename_all = "snake_case")]
+-pub enum AgentCapability {
+-    WorkflowExecution,
+-    WasmExecution,
+-    AiReasoning,
+-    RemoteExecution,
+-    TerminalExecution,
+-    WorkspaceRead,
+-    WorkspaceWrite,
+-    WorkspaceMutate,
+-}
+-
+-impl AgentCapability {
+-    pub fn chip_label(&self) -> &'static str {
+-        match self {
+-            AgentCapability::WorkflowExecution => "Workflow",
+-            AgentCapability::WasmExecution => "WASM",
+-            AgentCapability::AiReasoning => "AI akıl yürütme",
+-            AgentCapability::RemoteExecution => "Uzak düğüm",
+-            AgentCapability::TerminalExecution => "Terminal",
+-            AgentCapability::WorkspaceRead => "Dosya okuma",
+-            AgentCapability::WorkspaceWrite => "Dosya yazma",
+-            AgentCapability::WorkspaceMutate => "Dosya silme/taşıma",
+-        }
+-    }
+-
+-    pub const ALL: [AgentCapability; 8] = [
+-        AgentCapability::WorkflowExecution,
+-        AgentCapability::WasmExecution,
+-        AgentCapability::AiReasoning,
+-        AgentCapability::RemoteExecution,
+-        AgentCapability::TerminalExecution,
+-        AgentCapability::WorkspaceRead,
+-        AgentCapability::WorkspaceWrite,
+-        AgentCapability::WorkspaceMutate,
+-    ];
+-}
+-
+-impl AgentCapabilities {
+-    pub fn allows(&self, cap: AgentCapability) -> bool {
+-        match cap {
+-            AgentCapability::WorkflowExecution => self.workflow_execution,
+-            AgentCapability::WasmExecution => self.wasm_execution,
+-            AgentCapability::AiReasoning => self.ai_reasoning,
+-            AgentCapability::RemoteExecution => self.remote_execution,
+-            AgentCapability::TerminalExecution => self.terminal_execution,
+-            AgentCapability::WorkspaceRead => self.workspace_read,
+-            AgentCapability::WorkspaceWrite => self.workspace_write,
+-            AgentCapability::WorkspaceMutate => self.workspace_mutate,
+-        }
+-    }
+-
+-    pub fn enabled_list(&self) -> Vec<AgentCapability> {
+-        AgentCapability::ALL
+-            .iter()
+-            .copied()
+-            .filter(|c| self.allows(*c))
+-            .collect()
+-    }
+-
+-    /// İki set kesişimi (host çipleri ∩ profil).
+-    pub fn intersect(&self, other: &Self) -> Self {
+-        Self {
+-            workflow_execution: self.workflow_execution && other.workflow_execution,
+-            wasm_execution: self.wasm_execution && other.wasm_execution,
+-            ai_reasoning: self.ai_reasoning && other.ai_reasoning,
+-            remote_execution: self.remote_execution && other.remote_execution,
+-            terminal_execution: self.terminal_execution && other.terminal_execution,
+-            workspace_read: self.workspace_read && other.workspace_read,
+-            workspace_write: self.workspace_write && other.workspace_write,
+-            workspace_mutate: self.workspace_mutate && other.workspace_mutate,
+-        }
+-    }
+-
+-    /// Kurumsal hazır profil setleri.
+-    pub fn profile(name: &str) -> Self {
+-        PolicyProfile::parse(name).capabilities()
+-    }
+-}
+-
+-/// Ortam / UI'dan seçilen politika profili.
+-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+-#[serde(rename_all = "snake_case")]
+-pub enum PolicyProfile {
+-    /// Yalnız okuma + AI.
+-    ReadOnly,
+-    /// Geliştirici: okuma/yazma + terminal.
+-    Developer,
+-    /// Bakım: mutate + workflow.
+-    Maintainer,
+-    /// Prod kilitli: minimal yüzey.
+-    ProdLocked,
+-    /// Host'un verdiği çipler (kısıtlama yok).
+-    #[default]
+-    Default,
+-}
+-
+-impl PolicyProfile {
+-    pub fn parse(name: &str) -> Self {
+-        match name.trim().to_ascii_lowercase().as_str() {
+-            "read_only" | "readonly" | "ro" => PolicyProfile::ReadOnly,
+-            "developer" | "dev" => PolicyProfile::Developer,
+-            "maintainer" | "admin" => PolicyProfile::Maintainer,
+-            "prod_locked" | "prod" | "production" => PolicyProfile::ProdLocked,
+-            _ => PolicyProfile::Default,
+-        }
+-    }
+-
+-    pub fn as_str(self) -> &'static str {
+-        match self {
+-            PolicyProfile::ReadOnly => "read_only",
+-            PolicyProfile::Developer => "developer",
+-            PolicyProfile::Maintainer => "maintainer",
+-            PolicyProfile::ProdLocked => "prod_locked",
+-            PolicyProfile::Default => "default",
+-        }
+-    }
+-
+-    pub fn capabilities(self) -> AgentCapabilities {
+-        match self {
+-            PolicyProfile::ReadOnly => AgentCapabilities {
+-                ai_reasoning: true,
+-                workspace_read: true,
+-                ..Default::default()
+-            },
+-            PolicyProfile::Developer => AgentCapabilities {
+-                ai_reasoning: true,
+-                workspace_read: true,
+-                workspace_write: true,
+-                terminal_execution: true,
+-                ..Default::default()
+-            },
+-            PolicyProfile::Maintainer => AgentCapabilities {
+-                ai_reasoning: true,
+-                workspace_read: true,
+-                workspace_write: true,
+-                workspace_mutate: true,
+-                terminal_execution: true,
+-                workflow_execution: true,
+-                ..Default::default()
+-            },
+-            PolicyProfile::ProdLocked => AgentCapabilities {
+-                ai_reasoning: true,
+-                workspace_read: true,
+-                ..Default::default()
+-            },
+-            PolicyProfile::Default => AgentCapabilities {
+-                ai_reasoning: true,
+-                workspace_read: true,
+-                workspace_write: true,
+-                ..Default::default()
+-            },
+-        }
+-    }
+-
+-    /// Host çipleri ile profil kesişimi — efektif yetki.
+-    pub fn resolve(self, host_caps: &AgentCapabilities) -> AgentCapabilities {
+-        self.capabilities().intersect(host_caps)
+-    }
+-}
++pub use crate::types::capability::*;
+diff -ruN Aetheros/src/security/capability_engine.rs Aetheros/src/security/capability_engine.rs
+--- Aetheros/src/security/capability_engine.rs	2026-10-08 05:43:55.022509047 +0000
++++ Aetheros/src/security/capability_engine.rs	2026-10-08 05:43:55.031627506 +0000
+@@ -18,7 +18,7 @@
+ 
+ use uuid::Uuid;
+ 
+-use crate::agents::capabilities::{AgentCapabilities, AgentCapability};
++use crate::types::capability::{AgentCapabilities, AgentCapability};
+ 
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ pub enum CapabilityDecision {
+diff -ruN Aetheros/src/security/governor.rs Aetheros/src/security/governor.rs
+--- Aetheros/src/security/governor.rs	2026-10-08 05:43:55.021989103 +0000
++++ Aetheros/src/security/governor.rs	2026-10-08 05:43:55.031538163 +0000
+@@ -244,7 +244,7 @@
+     use async_trait::async_trait;
+ 
+     use super::*;
+-    use crate::agents::capabilities::{AgentCapabilities, AgentCapability};
++    use crate::types::capability::{AgentCapabilities, AgentCapability};
+ 
+     struct FakeTool {
+         cap: Option<AgentCapability>,
+diff -ruN Aetheros/src/task/task.rs Aetheros/src/task/task.rs
+--- Aetheros/src/task/task.rs	2026-10-08 05:43:55.005814358 +0000
++++ Aetheros/src/task/task.rs	2026-10-08 05:43:55.028390948 +0000
+@@ -32,7 +32,7 @@
+ use crate::task::orchestration::TaskOrchestration;
+ use crate::types::ids::TaskId;
+ use crate::types::timestamps::Timestamp;
+-use crate::wasm::module_store::ModuleHash;
++use crate::types::ids::ModuleHash;
+ 
+ #[derive(
+     Debug,
+diff -ruN Aetheros/src/tests/architecture_tests.rs Aetheros/src/tests/architecture_tests.rs
+--- Aetheros/src/tests/architecture_tests.rs	1970-01-01 00:00:00.000000000 +0000
++++ Aetheros/src/tests/architecture_tests.rs	2026-10-08 05:43:55.030692772 +0000
+@@ -0,0 +1,258 @@
++//! Mimari kuralları (katman bağımlılıkları).
++//!
++//! Üretim kodunun üst düzey modülleri (`src/<modül>/`) arasındaki `crate::…`
++//! bağımlılık grafiğini kaynak koddan çıkarır ve şunları denetler:
++//!
++//! 1. Graf **döngüsüzdür** (eskiden `types ⇄ agents`, `agents ⇄ security`,
++//!    `task ⇄ wasm` döngüleri vardı).
++//! 2. Temel katmanlar (`types`, `errors`) başka hiçbir iç modüle bağlanmaz.
++//! 3. `bridge` hiçbir modül tarafından import edilmez; `api` yalnızca
++//!    `bridge` tarafından kullanılabilir (adaptörler en üstte durur).
++//!
++//! Test kodu (`#[cfg(test)]`) ve yorum satırları sayılmaz.
++
++use std::collections::{BTreeMap, BTreeSet};
++use std::fs;
++use std::path::{Path, PathBuf};
++
++type Graph = BTreeMap<String, BTreeSet<String>>;
++
++fn src_dir() -> PathBuf {
++    Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
++}
++
++fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
++    let Ok(entries) = fs::read_dir(dir) else { return };
++    for entry in entries.flatten() {
++        let path = entry.path();
++        if path.is_dir() {
++            rust_files(&path, out);
++        } else if path.extension().is_some_and(|e| e == "rs") {
++            out.push(path);
++        }
++    }
++}
++
++/// Yorum satırlarını ve `#[cfg(test)]` sonrasını atar.
++fn production_text(text: &str) -> String {
++    let mut out = String::new();
++    for line in text.lines() {
++        let trimmed = line.trim_start();
++        if trimmed.starts_with("#[cfg(test)]") {
++            break;
++        }
++        if trimmed.starts_with("//") {
++            continue;
++        }
++        out.push_str(line);
++        out.push('\n');
++    }
++    out
++}
++
++fn is_ident(c: char) -> bool {
++    c.is_ascii_alphanumeric() || c == '_'
++}
++
++fn read_ident(chars: &[char], mut i: usize) -> (String, usize) {
++    let start = i;
++    while i < chars.len() && is_ident(chars[i]) {
++        i += 1;
++    }
++    (chars[start..i].iter().collect(), i)
++}
++
++/// `crate::x` ve `crate::{x, y::z}` biçimlerinden ilk segmentleri çıkarır.
++fn crate_roots(text: &str) -> BTreeSet<String> {
++    let chars: Vec<char> = text.chars().collect();
++    let pat: Vec<char> = "crate::".chars().collect();
++    let mut roots = BTreeSet::new();
++    let mut i = 0;
++    while i + pat.len() <= chars.len() {
++        // `my_crate::` gibi önekleri eleme: öncesi tanımlayıcı karakter olmamalı.
++        let boundary = i == 0 || !is_ident(chars[i - 1]);
++        if boundary && chars[i..i + pat.len()] == pat[..] {
++            let mut j = i + pat.len();
++            if j < chars.len() && chars[j] == '{' {
++                // Gruplu import: derinlik 1'deki öğelerin ilk tanımlayıcısı.
++                let mut depth = 1;
++                let mut item_start = true;
++                j += 1;
++                while j < chars.len() && depth > 0 {
++                    let c = chars[j];
++                    if c == '{' {
++                        depth += 1;
++                        item_start = false;
++                    } else if c == '}' {
++                        depth -= 1;
++                    } else if c == ',' {
++                        item_start = depth == 1;
++                    } else if c.is_whitespace() {
++                        // boşlukları atla
++                    } else if item_start && depth == 1 && is_ident(c) {
++                        let (id, next) = read_ident(&chars, j);
++                        roots.insert(id);
++                        item_start = false;
++                        j = next;
++                        continue;
++                    } else {
++                        item_start = false;
++                    }
++                    j += 1;
++                }
++                i = j;
++                continue;
++            }
++            let (id, next) = read_ident(&chars, j);
++            if !id.is_empty() {
++                roots.insert(id);
++            }
++            i = next;
++            continue;
++        }
++        i += 1;
++    }
++    roots
++}
++
++fn dependency_graph() -> Graph {
++    let src = src_dir();
++    let modules: BTreeSet<String> = fs::read_dir(&src)
++        .expect("src okunabilmeli")
++        .flatten()
++        .filter(|e| e.path().is_dir())
++        .filter_map(|e| e.file_name().into_string().ok())
++        .filter(|name| name != "tests")
++        .collect();
++
++    let mut graph: Graph = modules
++        .iter()
++        .map(|m| (m.clone(), BTreeSet::new()))
++        .collect();
++
++    for module in &modules {
++        let mut files = Vec::new();
++        rust_files(&src.join(module), &mut files);
++        for file in files {
++            let text = fs::read_to_string(&file).expect("kaynak okunabilmeli");
++            for root in crate_roots(&production_text(&text)) {
++                if &root != module && modules.contains(&root) {
++                    graph.get_mut(module).unwrap().insert(root);
++                }
++            }
++        }
++    }
++    graph
++}
++
++/// İlk bulunan döngüyü (varsa) yol olarak döndürür.
++fn find_cycle(graph: &Graph) -> Option<Vec<String>> {
++    fn visit(
++        node: &str,
++        graph: &Graph,
++        state: &mut BTreeMap<String, u8>, // 1 = yolda, 2 = bitti
++        path: &mut Vec<String>,
++    ) -> Option<Vec<String>> {
++        state.insert(node.to_string(), 1);
++        path.push(node.to_string());
++        if let Some(deps) = graph.get(node) {
++            for dep in deps {
++                match state.get(dep.as_str()) {
++                    Some(1) => {
++                        let start = path.iter().position(|n| n == dep).unwrap_or(0);
++                        let mut cycle = path[start..].to_vec();
++                        cycle.push(dep.clone());
++                        return Some(cycle);
++                    }
++                    Some(_) => {}
++                    None => {
++                        if let Some(c) = visit(dep, graph, state, path) {
++                            return Some(c);
++                        }
++                    }
++                }
++            }
++        }
++        path.pop();
++        state.insert(node.to_string(), 2);
++        None
++    }
++
++    let mut state = BTreeMap::new();
++    for node in graph.keys() {
++        if !state.contains_key(node.as_str()) {
++            let mut path = Vec::new();
++            if let Some(c) = visit(node, graph, &mut state, &mut path) {
++                return Some(c);
++            }
++        }
++    }
++    None
++}
++
++#[test]
++fn module_graph_is_acyclic() {
++    let graph = dependency_graph();
++    if let Some(cycle) = find_cycle(&graph) {
++        panic!(
++            "Modüller arası döngüsel bağımlılık: {}\n\
++             Ortak tipi daha alt bir katmana (örn. `types`) taşıyın.",
++            cycle.join(" → ")
++        );
++    }
++}
++
++#[test]
++fn foundation_modules_have_no_internal_dependencies() {
++    let graph = dependency_graph();
++    for foundation in ["types", "errors"] {
++        let deps = &graph[foundation];
++        assert!(
++            deps.is_empty(),
++            "`{foundation}` temel katmandır ama şunlara bağlanıyor: {deps:?}"
++        );
++    }
++}
++
++#[test]
++fn adapters_sit_at_the_top() {
++    let graph = dependency_graph();
++    for (module, deps) in &graph {
++        assert!(
++            !deps.contains("bridge"),
++            "`{module}` modülü `bridge`'i import ediyor; bridge en üst adaptör katmanıdır"
++        );
++        if module != "bridge" {
++            assert!(
++                !deps.contains("api"),
++                "`{module}` modülü `api`'yi import ediyor; yalnızca `bridge` kullanabilir"
++            );
++        }
++    }
++}
++
++#[test]
++fn crate_roots_parses_plain_and_grouped_imports() {
++    let text = "use crate::types::ids::TaskId;\n\
++                use crate::{errors::E, task::{a, b}, wasm};\n\
++                use crate::{\n    persistence::x,\n    events,\n};\n\
++                let _ = my_crate::nope::X;";
++    let roots = crate_roots(text);
++    let expected: BTreeSet<String> = ["types", "errors", "task", "wasm", "persistence", "events"]
++        .iter()
++        .map(|s| s.to_string())
++        .collect();
++    assert_eq!(roots, expected);
++}
++
++#[test]
++fn find_cycle_detects_a_synthetic_cycle() {
++    let mut g: Graph = BTreeMap::new();
++    g.insert("a".into(), ["b".to_string()].into_iter().collect());
++    g.insert("b".into(), ["c".to_string()].into_iter().collect());
++    g.insert("c".into(), ["a".to_string()].into_iter().collect());
++    let cycle = find_cycle(&g).expect("döngü bulunmalı");
++    assert_eq!(cycle.first(), cycle.last());
++    g.insert("c".into(), BTreeSet::new());
++    assert!(find_cycle(&g).is_none());
++}
+diff -ruN Aetheros/src/tests/mod.rs Aetheros/src/tests/mod.rs
+--- Aetheros/src/tests/mod.rs	2026-10-08 05:43:55.018721774 +0000
++++ Aetheros/src/tests/mod.rs	2026-10-08 05:43:55.030148940 +0000
+@@ -1,4 +1,5 @@
+ pub mod helpers;
++pub mod architecture_tests;
+ pub mod capability_engine_tests;
+ pub mod script_capability_integration_tests;
+ pub mod tool_call_protocol_tests;
+diff -ruN Aetheros/src/types/agent_tool.rs Aetheros/src/types/agent_tool.rs
+--- Aetheros/src/types/agent_tool.rs	2026-10-08 05:43:54.994053516 +0000
++++ Aetheros/src/types/agent_tool.rs	2026-10-08 05:43:55.026198412 +0000
+@@ -52,7 +52,7 @@
+     /// bunu mutlaka override etmeli.
+     fn required_capability(
+         &self,
+-    ) -> Option<crate::agents::capabilities::AgentCapability> {
++    ) -> Option<crate::types::capability::AgentCapability> {
+         None
+     }
+ 
+diff -ruN Aetheros/src/types/capability.rs Aetheros/src/types/capability.rs
+--- Aetheros/src/types/capability.rs	1970-01-01 00:00:00.000000000 +0000
++++ Aetheros/src/types/capability.rs	2026-10-08 05:43:55.026251000 +0000
+@@ -0,0 +1,186 @@
++//! Agent yetenek çipleri ve politika profilleri (P2).
++//!
++//! Bu tipler saf veridir (yalnızca `serde`); hem `agents` hem `security`
++//! hem de `types::agent_tool::AgentTool` trait'i tarafından kullanıldığı için
++//! döngüsel bağımlılığı önlemek üzere `types` katmanında durur.
++//! Eski yol (`agents::capabilities`) geriye dönük uyumluluk için bu modülü
++//! yeniden dışa aktarır.
++
++use serde::{Deserialize, Serialize};
++
++#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
++pub struct AgentCapabilities {
++    pub workflow_execution: bool,
++    pub wasm_execution: bool,
++    pub ai_reasoning: bool,
++    pub remote_execution: bool,
++    pub terminal_execution: bool,
++    #[serde(default)]
++    pub workspace_read: bool,
++    #[serde(default)]
++    pub workspace_write: bool,
++    #[serde(default)]
++    pub workspace_mutate: bool,
++}
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
++#[serde(rename_all = "snake_case")]
++pub enum AgentCapability {
++    WorkflowExecution,
++    WasmExecution,
++    AiReasoning,
++    RemoteExecution,
++    TerminalExecution,
++    WorkspaceRead,
++    WorkspaceWrite,
++    WorkspaceMutate,
++}
++
++impl AgentCapability {
++    pub fn chip_label(&self) -> &'static str {
++        match self {
++            AgentCapability::WorkflowExecution => "Workflow",
++            AgentCapability::WasmExecution => "WASM",
++            AgentCapability::AiReasoning => "AI akıl yürütme",
++            AgentCapability::RemoteExecution => "Uzak düğüm",
++            AgentCapability::TerminalExecution => "Terminal",
++            AgentCapability::WorkspaceRead => "Dosya okuma",
++            AgentCapability::WorkspaceWrite => "Dosya yazma",
++            AgentCapability::WorkspaceMutate => "Dosya silme/taşıma",
++        }
++    }
++
++    pub const ALL: [AgentCapability; 8] = [
++        AgentCapability::WorkflowExecution,
++        AgentCapability::WasmExecution,
++        AgentCapability::AiReasoning,
++        AgentCapability::RemoteExecution,
++        AgentCapability::TerminalExecution,
++        AgentCapability::WorkspaceRead,
++        AgentCapability::WorkspaceWrite,
++        AgentCapability::WorkspaceMutate,
++    ];
++}
++
++impl AgentCapabilities {
++    pub fn allows(&self, cap: AgentCapability) -> bool {
++        match cap {
++            AgentCapability::WorkflowExecution => self.workflow_execution,
++            AgentCapability::WasmExecution => self.wasm_execution,
++            AgentCapability::AiReasoning => self.ai_reasoning,
++            AgentCapability::RemoteExecution => self.remote_execution,
++            AgentCapability::TerminalExecution => self.terminal_execution,
++            AgentCapability::WorkspaceRead => self.workspace_read,
++            AgentCapability::WorkspaceWrite => self.workspace_write,
++            AgentCapability::WorkspaceMutate => self.workspace_mutate,
++        }
++    }
++
++    pub fn enabled_list(&self) -> Vec<AgentCapability> {
++        AgentCapability::ALL
++            .iter()
++            .copied()
++            .filter(|c| self.allows(*c))
++            .collect()
++    }
++
++    /// İki set kesişimi (host çipleri ∩ profil).
++    pub fn intersect(&self, other: &Self) -> Self {
++        Self {
++            workflow_execution: self.workflow_execution && other.workflow_execution,
++            wasm_execution: self.wasm_execution && other.wasm_execution,
++            ai_reasoning: self.ai_reasoning && other.ai_reasoning,
++            remote_execution: self.remote_execution && other.remote_execution,
++            terminal_execution: self.terminal_execution && other.terminal_execution,
++            workspace_read: self.workspace_read && other.workspace_read,
++            workspace_write: self.workspace_write && other.workspace_write,
++            workspace_mutate: self.workspace_mutate && other.workspace_mutate,
++        }
++    }
++
++    /// Kurumsal hazır profil setleri.
++    pub fn profile(name: &str) -> Self {
++        PolicyProfile::parse(name).capabilities()
++    }
++}
++
++/// Ortam / UI'dan seçilen politika profili.
++#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
++#[serde(rename_all = "snake_case")]
++pub enum PolicyProfile {
++    /// Yalnız okuma + AI.
++    ReadOnly,
++    /// Geliştirici: okuma/yazma + terminal.
++    Developer,
++    /// Bakım: mutate + workflow.
++    Maintainer,
++    /// Prod kilitli: minimal yüzey.
++    ProdLocked,
++    /// Host'un verdiği çipler (kısıtlama yok).
++    #[default]
++    Default,
++}
++
++impl PolicyProfile {
++    pub fn parse(name: &str) -> Self {
++        match name.trim().to_ascii_lowercase().as_str() {
++            "read_only" | "readonly" | "ro" => PolicyProfile::ReadOnly,
++            "developer" | "dev" => PolicyProfile::Developer,
++            "maintainer" | "admin" => PolicyProfile::Maintainer,
++            "prod_locked" | "prod" | "production" => PolicyProfile::ProdLocked,
++            _ => PolicyProfile::Default,
++        }
++    }
++
++    pub fn as_str(self) -> &'static str {
++        match self {
++            PolicyProfile::ReadOnly => "read_only",
++            PolicyProfile::Developer => "developer",
++            PolicyProfile::Maintainer => "maintainer",
++            PolicyProfile::ProdLocked => "prod_locked",
++            PolicyProfile::Default => "default",
++        }
++    }
++
++    pub fn capabilities(self) -> AgentCapabilities {
++        match self {
++            PolicyProfile::ReadOnly => AgentCapabilities {
++                ai_reasoning: true,
++                workspace_read: true,
++                ..Default::default()
++            },
++            PolicyProfile::Developer => AgentCapabilities {
++                ai_reasoning: true,
++                workspace_read: true,
++                workspace_write: true,
++                terminal_execution: true,
++                ..Default::default()
++            },
++            PolicyProfile::Maintainer => AgentCapabilities {
++                ai_reasoning: true,
++                workspace_read: true,
++                workspace_write: true,
++                workspace_mutate: true,
++                terminal_execution: true,
++                workflow_execution: true,
++                ..Default::default()
++            },
++            PolicyProfile::ProdLocked => AgentCapabilities {
++                ai_reasoning: true,
++                workspace_read: true,
++                ..Default::default()
++            },
++            PolicyProfile::Default => AgentCapabilities {
++                ai_reasoning: true,
++                workspace_read: true,
++                workspace_write: true,
++                ..Default::default()
++            },
++        }
++    }
++
++    /// Host çipleri ile profil kesişimi — efektif yetki.
++    pub fn resolve(self, host_caps: &AgentCapabilities) -> AgentCapabilities {
++        self.capabilities().intersect(host_caps)
++    }
++}
+diff -ruN Aetheros/src/types/ids.rs Aetheros/src/types/ids.rs
+--- Aetheros/src/types/ids.rs	2026-10-08 05:43:54.994213217 +0000
++++ Aetheros/src/types/ids.rs	2026-10-08 05:43:55.026223159 +0000
+@@ -12,3 +12,6 @@
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+ pub struct ExecutionId(pub Uuid);
++
++/// WASM modülünün SHA-256 içerik özeti (içerik-adresli kimlik).
++pub type ModuleHash = [u8; 32];
+diff -ruN Aetheros/src/types/mod.rs Aetheros/src/types/mod.rs
+--- Aetheros/src/types/mod.rs	2026-10-08 05:43:54.994142852 +0000
++++ Aetheros/src/types/mod.rs	2026-10-08 05:43:55.026211414 +0000
+@@ -1,4 +1,5 @@
+ pub mod agent_plan;
+ pub mod agent_tool;
++pub mod capability;
+ pub mod ids;
+ pub mod timestamps;
+diff -ruN Aetheros/src/wasm/module_store.rs Aetheros/src/wasm/module_store.rs
+--- Aetheros/src/wasm/module_store.rs	2026-10-08 05:43:55.012644929 +0000
++++ Aetheros/src/wasm/module_store.rs	2026-10-08 05:43:55.029230777 +0000
+@@ -52,7 +52,9 @@
+ 
+ use crate::persistence::engine::PersistenceEngine;
+ 
+-pub type ModuleHash = [u8; 32];
++// ModuleHash tanımı `types::ids` altında (task → wasm bağımlılığını kırmak için);
++// eski yol geriye dönük uyumluluk için yeniden dışa aktarılır.
++pub use crate::types::ids::ModuleHash;
+ 
+ #[derive(Debug, Clone)]
+ pub enum ModuleStoreError {

@@ -23,13 +23,10 @@
 //   priority_ordering: 15µs → ~3µs
 //   lock contention: 4x azalma
 // ============================================================
-use std::sync::atomic::AtomicU64;
 use std::collections::VecDeque;
+use std::sync::atomic::AtomicU64;
 
-use tokio::sync::{
-    Mutex,
-    Notify,
-};
+use tokio::sync::{Mutex, Notify};
 
 use crate::errors::task::TaskError;
 use crate::task::priority::TaskPriority;
@@ -73,14 +70,20 @@ pub struct PriorityTaskQueue {
     _sequence: AtomicU64,
 }
 
+impl Default for PriorityTaskQueue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PriorityTaskQueue {
     pub fn new() -> Self {
         Self {
             critical: Tier::new(),
-            high:     Tier::new(),
-            normal:   Tier::new(),
-            low:      Tier::new(),
-            notify:   Notify::new(),
+            high: Tier::new(),
+            normal: Tier::new(),
+            low: Tier::new(),
+            notify: Notify::new(),
             _sequence: AtomicU64::new(0),
         }
     }
@@ -89,10 +92,7 @@ impl PriorityTaskQueue {
     ///
     /// O(1): lock + VecDeque::push_back
     /// Sadece ilgili tier kilitlenir — diğer tier'lar serbest.
-    pub async fn push(
-        &self,
-        task: TaskDefinition,
-    ) -> Result<(), TaskError> {
+    pub async fn push(&self, task: TaskDefinition) -> Result<(), TaskError> {
         match task.priority {
             TaskPriority::Critical => {
                 self.critical.push(task).await;
@@ -120,9 +120,7 @@ impl PriorityTaskQueue {
     ///
     /// Sıralama: Critical → High → Normal → Low
     /// Boşsa: Notify bekle (spin yok)
-    pub async fn pop(
-        &self,
-    ) -> Result<TaskDefinition, TaskError> {
+    pub async fn pop(&self) -> Result<TaskDefinition, TaskError> {
         loop {
             // Critical önce kontrol et
             if let Some(task) = self.critical.pop().await {
@@ -158,9 +156,7 @@ impl PriorityTaskQueue {
     }
 
     /// Tier bazlı dağılım — monitoring için.
-    pub async fn distribution(
-        &self,
-    ) -> [usize; 4] {
+    pub async fn distribution(&self) -> [usize; 4] {
         [
             self.critical.len().await,
             self.high.len().await,
@@ -190,9 +186,13 @@ mod tests {
     #[tokio::test]
     async fn all_priorities_correct_order() {
         let q = PriorityTaskQueue::new();
-        q.push(make_task(TaskPriority::Normal, "normal")).await.unwrap();
+        q.push(make_task(TaskPriority::Normal, "normal"))
+            .await
+            .unwrap();
         q.push(make_task(TaskPriority::Low, "low")).await.unwrap();
-        q.push(make_task(TaskPriority::Critical, "critical")).await.unwrap();
+        q.push(make_task(TaskPriority::Critical, "critical"))
+            .await
+            .unwrap();
         q.push(make_task(TaskPriority::High, "high")).await.unwrap();
 
         let order: Vec<_> = vec![
@@ -202,18 +202,21 @@ mod tests {
             q.pop().await.unwrap().entrypoint,
         ];
 
-        assert_eq!(
-            order,
-            vec!["critical", "high", "normal", "low"]
-        );
+        assert_eq!(order, vec!["critical", "high", "normal", "low"]);
     }
 
     #[tokio::test]
     async fn same_priority_is_fifo() {
         let q = PriorityTaskQueue::new();
-        q.push(make_task(TaskPriority::Normal, "first")).await.unwrap();
-        q.push(make_task(TaskPriority::Normal, "second")).await.unwrap();
-        q.push(make_task(TaskPriority::Normal, "third")).await.unwrap();
+        q.push(make_task(TaskPriority::Normal, "first"))
+            .await
+            .unwrap();
+        q.push(make_task(TaskPriority::Normal, "second"))
+            .await
+            .unwrap();
+        q.push(make_task(TaskPriority::Normal, "third"))
+            .await
+            .unwrap();
 
         assert_eq!(q.pop().await.unwrap().entrypoint, "first");
         assert_eq!(q.pop().await.unwrap().entrypoint, "second");
@@ -223,7 +226,9 @@ mod tests {
     #[tokio::test]
     async fn distribution_tracks_tiers() {
         let q = PriorityTaskQueue::new();
-        q.push(make_task(TaskPriority::Critical, "c")).await.unwrap();
+        q.push(make_task(TaskPriority::Critical, "c"))
+            .await
+            .unwrap();
         q.push(make_task(TaskPriority::High, "h1")).await.unwrap();
         q.push(make_task(TaskPriority::High, "h2")).await.unwrap();
         q.push(make_task(TaskPriority::Low, "l")).await.unwrap();

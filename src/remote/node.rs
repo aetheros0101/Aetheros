@@ -38,10 +38,7 @@ pub struct RemoteNode {
 }
 
 impl RemoteNode {
-    pub fn new(
-        address: impl Into<String>,
-        capabilities: Vec<NodeCapability>,
-    ) -> Self {
+    pub fn new(address: impl Into<String>, capabilities: Vec<NodeCapability>) -> Self {
         Self {
             node_id: Uuid::new_v4(),
             address: address.into(),

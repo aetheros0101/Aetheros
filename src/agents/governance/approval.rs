@@ -153,7 +153,9 @@ impl ApprovalStore {
     }
 
     fn persist(&self, approval: &PendingApproval) {
-        let Some(engine) = &self.persistence else { return };
+        let Some(engine) = &self.persistence else {
+            return;
+        };
         match serde_json::to_vec(approval) {
             Ok(bytes) => {
                 let written = engine
@@ -169,7 +171,9 @@ impl ApprovalStore {
     }
 
     fn forget(&self, id: &Uuid) {
-        let Some(engine) = &self.persistence else { return };
+        let Some(engine) = &self.persistence else {
+            return;
+        };
         let removed = engine
             .delete_record(RecordKind::Approvals, id.as_bytes())
             .and_then(|_| engine.flush_records());
@@ -291,7 +295,10 @@ mod tests {
             assert!(store.take(&id).is_some());
         }
         let store = ApprovalStore::with_persistence(engine_at(dir.path()));
-        assert!(store.list().is_empty(), "alınan (işlenen) onay hayalet olarak dönmemeli");
+        assert!(
+            store.list().is_empty(),
+            "alınan (işlenen) onay hayalet olarak dönmemeli"
+        );
     }
 
     #[test]
@@ -313,7 +320,10 @@ mod tests {
             assert!(store.get(&fresh_id).is_some());
         }
         let store = ApprovalStore::with_persistence(engine_at(dir.path()));
-        assert!(store.get(&stale_id).is_none(), "süresi dolan diskten de silinmeli");
+        assert!(
+            store.get(&stale_id).is_none(),
+            "süresi dolan diskten de silinmeli"
+        );
         assert!(store.get(&fresh_id).is_some());
     }
 

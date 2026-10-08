@@ -108,10 +108,10 @@ impl PtySession {
 
         writer
             .write_all(bytes)
-            .map_err(|e| TerminalError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            .map_err(|e| TerminalError::Io(std::io::Error::other(e.to_string())))?;
         writer
             .flush()
-            .map_err(|e| TerminalError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            .map_err(|e| TerminalError::Io(std::io::Error::other(e.to_string())))?;
 
         Ok(())
     }
@@ -153,7 +153,7 @@ impl PtySession {
                 pixel_width: 0,
                 pixel_height: 0,
             })
-            .map_err(|e| TerminalError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))
+            .map_err(|e| TerminalError::Io(std::io::Error::other(e.to_string())))
     }
 
     /// Request immediate termination of the child process.
@@ -170,7 +170,7 @@ impl PtySession {
 
         killer
             .kill()
-            .map_err(|e| TerminalError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))
+            .map_err(|e| TerminalError::Io(std::io::Error::other(e.to_string())))
     }
 
     /// Ask an interactive shell to terminate through normal terminal input.
@@ -214,7 +214,7 @@ impl PtySessionManager {
                 pixel_width: 0,
                 pixel_height: 0,
             })
-            .map_err(|e| TerminalError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            .map_err(|e| TerminalError::Io(std::io::Error::other(e.to_string())))?;
 
         let mut cmd = NativeCommandBuilder::new(&command.program);
         cmd.args(&command.args);
@@ -230,19 +230,19 @@ impl PtySessionManager {
         let child = pair
             .slave
             .spawn_command(cmd)
-            .map_err(|e| TerminalError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            .map_err(|e| TerminalError::Io(std::io::Error::other(e.to_string())))?;
 
         drop(pair.slave);
 
         let reader = pair
             .master
             .try_clone_reader()
-            .map_err(|e| TerminalError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            .map_err(|e| TerminalError::Io(std::io::Error::other(e.to_string())))?;
 
         let writer = pair
             .master
             .take_writer()
-            .map_err(|e| TerminalError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            .map_err(|e| TerminalError::Io(std::io::Error::other(e.to_string())))?;
 
         let child: Box<dyn Child + Send + Sync> = child;
         // Waiter thread Child'ı kilitlemeden ÖNCE killer'ı al (bkz. PtySession::killer).
@@ -259,7 +259,7 @@ impl PtySessionManager {
         thread::Builder::new()
             .name("aetheros-pty-reader".into())
             .spawn(move || read_pty(reader, reader_tx, reader_broadcast))
-            .map_err(|e| TerminalError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            .map_err(|e| TerminalError::Io(std::io::Error::other(e.to_string())))?;
 
         // Waiting is also blocking on some platforms.
         let waiter_tx = event_tx;
@@ -283,7 +283,7 @@ impl PtySessionManager {
                 let _ = waiter_tx.blocking_send(event.clone());
                 let _ = waiter_broadcast.send(event);
             })
-            .map_err(|e| TerminalError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+            .map_err(|e| TerminalError::Io(std::io::Error::other(e.to_string())))?;
 
         Ok(PtySession {
             writer,
@@ -341,11 +341,7 @@ mod tests {
         let mut saw_exit = false;
 
         for _ in 0..40 {
-            match tokio::time::timeout(
-                std::time::Duration::from_millis(250),
-                session.recv(),
-            )
-            .await
+            match tokio::time::timeout(std::time::Duration::from_millis(250), session.recv()).await
             {
                 Ok(Some(PtyEvent::Output(bytes))) => {
                     let text = String::from_utf8_lossy(&bytes);
@@ -390,11 +386,7 @@ mod tests {
 
         let mut saw_exit = false;
         for _ in 0..20 {
-            match tokio::time::timeout(
-                std::time::Duration::from_millis(250),
-                session.recv(),
-            )
-            .await
+            match tokio::time::timeout(std::time::Duration::from_millis(250), session.recv()).await
             {
                 Ok(Some(PtyEvent::Exited(_))) => {
                     saw_exit = true;
@@ -428,7 +420,10 @@ mod tests {
         let session = manager.spawn(shell).expect("spawn PTY");
 
         session
-            .resize(PtySizeSpec { rows: 40, cols: 120 })
+            .resize(PtySizeSpec {
+                rows: 40,
+                cols: 120,
+            })
             .expect("resize PTY");
 
         let _ = session.kill();

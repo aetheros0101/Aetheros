@@ -14,7 +14,9 @@ pub trait ExecutionBackend: Send + Sync {
 pub struct LocalProcessBackend;
 
 impl LocalProcessBackend {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 async fn read_bounded<R>(mut reader: R, limit: usize) -> Result<Vec<u8>, TerminalError>
@@ -25,7 +27,9 @@ where
     let mut chunk = [0u8; 8192];
     loop {
         let n = reader.read(&mut chunk).await.map_err(TerminalError::Io)?;
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         if output.len().saturating_add(n) > limit {
             return Err(TerminalError::OutputLimitExceeded(limit));
         }
@@ -44,17 +48,21 @@ impl ExecutionBackend for LocalProcessBackend {
         command.stdin(std::process::Stdio::null());
         command.stdout(std::process::Stdio::piped());
         command.stderr(std::process::Stdio::piped());
-        if let Some(cwd) = &spec.cwd { command.current_dir(cwd); }
+        if let Some(cwd) = &spec.cwd {
+            command.current_dir(cwd);
+        }
         spec.environment.apply(&mut command);
 
         let started = Instant::now();
         let mut child = command.spawn().map_err(TerminalError::Spawn)?;
-        let stdout = child.stdout.take().ok_or_else(|| {
-            TerminalError::Io(std::io::Error::new(std::io::ErrorKind::Other, "stdout pipe unavailable"))
-        })?;
-        let stderr = child.stderr.take().ok_or_else(|| {
-            TerminalError::Io(std::io::Error::new(std::io::ErrorKind::Other, "stderr pipe unavailable"))
-        })?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| TerminalError::Io(std::io::Error::other("stdout pipe unavailable")))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| TerminalError::Io(std::io::Error::other("stderr pipe unavailable")))?;
 
         let stdout_task = tokio::spawn(read_bounded(stdout, spec.limits.max_stdout_bytes));
         let stderr_task = tokio::spawn(read_bounded(stderr, spec.limits.max_stderr_bytes));
@@ -75,10 +83,10 @@ impl ExecutionBackend for LocalProcessBackend {
 
         let stdout = stdout_task
             .await
-            .map_err(|e| TerminalError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))??;
+            .map_err(|e| TerminalError::Io(std::io::Error::other(e)))??;
         let stderr = stderr_task
             .await
-            .map_err(|e| TerminalError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))??;
+            .map_err(|e| TerminalError::Io(std::io::Error::other(e)))??;
 
         Ok(ProcessResult {
             status: crate::ExitStatus::from_std(wait_result),
@@ -98,9 +106,15 @@ mod tests {
     async fn captures_stdout_and_stderr() {
         let backend = LocalProcessBackend::new();
         let command = if cfg!(windows) {
-            CommandBuilder::new("cmd").unwrap().args(["/C", "echo hello"]).build()
+            CommandBuilder::new("cmd")
+                .unwrap()
+                .args(["/C", "echo hello"])
+                .build()
         } else {
-            CommandBuilder::new("sh").unwrap().args(["-c", "printf hello; printf error >&2"]).build()
+            CommandBuilder::new("sh")
+                .unwrap()
+                .args(["-c", "printf hello; printf error >&2"])
+                .build()
         };
         let result = backend.execute(command).await.unwrap();
         assert!(result.status.success());
@@ -112,13 +126,22 @@ mod tests {
     async fn timeout_terminates_process() {
         let backend = LocalProcessBackend::new();
         let command = if cfg!(windows) {
-            CommandBuilder::new("ping").unwrap().args(["127.0.0.1", "-n", "5"]).build()
+            CommandBuilder::new("ping")
+                .unwrap()
+                .args(["127.0.0.1", "-n", "5"])
+                .build()
         } else {
-            CommandBuilder::new("sh").unwrap().args(["-c", "sleep 5"]).limits(
-                ExecutionLimits::default().timeout(Duration::from_millis(50))
-            ).build()
+            CommandBuilder::new("sh")
+                .unwrap()
+                .args(["-c", "sleep 5"])
+                .limits(ExecutionLimits::default().timeout(Duration::from_millis(50)))
+                .build()
         };
         let result = backend.execute(command).await;
-        if cfg!(windows) { assert!(result.is_ok()); } else { assert!(matches!(result, Err(TerminalError::Timeout(_)))); }
+        if cfg!(windows) {
+            assert!(result.is_ok());
+        } else {
+            assert!(matches!(result, Err(TerminalError::Timeout(_))));
+        }
     }
 }

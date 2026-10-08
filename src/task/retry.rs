@@ -17,10 +17,7 @@ use std::time::Duration;
 
 use rand::Rng;
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
 use crate::errors::wasm::WasmError;
 
@@ -44,11 +41,7 @@ impl RetryPolicy {
     /// `attempts`: şimdiye kadar yapılan deneme sayısı.
     ///   İlk denemeden sonra gelen ilk hata → attempts = 1.
     ///   max_attempts = 3 ise 3 kez denenip 3. başarısızsa retry yok.
-    pub fn should_retry(
-        &self,
-        attempts: u32,
-        error: &WasmError,
-    ) -> bool {
+    pub fn should_retry(&self, attempts: u32, error: &WasmError) -> bool {
         // Limit kontrolü önce — sınıflandırmaya gerek kalmaz
         if attempts >= self.max_attempts {
             return false;
@@ -61,9 +54,7 @@ impl RetryPolicy {
         )
     }
 
-    pub fn classify_wasm_error(
-        error: &WasmError,
-    ) -> RetryClassification {
+    pub fn classify_wasm_error(error: &WasmError) -> RetryClassification {
         match error {
             // Geçici durum — retry anlamlı
             WasmError::Timeout => RetryClassification::Retryable,
@@ -89,9 +80,10 @@ impl RetryPolicy {
     /// Exponential backoff hesapla (jitter opsiyonel).
     ///
     /// `attempt`: kaçıncı denemeden sonra bekleniyor?
-    ///   1. başarısızlık → attempt = 1 → base * 2^1
-    ///   2. başarısızlık → attempt = 2 → base * 2^2
-    ///   Overflow koruması: pow(attempt.min(16))
+    /// - 1. başarısızlık → attempt = 1 → base * 2^1
+    /// - 2. başarısızlık → attempt = 2 → base * 2^2
+    ///
+    /// Overflow koruması: pow(attempt.min(16))
     pub fn next_delay(&self, attempt: u32) -> Duration {
         let multiplier = 2u64.pow(attempt.min(16));
         let delay_ms = self.base_delay_ms * multiplier;

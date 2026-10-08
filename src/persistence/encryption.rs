@@ -5,7 +5,7 @@
 // If the key is absent, plaintext compatibility is retained for local/dev
 // use, with an explicit warning. Production must configure the key.
 
-use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
+use ring::aead::{AES_256_GCM, Aad, LessSafeKey, Nonce, UnboundKey};
 use ring::rand::{SecureRandom, SystemRandom};
 
 use crate::errors::persistence::PersistenceError;
@@ -39,17 +39,23 @@ impl Aes256GcmCipher {
         }
         let unbound = UnboundKey::new(&AES_256_GCM, &key_bytes)
             .map_err(|_| PersistenceError::CryptoFailure)?;
-        Ok(Self { key: LessSafeKey::new(unbound), rng: SystemRandom::new() })
+        Ok(Self {
+            key: LessSafeKey::new(unbound),
+            rng: SystemRandom::new(),
+        })
     }
 }
 
 impl AtRestCipher for Aes256GcmCipher {
     fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, PersistenceError> {
         let mut nonce_bytes = [0u8; 12];
-        self.rng.fill(&mut nonce_bytes).map_err(|_| PersistenceError::CryptoFailure)?;
+        self.rng
+            .fill(&mut nonce_bytes)
+            .map_err(|_| PersistenceError::CryptoFailure)?;
         let nonce = Nonce::assume_unique_for_key(nonce_bytes);
         let mut buf = plaintext.to_vec();
-        self.key.seal_in_place_append_tag(nonce, Aad::empty(), &mut buf)
+        self.key
+            .seal_in_place_append_tag(nonce, Aad::empty(), &mut buf)
             .map_err(|_| PersistenceError::CryptoFailure)?;
         let mut result = Vec::with_capacity(12 + buf.len());
         result.extend_from_slice(&nonce_bytes);
@@ -65,7 +71,9 @@ impl AtRestCipher for Aes256GcmCipher {
         nonce_bytes.copy_from_slice(&ciphertext[..12]);
         let nonce = Nonce::assume_unique_for_key(nonce_bytes);
         let mut buf = ciphertext[12..].to_vec();
-        let plaintext = self.key.open_in_place(nonce, Aad::empty(), &mut buf)
+        let plaintext = self
+            .key
+            .open_in_place(nonce, Aad::empty(), &mut buf)
             .map_err(|_| PersistenceError::CryptoFailure)?;
         Ok(plaintext.to_vec())
     }
@@ -78,9 +86,9 @@ pub fn cipher_from_env() -> Box<dyn AtRestCipher> {
                 tracing::info!("sled at-rest AES-256-GCM encryption enabled");
                 Box::new(cipher)
             }
-            Err(_) => panic!(
-                "AETHEROS_ENCRYPTION_KEY must be exactly 32 bytes / 64 hex characters"
-            ),
+            Err(_) => {
+                panic!("AETHEROS_ENCRYPTION_KEY must be exactly 32 bytes / 64 hex characters")
+            }
         },
         _ => {
             tracing::warn!(

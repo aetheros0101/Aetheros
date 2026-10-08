@@ -27,11 +27,7 @@ use crate::runtime::lifecycle::RuntimeState;
 use crate::runtime::runtime::Runtime;
 use crate::task::priority::TaskPriority;
 use crate::task::retry::RetryPolicy;
-use crate::task::task::{
-    TaskDefinition,
-    TaskMetadata,
-    TaskState,
-};
+use crate::task::task::{TaskDefinition, TaskMetadata, TaskState};
 use crate::types::ids::TaskId;
 
 // ── Yardımcılar ───────────────────────────────────────────
@@ -44,11 +40,7 @@ fn test_config() -> (RuntimeConfig, tempfile::TempDir) {
         event_channel_capacity: 32,
         shutdown_timeout: Duration::from_secs(5),
         max_concurrent_tasks: 8,
-        persistence_path: dir
-            .path()
-            .to_str()
-            .unwrap()
-            .to_string(),
+        persistence_path: dir.path().to_str().unwrap().to_string(),
     };
     (config, dir)
 }
@@ -139,10 +131,7 @@ async fn handle_submit_fails_on_closed_channel() {
 
     let handle = RuntimeHandle::new(sender);
     let result = handle.submit(make_task()).await;
-    assert!(
-        result.is_err(),
-        "Kapalı kanala submit hata döndürmeli"
-    );
+    assert!(result.is_err(), "Kapalı kanala submit hata döndürmeli");
 }
 
 /// Handle clone'lanabilmeli — her ikisi de çalışmalı.
@@ -166,10 +155,7 @@ async fn handle_is_cloneable() {
 #[tokio::test]
 async fn backpressure_initial_permits() {
     let bp = BackpressureController::new(4);
-    assert_eq!(
-        bp.available(), 4,
-        "Başlangıçta 4 permit olmalı"
-    );
+    assert_eq!(bp.available(), 4, "Başlangıçta 4 permit olmalı");
 }
 
 /// Permit alınınca sayı azalmalı, drop edince artmalı.

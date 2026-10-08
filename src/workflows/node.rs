@@ -18,5 +18,5 @@
 
 // orchestration::graph zaten daha zengin — 7 variant
 // (AiInference ve Plugin workflow'larda da lazım olacak)
-pub use crate::orchestration::graph::ExecutionNodeKind as WorkflowNodeKind;
 pub use crate::orchestration::graph::ExecutionNode as WorkflowNode;
+pub use crate::orchestration::graph::ExecutionNodeKind as WorkflowNodeKind;

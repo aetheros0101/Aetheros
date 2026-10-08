@@ -9,26 +9,22 @@ pub mod errors;
 pub mod events;
 pub mod metrics;
 pub mod persistence;
-pub mod registry;
 pub mod runtime;
 pub mod task;
 pub mod types;
 pub mod wasm;
 pub mod worker;
 
-pub mod config;
 pub mod api;
-pub mod plugins;
 pub mod remote;
-pub mod sdk;
 pub mod security;
 
 pub mod agents;
 pub mod ai;
-pub mod orchestration;
-pub mod workflows;
 pub mod logging;
+pub mod orchestration;
 pub mod scripting;
+pub mod workflows;
 
 // ── Flutter-Rust Bridge ───────────────────────────────────
 // Mobil FFI katmanı. flutter_rust_bridge_codegen bu modülü
@@ -36,7 +32,10 @@ pub mod scripting;
 // Sunucu build'inde de derlenir; binary boyutuna etkisi minimumdur.
 pub mod bridge;
 
-pub mod frb_generated; 
+// flutter_rust_bridge codegen çıktısı; yeniden üretildiğinde üzerine yazılır,
+// bu yüzden lint istisnası burada (dosyanın içinde değil) tutulur.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub mod frb_generated;
 
 pub use runtime::api::RuntimeHandle;
 pub use runtime::bootstrap::RuntimeBootstrap;

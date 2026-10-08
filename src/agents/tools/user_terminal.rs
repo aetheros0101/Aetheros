@@ -22,7 +22,7 @@
 use uuid::Uuid;
 
 use crate::agents::terminal_tool::TerminalAgentTool;
-use crate::logging::audit::{summarize_output, AuditEventKind, AuditLog};
+use crate::logging::audit::{AuditEventKind, AuditLog, summarize_output};
 use crate::types::agent_tool::{AgentTool, CallVerdict};
 
 /// Kullanıcı terminalinin denetim izindeki sabit agent kimliği.
@@ -119,11 +119,9 @@ pub fn check(tool: &TerminalAgentTool, line: &str) -> Result<CheckResult, String
     if argv.is_empty() {
         return Err("komut boş".to_string());
     }
-    let verdict = tool
-        .assess_call(&argv)
-        .unwrap_or_else(|| CallVerdict::Ask {
-            reason: "politika kararı yok — insan onayı gerekli".to_string(),
-        });
+    let verdict = tool.assess_call(&argv).unwrap_or_else(|| CallVerdict::Ask {
+        reason: "politika kararı yok — insan onayı gerekli".to_string(),
+    });
     Ok(CheckResult { argv, verdict })
 }
 
@@ -220,5 +218,9 @@ pub async fn run(
     );
 
     let (output, truncated) = clip_output(text);
-    Ok(RunResult { success, output, truncated })
+    Ok(RunResult {
+        success,
+        output,
+        truncated,
+    })
 }

@@ -11,10 +11,7 @@
 // Bu sayede kullanıcı düz metin script yazabilir.
 // ============================================================
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
 use crate::errors::wasm::WasmError;
 
@@ -51,10 +48,9 @@ impl ScriptDefinition {
         entrypoint: impl Into<String>,
         timeout_ms: u64,
     ) -> Result<Self, WasmError> {
-        let wasm_binary =
-            wat::parse_str(wat_source).map_err(|_e| {
-                WasmError::InvalidModule { reason: _e.to_string() }
-            })?;
+        let wasm_binary = wat::parse_str(wat_source).map_err(|_e| WasmError::InvalidModule {
+            reason: _e.to_string(),
+        })?;
 
         Ok(Self {
             name: name.into(),
@@ -89,21 +85,14 @@ impl ScriptDefinition {
         entrypoint: impl Into<String>,
         timeout_ms: u64,
     ) -> Result<Self, WasmError> {
-        let wasm_binary = hex::decode(hex_str)
-            .map_err(|_e| WasmError::InvalidModule { reason: _e.to_string() })?;
+        let wasm_binary = hex::decode(hex_str).map_err(|_e| WasmError::InvalidModule {
+            reason: _e.to_string(),
+        })?;
 
-        Ok(Self::from_binary(
-            name,
-            wasm_binary,
-            entrypoint,
-            timeout_ms,
-        ))
+        Ok(Self::from_binary(name, wasm_binary, entrypoint, timeout_ms))
     }
 
-    pub fn with_description(
-        mut self,
-        desc: impl Into<String>,
-    ) -> Self {
+    pub fn with_description(mut self, desc: impl Into<String>) -> Self {
         self.description = Some(desc.into());
         self
     }

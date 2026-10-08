@@ -32,7 +32,7 @@ exclude = ["tools/context_builder"]
 #
 [features]
 default          = ["backend-wasmtime"]
-backend-wasmtime = ["dep:wasmtime", "dep:wasmtime-wasi"]
+backend-wasmtime = ["dep:wasmtime"]
 backend-wasmi    = ["dep:wasmi"]
 
 # ── Library (Flutter FFI / cdylib) ────────────────────────
@@ -67,7 +67,6 @@ tokio       = { version = "1", features = ["full", "signal"] }
 
 # ── WASM backend — sadece biri aktif olmalı ───────────────
 wasmtime      = { version = "38",  features = ["async", "component-model"], optional = true }
-wasmtime-wasi = { version = "38",  optional = true }
 wasmi         = { version = "0.31", features = ["std"],                     optional = true }
 
 # ── Flutter-Rust Bridge ───────────────────────────────────
@@ -84,18 +83,14 @@ uuid        = { version = "1",    features = ["v4", "serde"] }
 sled        = "0.34"
 async-trait = "0.1"
 chrono      = { version = "0.4",  features = ["serde"] }
-bytes       = "1"
 futures     = "0.3"
 rand        = "0.9"
 parking_lot = "0.12"
 dashmap     = "6"
 tokio-util  = "0.7"
-smallvec    = "1"
-anyhow      = "1"
 axum        = { version = "0.8.9", features = ["ws"] }
 sha2        = "0.11.0"
 ring        = "0.17.14"
-semver      = { version = "1.0.28", features = ["serde"] }
 hex         = "0.4.3"
 # default-features = false → native-tls (OpenSSL) devre dışı
 # rustls-tls → saf Rust TLS, Android cross-compile'da OpenSSL gerekmez

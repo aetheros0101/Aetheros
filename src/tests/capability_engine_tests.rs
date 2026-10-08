@@ -17,8 +17,8 @@
 //   ayrı bir sprintte scripting_tests.rs'e eklenebilir.
 // ============================================================
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -69,7 +69,15 @@ async fn denies_tool_when_agent_has_no_grant() {
 
     // Hiç grant yapılmamış CapabilityEngine — deny-by-default.
     let engine = Arc::new(CapabilityEngine::new());
-    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, Some(engine), None, None, None);
+    let runtime = AgentRuntime::new(
+        test_budget(),
+        vec![tool],
+        None,
+        Some(engine),
+        None,
+        None,
+        None,
+    );
 
     let result = runtime.invoke_best_tool(agent_id, "risky_tool").await;
 
@@ -105,7 +113,15 @@ async fn allows_tool_when_agent_has_matching_grant() {
             workspace_mutate: false,
         },
     );
-    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, Some(engine), None, None, None);
+    let runtime = AgentRuntime::new(
+        test_budget(),
+        vec![tool],
+        None,
+        Some(engine),
+        None,
+        None,
+        None,
+    );
 
     let result = runtime.invoke_best_tool(agent_id, "risky_tool").await;
 

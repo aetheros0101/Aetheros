@@ -19,18 +19,12 @@ use std::time::Duration;
 
 use chrono::Utc;
 use dashmap::DashMap;
-use tracing::{
-    info,
-    warn,
-};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::remote::cluster_health::ClusterHealth;
 use crate::remote::heartbeat::Heartbeat;
-use crate::remote::node::{
-    NodeCapability,
-    RemoteNode,
-};
+use crate::remote::node::{NodeCapability, RemoteNode};
 
 /// Node'un stale sayılacağı süre.
 const STALE_THRESHOLD: Duration = Duration::from_secs(30);
@@ -40,6 +34,12 @@ pub struct ClusterState {
     heartbeats: DashMap<Uuid, Heartbeat>,
     /// Mevcut leader (None = seçim bekleniyor)
     leader: DashMap<&'static str, Uuid>,
+}
+
+impl Default for ClusterState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ClusterState {
@@ -67,15 +67,16 @@ impl ClusterState {
             self.heartbeats.remove(node_id);
             warn!(node_id = %node_id, "Node removed from cluster");
         }
-    
+
         // Önce değeri al, sonra sil — deadlock önlenir
-        let is_leader = self.leader
+        let is_leader = self
+            .leader
             .get("current")
             .map(|l| *l == *node_id)
             .unwrap_or(false);
-    
+
         drop(self.leader.get("current")); // referansı serbest bırak
-    
+
         if is_leader {
             self.leader.remove("current");
             warn!("Leader node removed — election needed");
@@ -97,10 +98,7 @@ impl ClusterState {
     // ── Node Sorguları ────────────────────────────────────
 
     pub fn nodes(&self) -> Vec<RemoteNode> {
-        self.nodes
-            .iter()
-            .map(|n| n.value().clone())
-            .collect()
+        self.nodes.iter().map(|n| n.value().clone()).collect()
     }
 
     pub fn healthy_nodes(&self) -> Vec<RemoteNode> {
@@ -109,20 +107,13 @@ impl ClusterState {
         self.nodes
             .iter()
             .filter(|n| {
-                n.healthy
-                    && (now - n.last_seen)
-                        .to_std()
-                        .unwrap_or(Duration::MAX)
-                        < STALE_THRESHOLD
+                n.healthy && (now - n.last_seen).to_std().unwrap_or(Duration::MAX) < STALE_THRESHOLD
             })
             .map(|n| n.value().clone())
             .collect()
     }
 
-    pub fn nodes_with_capability(
-        &self,
-        cap: &NodeCapability,
-    ) -> Vec<RemoteNode> {
+    pub fn nodes_with_capability(&self, cap: &NodeCapability) -> Vec<RemoteNode> {
         self.healthy_nodes()
             .into_iter()
             .filter(|n| n.capabilities.contains(cap))
@@ -142,10 +133,7 @@ impl ClusterState {
     }
 
     pub fn all_heartbeats(&self) -> Vec<Heartbeat> {
-        self.heartbeats
-            .iter()
-            .map(|h| h.value().clone())
-            .collect()
+        self.heartbeats.iter().map(|h| h.value().clone()).collect()
     }
 
     // ── Stale Node Temizleme ──────────────────────────────
@@ -156,10 +144,7 @@ impl ClusterState {
         let now = Utc::now();
 
         for mut node in self.nodes.iter_mut() {
-            let stale = (now - node.last_seen)
-                .to_std()
-                .unwrap_or(Duration::MAX)
-                > STALE_THRESHOLD;
+            let stale = (now - node.last_seen).to_std().unwrap_or(Duration::MAX) > STALE_THRESHOLD;
 
             if stale && node.healthy {
                 node.mark_unhealthy();
@@ -219,9 +204,7 @@ impl ClusterState {
     }
 
     pub fn is_leader(&self, node_id: &Uuid) -> bool {
-        self.leader()
-            .map(|l| l == *node_id)
-            .unwrap_or(false)
+        self.leader().map(|l| l == *node_id).unwrap_or(false)
     }
 
     // ── Stats ─────────────────────────────────────────────

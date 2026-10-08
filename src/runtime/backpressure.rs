@@ -8,35 +8,21 @@ pub struct BackpressureController {
 }
 
 impl BackpressureController {
-    pub fn new(
-        max_inflight: usize,
-    ) -> Self {
+    pub fn new(max_inflight: usize) -> Self {
         Self {
-            permits: Arc::new(
-                Semaphore::new(
-                    max_inflight,
-                ),
-            ),
+            permits: Arc::new(Semaphore::new(max_inflight)),
         }
     }
 
-    pub async fn acquire(
-        &self,
-    ) -> tokio::sync::OwnedSemaphorePermit
-    {
+    pub async fn acquire(&self) -> tokio::sync::OwnedSemaphorePermit {
         self.permits
             .clone()
             .acquire_owned()
             .await
-            .expect(
-                "backpressure semaphore closed",
-            )
+            .expect("backpressure semaphore closed")
     }
 
-    pub fn available(
-        &self,
-    ) -> usize {
-        self.permits
-            .available_permits()
+    pub fn available(&self) -> usize {
+        self.permits.available_permits()
     }
 }

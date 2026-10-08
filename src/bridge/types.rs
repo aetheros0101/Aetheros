@@ -54,7 +54,7 @@ pub struct TaskStatusResponse {
     /// "Created"|"Queued"|"Executing"|"Completed"|"Failed"|"Cancelled"|"Retrying"
     pub state: String,
 
-    pub created_at: i64,  // Unix timestamp (ms)
+    pub created_at: i64, // Unix timestamp (ms)
     pub updated_at: i64,
 
     /// Kaç kez denendi
@@ -73,9 +73,9 @@ pub use crate::metrics::runtime::MetricsSnapshot;
 
 #[frb(dart_metadata = ("freezed"))]
 pub struct RuntimeInfo {
-    pub version:      String,
-    pub is_running:   bool,
-    pub backend:      String,   // "wasmtime" | "wasmi"
+    pub version: String,
+    pub is_running: bool,
+    pub backend: String, // "wasmtime" | "wasmi"
     pub worker_count: u32,
 }
 
@@ -118,20 +118,20 @@ pub struct LogRecord {
 #[frb(dart_metadata = ("freezed"))]
 pub struct AgentStartResponse {
     pub execution_id: String,
-    pub agent_id:     String,
-    pub status:       String,
+    pub agent_id: String,
+    pub status: String,
 }
 
 #[frb(dart_metadata = ("freezed"))]
 pub struct AgentStatusResponse {
     pub execution_id: String,
-    pub agent_id:     String,
-    pub objective:    String,
-    pub status:       String,
-    pub error:        Option<String>,
+    pub agent_id: String,
+    pub objective: String,
+    pub status: String,
+    pub error: Option<String>,
     /// Unix ms
-    pub started_at:   i64,
-    pub finished_at:  Option<i64>,
+    pub started_at: i64,
+    pub finished_at: Option<i64>,
     /// V10 Sprint 5: status "pending_approval" ise dolu — respond_to_approval()'a geçilir.
     pub pending_approval_id: Option<String>,
 }
@@ -141,31 +141,31 @@ pub struct AgentStatusResponse {
 /// AuditEventKind'ın tam (kayıp bilgisiz) JSON temsili — ayrıntı
 /// görünümü isteyen bir UI için.
 pub struct AuditEventResponse {
-    pub id:           String,
-    pub agent_id:     String,
+    pub id: String,
+    pub agent_id: String,
     pub execution_id: String,
     /// "governor_decision" | "tool_invoked" | "execution_paused" |
     /// "execution_resumed" | "approval_denied" | "execution_completed" |
     /// "execution_failed"
-    pub kind_label:   String,
-    pub summary:      String,
+    pub kind_label: String,
+    pub summary: String,
     pub details_json: String,
     /// Unix ms
-    pub created_at:   i64,
+    pub created_at: i64,
 }
 
 /// V10 Sprint 5: SecurityGovernor'ın RequiresApproval dediği, kullanıcı
 /// onayı bekleyen bir tool çağrısı. "Bekleyen Onaylar" ekranı bunu listeler.
 pub struct PendingApprovalResponse {
-    pub id:           String,
+    pub id: String,
     pub execution_id: String,
-    pub agent_id:     String,
-    pub objective:    String,
-    pub tool_name:    String,
-    pub arguments:    Vec<String>,
-    pub reason:       String,
+    pub agent_id: String,
+    pub objective: String,
+    pub tool_name: String,
+    pub arguments: Vec<String>,
+    pub reason: String,
     /// Unix ms
-    pub created_at:   i64,
+    pub created_at: i64,
 }
 
 // ── Workflow tipleri (FRB bridge) ─────────────────────────────────────────────
@@ -173,18 +173,18 @@ pub struct PendingApprovalResponse {
 #[frb(dart_metadata = ("freezed"))]
 pub struct WorkflowStartResponse {
     pub workflow_id: String,
-    pub name:        String,
-    pub status:      String,
+    pub name: String,
+    pub status: String,
 }
 
 #[frb(dart_metadata = ("freezed"))]
 pub struct WorkflowStatusResponse {
     pub workflow_id: String,
-    pub name:        String,
-    pub status:      String,
-    pub error:       Option<String>,
+    pub name: String,
+    pub status: String,
+    pub error: Option<String>,
     /// Unix ms
-    pub started_at:  i64,
+    pub started_at: i64,
     pub finished_at: Option<i64>,
 }
 
@@ -192,30 +192,30 @@ pub struct WorkflowStatusResponse {
 
 #[frb(dart_metadata = ("freezed"))]
 pub struct ClusterNodeResponse {
-    pub node_id:           String,
-    pub address:           String,
-    pub healthy:           bool,
-    pub capabilities:      Vec<String>,
-    pub cpu_percent:       f32,
-    pub memory_mb:         u64,
+    pub node_id: String,
+    pub address: String,
+    pub healthy: bool,
+    pub capabilities: Vec<String>,
+    pub cpu_percent: f32,
+    pub memory_mb: u64,
     pub active_executions: u64,
 }
 
 #[frb(dart_metadata = ("freezed"))]
 pub struct ClusterStatusResponse {
-    pub health:     String,
-    pub total:      u64,
-    pub healthy:    u64,
+    pub health: String,
+    pub total: u64,
+    pub healthy: u64,
     pub has_quorum: bool,
-    pub leader:     Option<String>,
-    pub nodes:      Vec<ClusterNodeResponse>,
+    pub leader: Option<String>,
+    pub nodes: Vec<ClusterNodeResponse>,
 }
 
 #[frb(dart_metadata = ("freezed"))]
 pub struct NodeRegistrationResponse {
     pub node_id: String,
     pub address: String,
-    pub status:  String,
+    pub status: String,
 }
 
 /// Kullanıcı terminali: komut ÇALIŞTIRILMADAN önce politika kararı.
@@ -224,16 +224,16 @@ pub struct NodeRegistrationResponse {
 pub struct TerminalCheckResponse {
     pub verdict: String,
     /// ask/deny için gerekçe; allow için boş.
-    pub reason:  String,
-    pub argv:    Vec<String>,
+    pub reason: String,
+    pub argv: Vec<String>,
 }
 
 /// Kullanıcı terminali: çalıştırma sonucu.
 pub struct TerminalRunResponse {
     /// Komut 0 koduyla bitti mi?
-    pub success:   bool,
+    pub success: bool,
     /// Başarıda stdout; başarısızlıkta çıkış kodu + stderr.
-    pub output:    String,
+    pub output: String,
     /// Çıktı 20 000 karaktere kırpıldı mı?
     pub truncated: bool,
 }
@@ -244,21 +244,21 @@ pub struct TerminalRunResponse {
 #[derive(Debug)]
 pub struct WorkspaceItem {
     /// Workspace köküne göre yol ("belge/a.txt").
-    pub path:   String,
-    pub name:   String,
+    pub path: String,
+    pub name: String,
     pub is_dir: bool,
     /// Bayt (klasör için 0).
-    pub size:   i64,
+    pub size: i64,
     pub hidden: bool,
 }
 
 /// Açılan metin dosyası. `version`, kaydederken çakışma denetimi içindir.
 #[derive(Debug)]
 pub struct WorkspaceFileResponse {
-    pub path:     String,
-    pub content:  String,
-    pub size:     i64,
+    pub path: String,
+    pub content: String,
+    pub size: i64,
     /// Opak sürüm bilgisi (değişince değişir) — `workspace_write_text`e geri ver.
-    pub version:  String,
+    pub version: String,
     pub readonly: bool,
 }

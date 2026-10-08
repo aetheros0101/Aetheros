@@ -1,44 +1,49 @@
+# syntax=docker/dockerfile:1.7
 # ============================================================
 # AetherOS — Multi-stage Production Dockerfile
 #
 # Stage 1 (builder): Rust + cargo build --release
 # Stage 2 (runtime): Minimal debian-slim image
 #
-# Image boyutu: ~50-80MB (strip + slim base)
+# Not: workspace path bağımlılıkları (aetheros-terminal, workspace_core)
+# ve benches/ build context'ine dahil edilmelidir; aksi halde Cargo
+# manifest'i çözemez. .dockerignore bunları dışarıda BIRAKMAZ.
 # ============================================================
 
+# Rust sürümü build arg: `docker build --build-arg RUST_VERSION=1.90 .`
+# Varsayılan "1" = en güncel kararlı sürüm (wasmtime MSRV'sini karşılar).
+ARG RUST_VERSION=1
+
 # ── Stage 1: Builder ─────────────────────────────────────
-FROM rust:1.87-slim-bookworm AS builder
+FROM rust:${RUST_VERSION}-slim-bookworm AS builder
 
 WORKDIR /build
 
-# Bağımlılıkları önce kopyala — layer cache optimizasyonu
-# Cargo.toml değişmeden src/ değişirse bağımlılıklar
-# yeniden derlenmez.
 COPY Cargo.toml Cargo.lock ./
-
-# Dummy main ile bağımlılıkları derle
-RUN mkdir src && \
-    echo 'fn main() {}' > src/main.rs && \
-    echo 'pub fn dummy() {}' > src/lib.rs && \
-    cargo build --release && \
-    rm -rf src
-
-# Gerçek kaynak kodu
+COPY aetheros-terminal ./aetheros-terminal
+COPY workspace_core ./workspace_core
+COPY benches ./benches
 COPY src ./src
 
-# Binary'yi derle (strip ile küçült)
-RUN cargo build --release && \
-    strip target/release/aetheros
+# BuildKit cache mount'ları: registry ve target katmanları build'ler
+# arası korunur (dummy-main hilesinden daha sağlam; path crate'lerle de çalışır).
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/build/target \
+    cargo build --release --locked --bin aetheros && \
+    mkdir -p /out && \
+    cp target/release/aetheros /out/aetheros && \
+    strip /out/aetheros
 
 # ── Stage 2: Runtime ─────────────────────────────────────
 FROM debian:bookworm-slim AS runtime
 
-# Güvenlik güncellemeleri + gerekli kütüphaneler
+# reqwest rustls-tls kullanıyor → libssl gerekmez.
+# curl: HEALTHCHECK için (slim imajda wget/curl yok).
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
-        libssl3 && \
+        curl && \
     rm -rf /var/lib/apt/lists/*
 
 # Non-root kullanıcı
@@ -46,8 +51,7 @@ RUN useradd -r -s /bin/false -u 1001 aetheros
 
 WORKDIR /app
 
-# Binary kopyala
-COPY --from=builder /build/target/release/aetheros .
+COPY --from=builder /out/aetheros .
 
 # DB ve log dizinleri
 RUN mkdir -p /data/db /data/logs && \
@@ -66,8 +70,7 @@ ENV AETHEROS_ADDR=0.0.0.0:8080 \
 
 EXPOSE 8080
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -qO- http://localhost:8080/health || exit 1
+    CMD curl -fsS http://localhost:8080/health || exit 1
 
 ENTRYPOINT ["./aetheros"]

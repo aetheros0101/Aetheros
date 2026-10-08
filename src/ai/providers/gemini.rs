@@ -94,8 +94,8 @@ struct GeminiError {
 
 pub struct GeminiProvider {
     api_key: String,
-    model:   String,
-    client:  reqwest::Client,
+    model: String,
+    client: reqwest::Client,
 }
 
 impl GeminiProvider {
@@ -108,8 +108,8 @@ impl GeminiProvider {
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
             api_key: api_key.into(),
-            model:   "gemini-flash-latest".to_string(),
-            client:  reqwest::Client::new(),
+            model: "gemini-flash-latest".to_string(),
+            client: reqwest::Client::new(),
         }
     }
 
@@ -128,23 +128,28 @@ impl GeminiProvider {
 
 #[async_trait]
 impl ModelProvider for GeminiProvider {
-    fn provider_id(&self) -> &'static str { "gemini" }
+    fn provider_id(&self) -> &'static str {
+        "gemini"
+    }
 
-    fn supports_streaming(&self) -> bool { false }
+    fn supports_streaming(&self) -> bool {
+        false
+    }
 
-    async fn infer(
-        &self,
-        request: InferenceRequest,
-    ) -> Result<InferenceResponse, AiError> {
+    async fn infer(&self, request: InferenceRequest) -> Result<InferenceResponse, AiError> {
         debug!(model = %self.model, "Gemini inference request");
 
-        let user_part = GeminiPart { text: &request.prompt };
+        let user_part = GeminiPart {
+            text: &request.prompt,
+        };
 
-        let _system_instruction = request.system_prompt.as_deref().map(|s| {
-            GeminiSystemInstruction {
-                parts: vec![GeminiPart { text: s }],
-            }
-        });
+        let _system_instruction =
+            request
+                .system_prompt
+                .as_deref()
+                .map(|s| GeminiSystemInstruction {
+                    parts: vec![GeminiPart { text: s }],
+                });
 
         // system_prompt str'ini &str olarak tutmak için
         let sp_owned = request.system_prompt.clone().unwrap_or_default();
@@ -163,9 +168,9 @@ impl ModelProvider for GeminiProvider {
                 parts: vec![user_part],
             }],
             generation_config: GeminiGenerationConfig {
-                temperature:       request.temperature,
+                temperature: request.temperature,
                 max_output_tokens: request.max_tokens,
-                top_p:             0.9,
+                top_p: 0.9,
             },
         };
 
@@ -181,7 +186,8 @@ impl ModelProvider for GeminiProvider {
                     warn!("Gemini'ye bağlanılamadı (ağ sorunu)");
                     AiError::ProviderFailure {
                         message: "Bağlantı kurulamadı — internet bağlantını \
-                                  kontrol et ve tekrar dene.".to_string(),
+                                  kontrol et ve tekrar dene."
+                            .to_string(),
                     }
                 } else {
                     AiError::ProviderFailure {
@@ -197,12 +203,13 @@ impl ModelProvider for GeminiProvider {
             return Err(AiError::RateLimited);
         }
 
-        let gemini_resp: GeminiResponse = response
-            .json()
-            .await
-            .map_err(|e| AiError::ProviderFailure {
-                message: format!("JSON parse hatası: {e}"),
-            })?;
+        let gemini_resp: GeminiResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| AiError::ProviderFailure {
+                    message: format!("JSON parse hatası: {e}"),
+                })?;
 
         // API hata yanıtı
         if let Some(err) = gemini_resp.error {
@@ -227,14 +234,14 @@ impl ModelProvider for GeminiProvider {
 
         let tokens_used = gemini_resp
             .usage_metadata
-            .map(|u| {
-                u.prompt_token_count.unwrap_or(0)
-                    + u.candidates_token_count.unwrap_or(0)
-            })
+            .map(|u| u.prompt_token_count.unwrap_or(0) + u.candidates_token_count.unwrap_or(0))
             .unwrap_or(0);
 
         debug!(tokens_used, "Gemini inference tamamlandı");
 
-        Ok(InferenceResponse { output, tokens_used })
+        Ok(InferenceResponse {
+            output,
+            tokens_used,
+        })
     }
 }

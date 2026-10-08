@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use tokio::sync::broadcast;
 
 use crate::{
-    CommandSpec, ProcessResult, PtyCommand, PtyEvent, PtySizeSpec, SessionId,
-    TerminalError, TerminalEvent, TerminalSession, TerminalSessionManager,
+    CommandSpec, ProcessResult, PtyCommand, PtyEvent, PtySizeSpec, SessionId, TerminalError,
+    TerminalEvent, TerminalSession, TerminalSessionManager,
 };
 
 /// Agent-facing command surface over the terminal session manager.
@@ -107,26 +107,37 @@ where
         request: TerminalToolRequest,
     ) -> Result<TerminalToolResponse, TerminalError> {
         match request {
-            TerminalToolRequest::Create { cwd } => {
-                Ok(TerminalToolResponse::SessionCreated(self.manager.create(cwd)))
-            }
-            TerminalToolRequest::Execute { session_id, command } => {
+            TerminalToolRequest::Create { cwd } => Ok(TerminalToolResponse::SessionCreated(
+                self.manager.create(cwd),
+            )),
+            TerminalToolRequest::Execute {
+                session_id,
+                command,
+            } => {
                 let session = self.require_session(session_id)?;
                 let result = self.manager.execute(&session, command).await?;
                 Ok(TerminalToolResponse::Executed(result))
             }
-            TerminalToolRequest::OpenPty { session_id, command } => {
+            TerminalToolRequest::OpenPty {
+                session_id,
+                command,
+            } => {
                 let session = self.require_session(session_id)?;
                 self.manager.open_pty(&session, command)?;
                 Ok(TerminalToolResponse::PtyOpened)
             }
-            TerminalToolRequest::Read { session_id, timeout_ms } => {
+            TerminalToolRequest::Read {
+                session_id,
+                timeout_ms,
+            } => {
                 let event = tokio::time::timeout(
                     std::time::Duration::from_millis(timeout_ms),
                     self.manager.recv(session_id),
                 )
                 .await
-                .map_err(|_| TerminalError::Timeout(std::time::Duration::from_millis(timeout_ms)))??;
+                .map_err(|_| {
+                    TerminalError::Timeout(std::time::Duration::from_millis(timeout_ms))
+                })??;
                 Ok(TerminalToolResponse::Event(event))
             }
             TerminalToolRequest::Write { session_id, data } => {
@@ -153,11 +164,9 @@ where
                 self.manager.close(session_id).await?;
                 Ok(TerminalToolResponse::Closed)
             }
-            TerminalToolRequest::Remove { session_id } => {
-                Ok(TerminalToolResponse::SessionRemoved(
-                    self.manager.remove(session_id),
-                ))
-            }
+            TerminalToolRequest::Remove { session_id } => Ok(TerminalToolResponse::SessionRemoved(
+                self.manager.remove(session_id),
+            )),
         }
     }
 
@@ -179,7 +188,9 @@ mod tests {
         let tool = AgentTerminalTool::local();
 
         let response = tool
-            .call(TerminalToolRequest::Create { cwd: Some(std::env::temp_dir()) })
+            .call(TerminalToolRequest::Create {
+                cwd: Some(std::env::temp_dir()),
+            })
             .await
             .unwrap();
 
@@ -189,7 +200,10 @@ mod tests {
         };
 
         let command = if cfg!(windows) {
-            CommandBuilder::new("cmd").unwrap().args(["/C", "hello"]).build()
+            CommandBuilder::new("cmd")
+                .unwrap()
+                .args(["/C", "hello"])
+                .build()
         } else {
             CommandBuilder::new("echo").unwrap().arg("hello").build()
         };
@@ -210,9 +224,11 @@ mod tests {
             other => panic!("unexpected response: {other:?}"),
         }
 
-        tool.call(TerminalToolRequest::Remove { session_id: session.id })
-            .await
-            .unwrap();
+        tool.call(TerminalToolRequest::Remove {
+            session_id: session.id,
+        })
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
@@ -276,9 +292,11 @@ mod tests {
         assert!(saw_output, "agent tool did not observe PTY output");
         assert!(saw_exit, "agent tool did not observe PTY exit");
 
-        tool.call(TerminalToolRequest::Remove { session_id: session.id })
-            .await
-            .unwrap();
+        tool.call(TerminalToolRequest::Remove {
+            session_id: session.id,
+        })
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
@@ -293,9 +311,11 @@ mod tests {
             other => panic!("unexpected response: {other:?}"),
         };
         let unknown = session.id;
-        tool.call(TerminalToolRequest::Remove { session_id: unknown })
-            .await
-            .unwrap();
+        tool.call(TerminalToolRequest::Remove {
+            session_id: unknown,
+        })
+        .await
+        .unwrap();
 
         let command = CommandBuilder::new(if cfg!(windows) { "cmd" } else { "echo" })
             .unwrap()
@@ -315,7 +335,7 @@ mod tests {
     #[tokio::test]
     async fn read_timeout_is_reported_without_killing_session() {
         let tool = AgentTerminalTool::local();
-    
+
         let session = match tool
             .call(TerminalToolRequest::Create { cwd: None })
             .await
@@ -324,44 +344,42 @@ mod tests {
             TerminalToolResponse::SessionCreated(session) => session,
             other => panic!("unexpected response: {other:?}"),
         };
-    
+
         let shell = if cfg!(windows) {
             PtyCommand::new("cmd").arg("/Q")
         } else {
             PtyCommand::new("cat")
         };
-    
+
         tool.call(TerminalToolRequest::OpenPty {
             session_id: session.id,
             command: shell,
         })
         .await
         .unwrap();
-    
+
         let result = tool
             .call(TerminalToolRequest::Read {
                 session_id: session.id,
                 timeout_ms: 10,
             })
             .await;
-    
-        assert!(
-            matches!(
-                result,
-                Err(TerminalError::Timeout(duration))
-                    if duration == Duration::from_millis(10)
-            )
-        );
-    
+
+        assert!(matches!(
+            result,
+            Err(TerminalError::Timeout(duration))
+                if duration == Duration::from_millis(10)
+        ));
+
         // Timeout must not destroy the interactive session.
         assert!(tool.manager().has_pty(session.id));
-    
+
         tool.call(TerminalToolRequest::Kill {
             session_id: session.id,
         })
         .await
         .unwrap();
-    
+
         tool.call(TerminalToolRequest::Remove {
             session_id: session.id,
         })

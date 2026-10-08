@@ -1,13 +1,8 @@
 use std::time::Duration;
 
-use wasmtime::{
-    Config,
-    Engine,
-};
+use wasmtime::{Config, Engine};
 
-pub fn create_engine()
--> Result<Engine, wasmtime::Error>
-{
+pub fn create_engine() -> Result<Engine, wasmtime::Error> {
     let mut config = Config::new();
 
     config.async_support(true);
@@ -16,9 +11,7 @@ pub fn create_engine()
 
     config.epoch_interruption(true);
 
-    config.cranelift_opt_level(
-        wasmtime::OptLevel::Speed,
-    );
+    config.cranelift_opt_level(wasmtime::OptLevel::Speed);
 
     config.wasm_multi_memory(true);
 

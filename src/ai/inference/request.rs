@@ -8,17 +8,9 @@
 //   Option<String> — verilmezse None, API'ye gönderilmez.
 // ============================================================
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InferenceRequest {
     pub prompt: String,
 
@@ -33,10 +25,7 @@ pub struct InferenceRequest {
 }
 
 impl InferenceRequest {
-    pub fn new(
-        prompt: impl Into<String>,
-        max_tokens: usize,
-    ) -> Self {
+    pub fn new(prompt: impl Into<String>, max_tokens: usize) -> Self {
         Self {
             prompt: prompt.into(),
             system_prompt: None,
@@ -45,18 +34,12 @@ impl InferenceRequest {
         }
     }
 
-    pub fn with_system(
-        mut self,
-        system: impl Into<String>,
-    ) -> Self {
+    pub fn with_system(mut self, system: impl Into<String>) -> Self {
         self.system_prompt = Some(system.into());
         self
     }
 
-    pub fn with_temperature(
-        mut self,
-        temperature: f32,
-    ) -> Self {
+    pub fn with_temperature(mut self, temperature: f32) -> Self {
         self.temperature = temperature;
         self
     }

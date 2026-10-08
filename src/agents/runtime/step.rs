@@ -7,16 +7,17 @@ use crate::agents::approval::{PendingApproval, StepSnapshot};
 use crate::agents::budget::AgentExecutionBudget;
 use crate::agents::context::AgentContext;
 use crate::agents::planner::StepRecord;
-use crate::agents::reasoning::ReasoningTrace;
 use crate::agents::plans::{AgentPlanStep, ToolCall};
+use crate::agents::reasoning::ReasoningTrace;
 use crate::agents::tools::AgentTool;
 use crate::errors::runtime::RuntimeError;
-use crate::logging::audit::{summarize_output, AuditEventKind};
+use crate::logging::audit::{AuditEventKind, summarize_output};
 use crate::security::governor::GovernorDecision;
 
 use super::{AgentRuntime, StepOutcome};
 
 impl AgentRuntime {
+    #[allow(clippy::too_many_arguments)] // TODO(Faz 2): parametre struct'ı
     pub(super) async fn execute_guarded_step(
         &mut self,
         context: &AgentContext,
@@ -64,7 +65,9 @@ impl AgentRuntime {
         };
 
         if let Some(tool) = self.tools.iter().find(|t| t.name() == tool_name_for_check) {
-            let decision = self.governor.evaluate_call(context.agent_id, tool, &call_args);
+            let decision = self
+                .governor
+                .evaluate_call(context.agent_id, tool, &call_args);
 
             let (decision_label, decision_reason): (&str, Option<String>) = match &decision {
                 GovernorDecision::Allow => ("allow", None),
@@ -179,7 +182,10 @@ impl AgentRuntime {
                     "Step completed"
                 );
 
-                Ok(StepOutcome::Ran { output, success: true })
+                Ok(StepOutcome::Ran {
+                    output,
+                    success: true,
+                })
             }
 
             Err(e) => {
@@ -203,13 +209,18 @@ impl AgentRuntime {
                         error = %e,
                         "Step failed, marked retryable"
                     );
-                    Ok(StepOutcome::Ran { output: e, success: false })
+                    Ok(StepOutcome::Ran {
+                        output: e,
+                        success: false,
+                    })
                 } else {
                     let message = format!("Agent step '{}' failed: {}", step.name, e);
                     self.audit(
                         context.agent_id,
                         context.execution_id,
-                        AuditEventKind::ExecutionFailed { error: message.clone() },
+                        AuditEventKind::ExecutionFailed {
+                            error: message.clone(),
+                        },
                     );
                     Err(RuntimeError::TaskExecutionFailed { message })
                 }
@@ -309,5 +320,4 @@ impl AgentRuntime {
         );
         Ok(String::new())
     }
-
 }

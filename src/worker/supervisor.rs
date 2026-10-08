@@ -21,11 +21,7 @@ use std::sync::Arc;
 
 use tokio::sync::watch;
 use tokio::task::JoinSet;
-use tracing::{
-    error,
-    info,
-    warn,
-};
+use tracing::{error, info, warn};
 
 use crate::errors::runtime::RuntimeError;
 use crate::events::bus::EventBus;
@@ -59,10 +55,7 @@ pub struct WorkerSupervisor {
 }
 
 impl WorkerSupervisor {
-    pub fn new(
-        params: WorkerSpawnParams,
-        target_count: usize,
-    ) -> Self {
+    pub fn new(params: WorkerSpawnParams, target_count: usize) -> Self {
         Self {
             set: JoinSet::new(),
             senders: Vec::with_capacity(target_count),
@@ -80,9 +73,7 @@ impl WorkerSupervisor {
     }
 
     /// Dispatcher'ın task göndermesi için sender'ları al.
-    pub fn senders(
-        &self,
-    ) -> &[tokio::sync::mpsc::Sender<WorkerMessage>] {
+    pub fn senders(&self) -> &[tokio::sync::mpsc::Sender<WorkerMessage>] {
         &self.senders
     }
 
@@ -91,10 +82,7 @@ impl WorkerSupervisor {
     /// Shutdown sinyali alınınca izlemeyi durdurur.
     /// Kalan worker'lar Shutdown mesajı aldıktan sonra
     /// temiz çıkar (WorkerManager.send_shutdown_all() ile).
-    pub async fn run(
-        mut self,
-        mut shutdown_rx: watch::Receiver<bool>,
-    ) {
+    pub async fn run(mut self, mut shutdown_rx: watch::Receiver<bool>) {
         info!(
             target_count = self.target_count,
             "Worker supervisor started"
@@ -166,14 +154,9 @@ impl WorkerSupervisor {
 
     /// Tek worker spawn et + sender'ı kaydet.
     fn spawn_one(&mut self) {
-        let (sender, receiver) =
-            tokio::sync::mpsc::channel(
-                self.params.channel_capacity,
-            );
+        let (sender, receiver) = tokio::sync::mpsc::channel(self.params.channel_capacity);
 
-        let executor = Arc::new(WorkerExecutor::new(
-            self.params.engine.clone(),
-        ));
+        let executor = Arc::new(WorkerExecutor::new(self.params.engine.clone()));
 
         let worker = Worker::new(
             receiver,

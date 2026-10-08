@@ -14,19 +14,12 @@
 
 use std::sync::Arc;
 
-use tracing::{
-    info,
-    warn,
-};
+use tracing::{info, warn};
 
 use crate::ai::routing::router::ProviderRouter;
 use crate::errors::runtime::RuntimeError;
 use crate::runtime::api::RuntimeHandle;
-use crate::workflows::compiler::{
-    CompilerError,
-    WorkflowCompiler,
-    WorkflowDsl,
-};
+use crate::workflows::compiler::{CompilerError, WorkflowCompiler, WorkflowDsl};
 use crate::workflows::execution_graph::WorkflowExecutionGraph;
 use crate::workflows::executor::WorkflowExecutor;
 use crate::workflows::graph::WorkflowGraph;
@@ -42,10 +35,7 @@ pub enum WorkflowEngineError {
 }
 
 impl std::fmt::Display for WorkflowEngineError {
-    fn fmt(
-        &self,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Compiler(e) => write!(f, "Compile error: {}", e),
             Self::Validation(errs) => {
@@ -66,9 +56,7 @@ pub struct WorkflowEngine;
 impl WorkflowEngine {
     /// WorkflowGraph (struct) → validate → ExecutionGraph.
     /// Geriye dönük uyumluluk için korundu.
-    pub fn compile(
-        workflow: &WorkflowGraph,
-    ) -> Result<WorkflowExecutionGraph, String> {
+    pub fn compile(workflow: &WorkflowGraph) -> Result<WorkflowExecutionGraph, String> {
         let compiled = WorkflowCompiler::compile(workflow);
 
         if !WorkflowValidator::validate(&compiled) {
@@ -79,31 +67,24 @@ impl WorkflowEngine {
     }
 
     /// WorkflowDsl → validate → ExecutionGraph.
-    pub fn compile_dsl(
-        dsl: &WorkflowDsl,
-    ) -> Result<WorkflowExecutionGraph, WorkflowEngineError> {
+    pub fn compile_dsl(dsl: &WorkflowDsl) -> Result<WorkflowExecutionGraph, WorkflowEngineError> {
         info!(
             name = %dsl.name,
             steps = dsl.steps.len(),
             "Compiling workflow"
         );
 
-        let graph = WorkflowCompiler::compile_dsl(dsl)
-            .map_err(WorkflowEngineError::Compiler)?;
+        let graph = WorkflowCompiler::compile_dsl(dsl).map_err(WorkflowEngineError::Compiler)?;
 
-        let validation =
-            WorkflowValidator::validate_full(&graph);
+        let validation = WorkflowValidator::validate_full(&graph);
 
         if let Err(errors) = validation {
-            let messages: Vec<String> =
-                errors.iter().map(|e| e.to_string()).collect();
+            let messages: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
             warn!(
                 errors = ?messages,
                 "Workflow validation failed"
             );
-            return Err(WorkflowEngineError::Validation(
-                messages,
-            ));
+            return Err(WorkflowEngineError::Validation(messages));
         }
 
         info!(
@@ -116,13 +97,9 @@ impl WorkflowEngine {
     }
 
     /// JSON string → compile → validate → ExecutionGraph.
-    pub fn from_json(
-        json: &str,
-    ) -> Result<WorkflowExecutionGraph, WorkflowEngineError> {
+    pub fn from_json(json: &str) -> Result<WorkflowExecutionGraph, WorkflowEngineError> {
         let dsl: WorkflowDsl = serde_json::from_str(json)
-            .map_err(|e| {
-                WorkflowEngineError::JsonParse(e.to_string())
-            })?;
+            .map_err(|e| WorkflowEngineError::JsonParse(e.to_string()))?;
 
         Self::compile_dsl(&dsl)
     }
@@ -152,9 +129,7 @@ impl WorkflowEngine {
         ai_router: Arc<ProviderRouter>,
     ) -> Result<WorkflowState, WorkflowEngineError> {
         let dsl: WorkflowDsl = serde_json::from_str(json)
-            .map_err(|e| {
-                WorkflowEngineError::JsonParse(e.to_string())
-            })?;
+            .map_err(|e| WorkflowEngineError::JsonParse(e.to_string()))?;
 
         Self::run_dsl(&dsl, runtime, ai_router).await
     }

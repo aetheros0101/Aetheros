@@ -1,6 +1,4 @@
 //pub mod otlp;
-pub mod stdout;
-pub mod console;
 
 use async_trait::async_trait;
 

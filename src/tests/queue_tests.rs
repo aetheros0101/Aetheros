@@ -13,12 +13,8 @@
 
 use crate::task::priority::TaskPriority;
 use crate::task::queue::PriorityTaskQueue;
-use crate::task::task::{
-    TaskDefinition,
-    TaskMetadata,
-    TaskState,
-};
 use crate::task::retry::RetryPolicy;
+use crate::task::task::{TaskDefinition, TaskMetadata, TaskState};
 use crate::types::ids::TaskId;
 
 use chrono::Utc;
@@ -26,10 +22,7 @@ use uuid::Uuid;
 
 // ── Yardımcı fonksiyon ────────────────────────────────────
 
-fn make_task(
-    priority: TaskPriority,
-    entrypoint: &str,
-) -> TaskDefinition {
+fn make_task(priority: TaskPriority, entrypoint: &str) -> TaskDefinition {
     TaskDefinition {
         id: TaskId(Uuid::new_v4()),
         parent: None,
@@ -62,9 +55,7 @@ async fn critical_pops_before_low() {
     let q = PriorityTaskQueue::new();
 
     // Önce Low, sonra Critical ekle (ters sıra)
-    q.push(make_task(TaskPriority::Low, "low"))
-        .await
-        .unwrap();
+    q.push(make_task(TaskPriority::Low, "low")).await.unwrap();
     q.push(make_task(TaskPriority::Critical, "critical"))
         .await
         .unwrap();
@@ -85,9 +76,13 @@ async fn all_priorities_correct_order() {
     let q = PriorityTaskQueue::new();
 
     // Rastgele sırada ekle
-    q.push(make_task(TaskPriority::Normal, "normal")).await.unwrap();
+    q.push(make_task(TaskPriority::Normal, "normal"))
+        .await
+        .unwrap();
     q.push(make_task(TaskPriority::Low, "low")).await.unwrap();
-    q.push(make_task(TaskPriority::Critical, "critical")).await.unwrap();
+    q.push(make_task(TaskPriority::Critical, "critical"))
+        .await
+        .unwrap();
     q.push(make_task(TaskPriority::High, "high")).await.unwrap();
 
     let order: Vec<String> = vec![
@@ -100,7 +95,8 @@ async fn all_priorities_correct_order() {
     assert_eq!(
         order,
         vec!["critical", "high", "normal", "low"],
-        "Öncelik sırası yanlış: {:?}", order
+        "Öncelik sırası yanlış: {:?}",
+        order
     );
 }
 
@@ -109,9 +105,15 @@ async fn all_priorities_correct_order() {
 async fn same_priority_fifo() {
     let q = PriorityTaskQueue::new();
 
-    q.push(make_task(TaskPriority::Normal, "first")).await.unwrap();
-    q.push(make_task(TaskPriority::Normal, "second")).await.unwrap();
-    q.push(make_task(TaskPriority::Normal, "third")).await.unwrap();
+    q.push(make_task(TaskPriority::Normal, "first"))
+        .await
+        .unwrap();
+    q.push(make_task(TaskPriority::Normal, "second"))
+        .await
+        .unwrap();
+    q.push(make_task(TaskPriority::Normal, "third"))
+        .await
+        .unwrap();
 
     assert_eq!(q.pop().await.unwrap().entrypoint, "first");
     assert_eq!(q.pop().await.unwrap().entrypoint, "second");
@@ -146,9 +148,13 @@ async fn mixed_priority_and_fifo() {
     let q = PriorityTaskQueue::new();
 
     q.push(make_task(TaskPriority::Low, "low-1")).await.unwrap();
-    q.push(make_task(TaskPriority::High, "high-1")).await.unwrap();
+    q.push(make_task(TaskPriority::High, "high-1"))
+        .await
+        .unwrap();
     q.push(make_task(TaskPriority::Low, "low-2")).await.unwrap();
-    q.push(make_task(TaskPriority::High, "high-2")).await.unwrap();
+    q.push(make_task(TaskPriority::High, "high-2"))
+        .await
+        .unwrap();
 
     // high'lar önce, kendi aralarında FIFO
     assert_eq!(q.pop().await.unwrap().entrypoint, "high-1");

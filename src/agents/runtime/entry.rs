@@ -13,12 +13,12 @@ use crate::agents::state::AgentState;
 use crate::agents::tools::AgentTool;
 use crate::ai::routing::router::ProviderRouter;
 use crate::errors::runtime::RuntimeError;
-use crate::logging::audit::{summarize_output, AuditEventKind, AuditLog};
+use crate::logging::audit::{AuditEventKind, AuditLog, summarize_output};
 use crate::security::capability_engine::CapabilityEngine;
 use crate::security::governor::GovernorDecision;
 use crate::security::risk_engine::RiskEngine;
 
-use super::{now_ms, AgentOutcome, AgentRuntime};
+use super::{AgentOutcome, AgentRuntime, now_ms};
 
 impl AgentRuntime {
     /// Agent execution döngüsü.
@@ -28,6 +28,7 @@ impl AgentRuntime {
     /// `ai_router`: kullanıcının Ayarlar'da aktif ettiği AI provider'a
     /// erişim sağlar (None ise plan üretimi fallback_plan'a düşer —
     /// runtime hiç donmaz).
+    #[allow(clippy::too_many_arguments)] // TODO(Faz 2): parametre struct'ı
     pub async fn execute(
         context: AgentContext,
         objective: String,
@@ -64,6 +65,7 @@ impl AgentRuntime {
     }
 
     /// Cancel token + event sink ile execution (kurumsal hostlar).
+    #[allow(clippy::too_many_arguments)] // TODO(Faz 2): parametre struct'ı
     pub async fn execute_with_control(
         context: AgentContext,
         objective: String,
@@ -105,14 +107,16 @@ impl AgentRuntime {
         self.accounting = BudgetAccounting::start(now_ms());
         self.emit(context, AgentEventKind::ExecutionStarted);
         self.transition(context, AgentState::Initializing, None);
-        self.transition(context, AgentState::Planning, Some("objective received".into()));
-        self.reasoning_log.push(
-            ReasoningTrace::new(
-                context.agent_id.to_string(),
-                ReasoningPhase::Plan,
-                format!("objective: {objective}"),
-            ),
+        self.transition(
+            context,
+            AgentState::Planning,
+            Some("objective received".into()),
         );
+        self.reasoning_log.push(ReasoningTrace::new(
+            context.agent_id.to_string(),
+            ReasoningPhase::Plan,
+            format!("objective: {objective}"),
+        ));
         // AuditEventKind has no ExecutionStarted — host audit covers start via other events.
     }
 
@@ -203,9 +207,15 @@ impl AgentRuntime {
         // Resume: Waiting → Executing (onay sonrası)
         runtime.accounting = BudgetAccounting::start(now_ms());
         // Resume control plane: Registered → … → Waiting → Executing
-        let _ = runtime.lifecycle.transition(AgentState::Initializing, None, now_ms());
-        let _ = runtime.lifecycle.transition(AgentState::Planning, None, now_ms());
-        let _ = runtime.lifecycle.transition(AgentState::Executing, None, now_ms());
+        let _ = runtime
+            .lifecycle
+            .transition(AgentState::Initializing, None, now_ms());
+        let _ = runtime
+            .lifecycle
+            .transition(AgentState::Planning, None, now_ms());
+        let _ = runtime
+            .lifecycle
+            .transition(AgentState::Executing, None, now_ms());
         let _ = runtime.lifecycle.transition(
             AgentState::Waiting,
             Some("pending approval".into()),
@@ -227,7 +237,9 @@ impl AgentRuntime {
         runtime.audit(
             pending.context.agent_id,
             pending.context.execution_id,
-            AuditEventKind::ExecutionResumed { approval_id: pending.id },
+            AuditEventKind::ExecutionResumed {
+                approval_id: pending.id,
+            },
         );
 
         // Onaylanan çağrıyı invoke et. Governor'ı TAMAMEN atlamıyoruz (B7):
@@ -273,10 +285,9 @@ impl AgentRuntime {
                     },
                 );
                 approved_output = output.clone();
-                runtime.memory.store(
-                    pending.id.to_string(),
-                    serde_json::Value::String(output),
-                );
+                runtime
+                    .memory
+                    .store(pending.id.to_string(), serde_json::Value::String(output));
             }
             Err(e) => {
                 runtime.audit(
@@ -294,7 +305,9 @@ impl AgentRuntime {
                 runtime.audit(
                     pending.context.agent_id,
                     pending.context.execution_id,
-                    AuditEventKind::ExecutionFailed { error: message.clone() },
+                    AuditEventKind::ExecutionFailed {
+                        error: message.clone(),
+                    },
                 );
                 return Err(RuntimeError::TaskExecutionFailed { message });
             }
@@ -303,28 +316,28 @@ impl AgentRuntime {
         // B6: duraklayan execution OTONOM döngüdeyse, onaylanan adım geçmişe
         // eklenir ve planlayıcıyla DEVAM edilir (eskiden onaylanan adımdan
         // sonra execution orada bitiyordu).
-        if pending.autonomous {
-            if let Some(router) = runtime.ai_router.clone() {
-                let mut history: Vec<StepRecord> =
-                    pending.history.iter().map(StepRecord::from).collect();
-                let tokens = approved_output.split_whitespace().count();
-                history.push(StepRecord {
-                    step_name: format!("{} (onaylandı)", pending.tool_call.tool_name),
-                    success: true,
-                    output: approved_output,
-                    tool_call: Some(pending.tool_call.clone()),
-                });
-                return runtime
-                    .run_autonomous_steps(
-                        &pending.context,
-                        &pending.objective,
-                        router,
-                        history,
-                        1,
-                        tokens,
-                    )
-                    .await;
-            }
+        if pending.autonomous
+            && let Some(router) = runtime.ai_router.clone()
+        {
+            let mut history: Vec<StepRecord> =
+                pending.history.iter().map(StepRecord::from).collect();
+            let tokens = approved_output.split_whitespace().count();
+            history.push(StepRecord {
+                step_name: format!("{} (onaylandı)", pending.tool_call.tool_name),
+                success: true,
+                output: approved_output,
+                tool_call: Some(pending.tool_call.clone()),
+            });
+            return runtime
+                .run_autonomous_steps(
+                    &pending.context,
+                    &pending.objective,
+                    router,
+                    history,
+                    1,
+                    tokens,
+                )
+                .await;
         }
 
         runtime

@@ -35,10 +35,7 @@ fn store_returns_same_hash_for_same_binary() {
     let hash2 = store.store(binary.clone()).unwrap();
 
     assert_eq!(hash1, hash2, "Aynı binary aynı hash vermeli");
-    assert_eq!(
-        store.count(), 1,
-        "Aynı binary ikinci kez depolanmamalı"
-    );
+    assert_eq!(store.count(), 1, "Aynı binary ikinci kez depolanmamalı");
 }
 
 #[test]
@@ -116,10 +113,7 @@ fn invalid_hex_returns_error() {
 #[test]
 fn short_hex_returns_error() {
     // 32 byte yerine 16 byte
-    assert!(ModuleStore::hex_to_hash(
-        "0102030405060708090a0b0c0d0e0f10"
-    )
-    .is_err());
+    assert!(ModuleStore::hex_to_hash("0102030405060708090a0b0c0d0e0f10").is_err());
 }
 
 // ── Binary Size ───────────────────────────────────────────
@@ -131,10 +125,7 @@ fn binary_size_correct() {
     let expected_size = binary.len();
     let hash = store.store(binary).unwrap();
 
-    assert_eq!(
-        store.binary_size(&hash),
-        Some(expected_size)
-    );
+    assert_eq!(store.binary_size(&hash), Some(expected_size));
 }
 
 #[test]
@@ -147,8 +138,8 @@ fn binary_size_unknown_returns_none() {
 
 #[test]
 fn task_has_module_false_when_zero_hash() {
-    use crate::tests::helpers::make_task;
     use crate::task::priority::TaskPriority;
+    use crate::tests::helpers::make_task;
 
     let task = make_task(TaskPriority::Normal, "main");
     // [0u8; 32] → modül yok
@@ -157,8 +148,8 @@ fn task_has_module_false_when_zero_hash() {
 
 #[test]
 fn task_has_module_true_when_real_hash() {
-    use crate::tests::helpers::make_task_with_hash;
     use crate::task::priority::TaskPriority;
+    use crate::tests::helpers::make_task_with_hash;
 
     let store = ModuleStore::new();
     let hash = store.store(fake_binary(6, 32)).unwrap();
@@ -171,9 +162,9 @@ fn task_has_module_true_when_real_hash() {
 
 #[test]
 fn task_serializes_hash_as_hex() {
-    use crate::tests::helpers::make_task_with_hash;
     use crate::task::priority::TaskPriority;
     use crate::task::task::TaskDefinition;
+    use crate::tests::helpers::make_task_with_hash;
 
     let store = ModuleStore::new();
     let hash = store.store(fake_binary(7, 64)).unwrap();
@@ -194,17 +185,16 @@ fn task_serializes_hash_as_hex() {
 
 #[test]
 fn task_deserializes_hash_correctly() {
-    use crate::tests::helpers::make_task_with_hash;
     use crate::task::priority::TaskPriority;
     use crate::task::task::TaskDefinition;
+    use crate::tests::helpers::make_task_with_hash;
 
     let store = ModuleStore::new();
     let hash = store.store(fake_binary(8, 32)).unwrap();
     let task = make_task_with_hash(TaskPriority::High, hash);
 
     let json = serde_json::to_string(&task).unwrap();
-    let recovered: TaskDefinition =
-        serde_json::from_str(&json).unwrap();
+    let recovered: TaskDefinition = serde_json::from_str(&json).unwrap();
 
     assert_eq!(recovered.wasm_module_hash, hash);
     assert_eq!(recovered.id, task.id);

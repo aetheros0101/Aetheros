@@ -37,12 +37,8 @@ pub struct RuntimeBootstrap {
 }
 
 impl RuntimeBootstrap {
-    pub fn build(
-        config: RuntimeConfig,
-    ) -> Result<Self, RuntimeError> {
-        let (sender, receiver) = mpsc::channel(
-            config.task_channel_capacity,
-        );
+    pub fn build(config: RuntimeConfig) -> Result<Self, RuntimeError> {
+        let (sender, receiver) = mpsc::channel(config.task_channel_capacity);
 
         let runtime = Runtime::new(config, receiver)?;
 

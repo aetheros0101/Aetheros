@@ -9,25 +9,15 @@ pub struct RuntimeHandle {
 }
 
 impl RuntimeHandle {
-    pub fn new(
-        sender: mpsc::Sender<TaskDefinition>,
-    ) -> Self {
-        Self {
-            sender,
-        }
+    pub fn new(sender: mpsc::Sender<TaskDefinition>) -> Self {
+        Self { sender }
     }
 
-    pub async fn submit(
-        &self,
-        task: TaskDefinition,
-    ) -> Result<(), RuntimeError>
-    {
+    pub async fn submit(&self, task: TaskDefinition) -> Result<(), RuntimeError> {
         self.sender
             .send(task)
             .await
-            .map_err(|_| {
-                RuntimeError::QueueClosed
-            })?;
+            .map_err(|_| RuntimeError::QueueClosed)?;
 
         Ok(())
     }

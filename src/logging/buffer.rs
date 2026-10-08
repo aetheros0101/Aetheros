@@ -107,6 +107,10 @@ impl LogBuffer {
         self.inner.lock().unwrap().len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.inner.lock().unwrap().is_empty()
+    }
+
     // push/recent/by_task: pub(crate) LogEntry alıyor/döndürüyor.
     //
     // Rust E0446: "restricted type `LogEntry` in public interface"
@@ -126,11 +130,7 @@ impl LogBuffer {
     /// Son `limit` kadar entry döndür (yeniden eskiye sıralı).
     pub(crate) fn recent(&self, limit: usize) -> Vec<LogEntry> {
         let buf = self.inner.lock().unwrap();
-        buf.iter()
-            .rev()
-            .take(limit)
-            .cloned()
-            .collect()
+        buf.iter().rev().take(limit).cloned().collect()
     }
 
     /// Belirli task_id'ye ait entry'leri döndür.

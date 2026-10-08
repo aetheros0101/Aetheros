@@ -11,26 +11,13 @@ use crate::types::agent_plan::AgentPlan;
 use uuid::Uuid;
 
 #[async_trait]
-pub trait AiPlanner:
-    Send + Sync
-{
-    async fn create_plan(
-        &self,
-        objective: String,
-    ) -> Result<
-        AgentPlan,
-        AiError,
-    >;
+pub trait AiPlanner: Send + Sync {
+    async fn create_plan(&self, objective: String) -> Result<AgentPlan, AiError>;
 }
 
-#[derive(
-    Debug,
-    Clone,
-)]
+#[derive(Debug, Clone)]
 pub struct AiExecutionPlan {
-    pub execution_id:
-        Uuid,
+    pub execution_id: Uuid,
 
-    pub reasoning_steps:
-        Vec<String>,
+    pub reasoning_steps: Vec<String>,
 }

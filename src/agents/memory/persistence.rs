@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use crate::agents::memory::AgentMemoryRecord;
+use async_trait::async_trait;
 
 #[async_trait]
 pub trait AgentPersistence: Send + Sync {

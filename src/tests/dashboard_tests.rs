@@ -12,7 +12,9 @@ use crate::metrics::runtime::RuntimeMetrics;
 use crate::types::ids::TaskId;
 use uuid::Uuid;
 
-fn task_id() -> TaskId { TaskId(Uuid::new_v4()) }
+fn task_id() -> TaskId {
+    TaskId(Uuid::new_v4())
+}
 
 // ── RuntimeMetrics Unit Testleri ──────────────────────────
 
@@ -75,13 +77,19 @@ fn metrics_set_active_workers() {
 fn metrics_multiple_operations() {
     let m = RuntimeMetrics::new();
 
-    for _ in 0..10 { m.increment_queued(); }
-    for _ in 0..7  { m.increment_completed(); }
-    for _ in 0..2  { m.increment_failed(); }
+    for _ in 0..10 {
+        m.increment_queued();
+    }
+    for _ in 0..7 {
+        m.increment_completed();
+    }
+    for _ in 0..2 {
+        m.increment_failed();
+    }
     m.increment_retried();
 
     let s = m.snapshot();
-    assert_eq!(s.queued_tasks, 1);     // 10 - 7 - 2 = 1
+    assert_eq!(s.queued_tasks, 1); // 10 - 7 - 2 = 1
     assert_eq!(s.completed_tasks, 7);
     assert_eq!(s.failed_tasks, 2);
     assert_eq!(s.retried_tasks, 1);
@@ -101,9 +109,9 @@ async fn metrics_collector_processes_task_completed() {
     // Kısa bekleme — collector spawn'landı
     tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-    bus.publish(SystemEvent::Task(
-        TaskEvent::TaskCompleted { task_id: task_id() }
-    ));
+    bus.publish(SystemEvent::Task(TaskEvent::TaskCompleted {
+        task_id: task_id(),
+    }));
 
     tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
 
@@ -120,9 +128,9 @@ async fn metrics_collector_processes_task_failed() {
 
     tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-    bus.publish(SystemEvent::Task(
-        TaskEvent::TaskFailed { task_id: task_id() }
-    ));
+    bus.publish(SystemEvent::Task(TaskEvent::TaskFailed {
+        task_id: task_id(),
+    }));
 
     tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
     assert_eq!(metrics.snapshot().failed_tasks, 1);
@@ -136,9 +144,9 @@ async fn metrics_collector_processes_task_queued() {
 
     tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-    bus.publish(SystemEvent::Task(
-        TaskEvent::TaskQueued { task_id: task_id() }
-    ));
+    bus.publish(SystemEvent::Task(TaskEvent::TaskQueued {
+        task_id: task_id(),
+    }));
 
     tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
     assert_eq!(metrics.snapshot().queued_tasks, 1);
@@ -152,9 +160,10 @@ async fn metrics_collector_processes_retried() {
 
     tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-    bus.publish(SystemEvent::Task(
-        TaskEvent::TaskRetried { task_id: task_id(), attempt: 2 }
-    ));
+    bus.publish(SystemEvent::Task(TaskEvent::TaskRetried {
+        task_id: task_id(),
+        attempt: 2,
+    }));
 
     tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
     assert_eq!(metrics.snapshot().retried_tasks, 1);
@@ -170,21 +179,22 @@ async fn metrics_collector_multiple_events() {
 
     // 5 queued, 3 completed, 1 failed, 1 retried
     for _ in 0..5 {
-        bus.publish(SystemEvent::Task(
-            TaskEvent::TaskQueued { task_id: task_id() }
-        ));
+        bus.publish(SystemEvent::Task(TaskEvent::TaskQueued {
+            task_id: task_id(),
+        }));
     }
     for _ in 0..3 {
-        bus.publish(SystemEvent::Task(
-            TaskEvent::TaskCompleted { task_id: task_id() }
-        ));
+        bus.publish(SystemEvent::Task(TaskEvent::TaskCompleted {
+            task_id: task_id(),
+        }));
     }
-    bus.publish(SystemEvent::Task(
-        TaskEvent::TaskFailed { task_id: task_id() }
-    ));
-    bus.publish(SystemEvent::Task(
-        TaskEvent::TaskRetried { task_id: task_id(), attempt: 1 }
-    ));
+    bus.publish(SystemEvent::Task(TaskEvent::TaskFailed {
+        task_id: task_id(),
+    }));
+    bus.publish(SystemEvent::Task(TaskEvent::TaskRetried {
+        task_id: task_id(),
+        attempt: 1,
+    }));
 
     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 

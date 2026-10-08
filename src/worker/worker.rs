@@ -18,25 +18,16 @@
 
 use std::sync::Arc;
 
-use tokio::sync::{
-    mpsc,
-    OwnedSemaphorePermit,
-};
+use tokio::sync::{OwnedSemaphorePermit, mpsc};
 use tokio::time::sleep;
 
 use crate::errors::runtime::RuntimeError;
-use crate::events::bus::{
-    EventBus,
-    SystemEvent,
-};
+use crate::events::bus::{EventBus, SystemEvent};
 use crate::events::task::TaskEvent;
 use crate::persistence::engine::PersistenceEngine;
 use crate::task::deadline::deadline_expired;
 use crate::task::queue::PriorityTaskQueue;
-use crate::task::task::{
-    TaskDefinition,
-    TaskState,
-};
+use crate::task::task::{TaskDefinition, TaskState};
 use crate::worker::cancellation::CancellationRegistry;
 use crate::worker::executor::WorkerExecutor;
 use crate::worker::message::WorkerMessage;
@@ -74,14 +65,10 @@ impl Worker {
         }
     }
 
-    pub async fn run(
-        mut self,
-    ) -> Result<(), RuntimeError> {
+    pub async fn run(mut self) -> Result<(), RuntimeError> {
         self.state = WorkerState::Idle;
 
-        while let Some(message) =
-            self.receiver.recv().await
-        {
+        while let Some(message) = self.receiver.recv().await {
             match message {
                 // [BUG #5] Permit execute_task'a taşınıyor.
                 // Fonksiyon bitince drop → semaphore slot açılır.
@@ -134,13 +121,9 @@ impl Worker {
                 retried.state = TaskState::Queued;
                 let _ = self.retry_queue.push(retried).await;
             } else {
-                self.fail_task(
-                    task_id,
-                    "deadline aşıldı, retry hakkı tükendi".to_string(),
-                );
-                self.events.publish(SystemEvent::Task(
-                    TaskEvent::TaskFailed { task_id },
-                ));
+                self.fail_task(task_id, "deadline aşıldı, retry hakkı tükendi".to_string());
+                self.events
+                    .publish(SystemEvent::Task(TaskEvent::TaskFailed { task_id }));
             }
             return Ok(());
         }
@@ -148,9 +131,8 @@ impl Worker {
         self.state = WorkerState::Busy;
         self.update_state(task_id, TaskState::Executing);
 
-        self.events.publish(SystemEvent::Task(
-            TaskEvent::TaskStarted { task_id },
-        ));
+        self.events
+            .publish(SystemEvent::Task(TaskEvent::TaskStarted { task_id }));
 
         let token = self.cancellation.register(task_id);
         let execution = self.executor.execute(task.clone());
@@ -177,9 +159,8 @@ impl Worker {
         match result {
             Ok(_) => {
                 self.update_state(task_id, TaskState::Completed);
-                self.events.publish(SystemEvent::Task(
-                    TaskEvent::TaskCompleted { task_id },
-                ));
+                self.events
+                    .publish(SystemEvent::Task(TaskEvent::TaskCompleted { task_id }));
             }
 
             Err(ref wasm_err) => {
@@ -194,19 +175,16 @@ impl Worker {
 
                 if task.retry_policy.should_retry(attempts, wasm_err) {
                     // ── Retry ────────────────────────────────
-                    let delay = task
-                        .retry_policy
-                        .next_delay(attempts);
+                    let delay = task.retry_policy.next_delay(attempts);
 
                     self.update_state(task_id, TaskState::Retrying);
                     self.increment_attempts(task_id);
 
-                    self.events.publish(SystemEvent::Task(
-                        TaskEvent::TaskRetried {
+                    self.events
+                        .publish(SystemEvent::Task(TaskEvent::TaskRetried {
                             task_id,
                             attempt: attempts + 1,
-                        },
-                    ));
+                        }));
 
                     // _permit burada drop → semaphore slot serbest ✓
                     // Retry task yeni bir permit alarak çalışır.
@@ -220,16 +198,14 @@ impl Worker {
 
                     self.state = WorkerState::Idle;
                     return Ok(());
-
                 } else {
                     // ── Kalıcı başarısızlık ──────────────────
                     // wasm_err.to_string() → WasmError'ın thiserror
                     // #[error("...")] mesajı (örn. "missing entrypoint",
                     // "invalid module: module not found in store").
                     self.fail_task(task_id, wasm_err.to_string());
-                    self.events.publish(SystemEvent::Task(
-                        TaskEvent::TaskFailed { task_id },
-                    ));
+                    self.events
+                        .publish(SystemEvent::Task(TaskEvent::TaskFailed { task_id }));
                 }
             }
         }
@@ -247,42 +223,23 @@ impl Worker {
         Ok(())
     }
 
-    fn update_state(
-        &self,
-        task_id: crate::types::ids::TaskId,
-        state: TaskState,
-    ) {
-        if let Err(_e) = self
-            .persistence
-            .update_task_state(&task_id, state)
-        {
+    fn update_state(&self, task_id: crate::types::ids::TaskId, state: TaskState) {
+        if let Err(_e) = self.persistence.update_task_state(&task_id, state) {
             // Faz 3: tracing::warn!
         }
     }
 
     /// Task'ı Failed yap + gerçek hata mesajını persist et.
     /// UI bu mesajı TaskStatusResponse.error_message'da gösterir.
-    fn fail_task(
-        &self,
-        task_id: crate::types::ids::TaskId,
-        error: String,
-    ) {
-        if let Err(_e) = self
-            .persistence
-            .set_task_failed(&task_id, error)
-        {
+    fn fail_task(&self, task_id: crate::types::ids::TaskId, error: String) {
+        if let Err(_e) = self.persistence.set_task_failed(&task_id, error) {
             // Faz 3: tracing::warn!
         }
     }
 
     /// Persistence'daki attempts sayacını artır.
-    fn increment_attempts(
-        &self,
-        task_id: crate::types::ids::TaskId,
-    ) {
-        if let Ok(Some(mut persisted)) =
-            self.persistence.load_task(&task_id)
-        {
+    fn increment_attempts(&self, task_id: crate::types::ids::TaskId) {
+        if let Ok(Some(mut persisted)) = self.persistence.load_task(&task_id) {
             persisted.attempts += 1;
             persisted.updated_at = chrono::Utc::now();
             let _ = self.persistence.persist_task(&persisted);

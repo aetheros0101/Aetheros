@@ -13,9 +13,6 @@
 //   → client disconnect veya bus kapanınca çık
 // ============================================================
 
-pub mod events;
-pub mod subscriptions;
-
 use axum::{
     extract::Query,
     extract::State,
@@ -25,11 +22,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json;
-use tracing::{
-    debug,
-    info,
-    warn,
-};
+use tracing::{debug, info, warn};
 
 use crate::api::middleware::authenticate_ws;
 use crate::api::rest::router::AppState;
@@ -65,10 +58,7 @@ pub async fn ws_upgrade_handler(
         .into_response()
 }
 
-async fn ws_handler(
-    mut socket: WebSocket,
-    state: AppState,
-) {
+async fn ws_handler(mut socket: WebSocket, state: AppState) {
     info!("WebSocket client connected");
 
     let mut receiver = state.events.subscribe();
@@ -133,33 +123,25 @@ async fn ws_handler(
 /// Serialize edilemeyen event'ler None döner (skip).
 fn serialize_event(event: &SystemEvent) -> Option<String> {
     match event {
-        SystemEvent::Task(e) => {
-            serde_json::to_string(&serde_json::json!({
-                "type": "task",
-                "event": format!("{:?}", e)
-            }))
-            .ok()
-        }
-        SystemEvent::Runtime(e) => {
-            serde_json::to_string(&serde_json::json!({
-                "type": "runtime",
-                "event": format!("{:?}", e)
-            }))
-            .ok()
-        }
-        SystemEvent::Worker(e) => {
-            serde_json::to_string(&serde_json::json!({
-                "type": "worker",
-                "event": format!("{:?}", e)
-            }))
-            .ok()
-        }
-        SystemEvent::Telemetry(e) => {
-            serde_json::to_string(&serde_json::json!({
-                "type": "telemetry",
-                "event": format!("{:?}", e)
-            }))
-            .ok()
-        }
+        SystemEvent::Task(e) => serde_json::to_string(&serde_json::json!({
+            "type": "task",
+            "event": format!("{:?}", e)
+        }))
+        .ok(),
+        SystemEvent::Runtime(e) => serde_json::to_string(&serde_json::json!({
+            "type": "runtime",
+            "event": format!("{:?}", e)
+        }))
+        .ok(),
+        SystemEvent::Worker(e) => serde_json::to_string(&serde_json::json!({
+            "type": "worker",
+            "event": format!("{:?}", e)
+        }))
+        .ok(),
+        SystemEvent::Telemetry(e) => serde_json::to_string(&serde_json::json!({
+            "type": "telemetry",
+            "event": format!("{:?}", e)
+        }))
+        .ok(),
     }
 }

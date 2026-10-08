@@ -102,7 +102,15 @@ async fn real_script_tool_is_denied_without_grant() {
     let agent_id = Uuid::new_v4();
     let engine = Arc::new(CapabilityEngine::new()); // hiç grant yok
 
-    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, Some(engine), None, None, None);
+    let runtime = AgentRuntime::new(
+        test_budget(),
+        vec![tool],
+        None,
+        Some(engine),
+        None,
+        None,
+        None,
+    );
     let result = runtime.invoke_best_tool(agent_id, "noop_script").await;
 
     assert!(
@@ -118,7 +126,15 @@ async fn real_script_tool_actually_runs_on_wasmtime_when_granted() {
     let engine = Arc::new(CapabilityEngine::new());
     engine.grant_capability(agent_id, AgentCapability::WasmExecution);
 
-    let runtime = AgentRuntime::new(test_budget(), vec![tool], None, Some(engine), None, None, None);
+    let runtime = AgentRuntime::new(
+        test_budget(),
+        vec![tool],
+        None,
+        Some(engine),
+        None,
+        None,
+        None,
+    );
     let result = runtime.invoke_best_tool(agent_id, "noop_script").await;
 
     assert!(

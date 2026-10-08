@@ -8,7 +8,7 @@ mod heuristic;
 
 pub use heuristic::extract_heuristic;
 
-use crate::models::{Symbol, SymbolKind};
+use crate::models::Symbol;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -56,24 +56,4 @@ pub type SharedSymbolRegistry = Arc<RwLock<SymbolRegistry>>;
 
 pub fn new_shared_registry() -> SharedSymbolRegistry {
     Arc::new(RwLock::new(SymbolRegistry::new()))
-}
-
-/// Map common capture / node names to SymbolKind (for tree-sitter query hosts).
-pub fn kind_from_capture(name: &str) -> SymbolKind {
-    match name {
-        "function" | "function.definition" | "method" | "method.definition" => SymbolKind::Function,
-        "class" | "class.definition" => SymbolKind::Class,
-        "struct" | "struct.definition" => SymbolKind::Struct,
-        "enum" | "enum.definition" => SymbolKind::Enum,
-        "enum_variant" | "enum_member" => SymbolKind::EnumMember,
-        "interface" | "trait" | "trait.definition" => SymbolKind::Interface,
-        "module" | "mod" | "namespace" => SymbolKind::Module,
-        "constant" | "const" => SymbolKind::Constant,
-        "variable" | "var" | "let" => SymbolKind::Variable,
-        "field" | "property" => SymbolKind::Field,
-        "type" | "type_alias" => SymbolKind::Class,
-        "constructor" => SymbolKind::Constructor,
-        "operator" => SymbolKind::Operator,
-        _ => SymbolKind::Unknown,
-    }
 }

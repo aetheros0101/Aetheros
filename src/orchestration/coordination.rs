@@ -15,15 +15,9 @@
 //   workflows → orchestration (tek yön) ✓
 // ============================================================
 
-use chrono::{
-    DateTime,
-    Utc,
-};
+use chrono::{DateTime, Utc};
 
-use serde::{
-    Deserialize,
-    Serialize,
-};
+use serde::{Deserialize, Serialize};
 
 use uuid::Uuid;
 
@@ -31,12 +25,7 @@ use uuid::Uuid;
 // orchestration kendi graph tipini kullanır.
 use crate::orchestration::graph::ExecutionGraph;
 
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoordinationLease {
     pub coordination_id: Uuid,
     pub owner_node: Uuid,
@@ -54,6 +43,12 @@ pub struct ExecutionCoordinator {
     completed: std::collections::HashSet<Uuid>,
 }
 
+impl Default for ExecutionCoordinator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ExecutionCoordinator {
     pub fn new() -> Self {
         Self {
@@ -62,10 +57,7 @@ impl ExecutionCoordinator {
     }
 
     /// Bağımlılıkları karşılanmış, çalışmaya hazır node'ları döndür.
-    pub fn ready_nodes(
-        &self,
-        graph: &ExecutionGraph,
-    ) -> Vec<Uuid> {
+    pub fn ready_nodes(&self, graph: &ExecutionGraph) -> Vec<Uuid> {
         graph
             .nodes
             .iter()
@@ -84,10 +76,7 @@ impl ExecutionCoordinator {
         self.completed.insert(id);
     }
 
-    pub fn is_complete(
-        &self,
-        graph: &ExecutionGraph,
-    ) -> bool {
+    pub fn is_complete(&self, graph: &ExecutionGraph) -> bool {
         graph
             .nodes
             .iter()

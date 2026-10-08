@@ -4,18 +4,8 @@
 // SPRINT 6 — Auth + RBAC Testleri
 // ============================================================
 
-use crate::security::rbac::{
-    Action,
-    AuthzError,
-    RbacGuard,
-    Role,
-};
-use crate::security::auth::token::{
-    ApiKey,
-    Claims,
-    TokenError,
-    TokenManager,
-};
+use crate::security::auth::token::{ApiKey, Claims, TokenError, TokenManager};
+use crate::security::rbac::{Action, AuthzError, RbacGuard, Role};
 
 // ── RBAC Permission Matrix Testleri ──────────────────────
 
@@ -32,10 +22,7 @@ fn admin_can_do_everything() {
         Action::PolicyManage,
     ];
     for action in &actions {
-        assert!(
-            admin.can(action),
-            "Admin {:?} yapabilmeli", action
-        );
+        assert!(admin.can(action), "Admin {:?} yapabilmeli", action);
     }
 }
 
@@ -94,33 +81,20 @@ fn role_hierarchy_levels() {
 
 #[test]
 fn rbac_guard_allows_permitted_action() {
-    let result = RbacGuard::authorize(
-        &Role::Operator,
-        &Action::TaskSubmit,
-    );
+    let result = RbacGuard::authorize(&Role::Operator, &Action::TaskSubmit);
     assert!(result.is_ok());
 }
 
 #[test]
 fn rbac_guard_denies_forbidden_action() {
-    let result = RbacGuard::authorize(
-        &Role::Viewer,
-        &Action::TaskSubmit,
-    );
+    let result = RbacGuard::authorize(&Role::Viewer, &Action::TaskSubmit);
     assert!(result.is_err());
-    assert!(matches!(
-        result.unwrap_err(),
-        AuthzError::Forbidden { .. }
-    ));
+    assert!(matches!(result.unwrap_err(), AuthzError::Forbidden { .. }));
 }
 
 #[test]
 fn rbac_guard_error_contains_role_and_action() {
-    let err = RbacGuard::authorize(
-        &Role::Viewer,
-        &Action::SystemShutdown,
-    )
-    .unwrap_err();
+    let err = RbacGuard::authorize(&Role::Viewer, &Action::SystemShutdown).unwrap_err();
 
     let msg = err.to_string();
     assert!(msg.contains("Viewer"));
@@ -155,15 +129,13 @@ fn claims_expired_when_past() {
 
 #[test]
 fn token_generate_and_verify() {
-    let manager =
-        TokenManager::new("test-secret", 3600);
+    let manager = TokenManager::new("test-secret", 3600);
 
     let token = manager.generate("alice", Role::Admin);
     assert!(!token.access_token.is_empty());
     assert_eq!(token.token_type, "Bearer");
 
-    let claims =
-        manager.verify(&token.access_token).unwrap();
+    let claims = manager.verify(&token.access_token).unwrap();
     assert_eq!(claims.sub, "alice");
     assert_eq!(claims.role, Role::Admin);
 }
@@ -173,15 +145,11 @@ fn token_wrong_secret_fails_verification() {
     let manager1 = TokenManager::new("secret-1", 3600);
     let manager2 = TokenManager::new("secret-2", 3600);
 
-    let token =
-        manager1.generate("bob", Role::Operator);
+    let token = manager1.generate("bob", Role::Operator);
     let result = manager2.verify(&token.access_token);
 
     assert!(result.is_err());
-    assert!(matches!(
-        result.unwrap_err(),
-        TokenError::InvalidSignature
-    ));
+    assert!(matches!(result.unwrap_err(), TokenError::InvalidSignature));
 }
 
 #[test]
@@ -231,7 +199,6 @@ fn api_key_different_keys_different_hashes() {
     assert_ne!(key1.hash(), key2.hash());
 }
 
-
 #[test]
 fn jwt_roundtrip_uses_valid_jwt_encoding() {
     let manager = TokenManager::new("test-secret", 3600);
@@ -248,5 +215,8 @@ fn jwt_tampering_is_rejected() {
     let token = manager.generate("user-1", Role::Operator);
     let mut parts: Vec<_> = token.access_token.split('.').map(str::to_string).collect();
     parts[1].push('A');
-    assert_eq!(manager.verify(&parts.join(".")), Err(TokenError::InvalidSignature));
+    assert_eq!(
+        manager.verify(&parts.join(".")),
+        Err(TokenError::InvalidSignature)
+    );
 }
