@@ -63,6 +63,8 @@ harness = false
 aetheros-terminal = { path = "aetheros-terminal" }
 # Dosya/arama/git primitifleri; agent entegrasyonu src/agents/workspace_tool.rs
 aetheros-workspace = { path = "workspace_core" }
+# Niyet → gereksinim → görev grafı derleyicisi (agents::planning::intent_plan).
+aetheros-intent = { path = "aetheros-intent" }
 tokio       = { version = "1", features = ["full", "signal"] }
 
 # ── WASM backend — sadece biri aktif olmalı ───────────────

@@ -44,7 +44,7 @@ pub trait AgentTool: Send + Sync {
     /// bunu override etmek zorunda değil (geriye dönük uyumluluk).
     /// Riskli tool'lar (dosya sistemi, ağ, süreç çalıştırma vb.)
     /// bunu mutlaka override etmeli.
-    fn required_capability(&self) -> Option<crate::agents::capabilities::AgentCapability> {
+    fn required_capability(&self) -> Option<crate::types::capability::AgentCapability> {
         None
     }
 

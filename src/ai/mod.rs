@@ -1,10 +1,15 @@
-pub mod context;
-pub mod embeddings;
+//! LLM sağlayıcı katmanı.
+//!
+//! - `providers/`  Anthropic, Gemini, Ollama, OpenAI istemcileri
+//! - `routing/`    aktif sağlayıcı seçimi (`ProviderRouter`)
+//! - `inference/`  sağlayıcıdan bağımsız istek/yanıt tipleri
+//! - `errors`      ortak `AiError`
+//!
+//! Planlama, bellek ve araç çağrısı mantığı burada **değil**, `agents/`
+//! altında yaşar (`agents::planning`, `agents::memory`, `agents::tools`).
+//! `agents` bu katmana bağlanır; bu katman `agents`'a bağlanamaz.
+
 pub mod errors;
 pub mod inference;
-pub mod memory;
-pub mod planner;
 pub mod providers;
 pub mod routing;
-pub mod structured;
-pub mod tools;

@@ -59,6 +59,7 @@ jobs:
       # aetheros-terminal ayrı bir crate: kök `cargo test` onun testlerini
       # koşmaz (PTY, timeout, session). Ayrı adımda açıkça koşulur.
       - run: cargo test -p aetheros-terminal
+      - run: cargo test -p aetheros-intent
 
   test-wasmi:
     name: ✅ cargo test (backend-wasmi — Android backend'i)

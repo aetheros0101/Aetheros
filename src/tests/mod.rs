@@ -22,3 +22,6 @@ pub mod tool_call_protocol_tests;
 pub mod user_terminal_tests;
 pub mod workflow_tests;
 pub mod workspace_tool_tests;
+
+pub mod architecture_tests;
+pub mod intent_planning_tests;

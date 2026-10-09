@@ -1,3 +1,12 @@
+# Faz 1 / Adım 2 — `ai/` ile `agents/` çakışmasının giderilmesi
+
+`ai/` altındaki 7 modül (`context`, `embeddings`, `memory`, `planner`,
+`structured`, `tools`, `policies`) 10–36 satırlık, hiçbir yerden referans
+almayan iskeletlerdi ve `agents/` ile aynı kavramları kopyalıyordu.
+Silindi (~220 satır). `ai/` artık yalnızca LLM sağlayıcı katmanı.
+
+---
+
 # Faz 1 / Adım 1 — Döngüsel bağımlılıkların kırılması
 
 **Derlenmedi:** derleyicisiz, statik analizle hazırlandı. Uygulamadan sonra

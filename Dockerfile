@@ -5,7 +5,7 @@
 # Stage 1 (builder): Rust + cargo build --release
 # Stage 2 (runtime): Minimal debian-slim image
 #
-# Not: workspace path bağımlılıkları (aetheros-terminal, workspace_core)
+# Not: workspace path bağımlılıkları (aetheros-terminal, workspace_core, aetheros-intent)
 # ve benches/ build context'ine dahil edilmelidir; aksi halde Cargo
 # manifest'i çözemez. .dockerignore bunları dışarıda BIRAKMAZ.
 # ============================================================
@@ -22,6 +22,7 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY aetheros-terminal ./aetheros-terminal
 COPY workspace_core ./workspace_core
+COPY aetheros-intent ./aetheros-intent
 COPY benches ./benches
 COPY src ./src
 

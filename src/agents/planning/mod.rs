@@ -1,5 +1,6 @@
 //! Planlama: AI planner + plan tipleri.
 
+pub mod intent_plan;
 pub mod planner;
 pub mod plans;
 

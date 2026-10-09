@@ -211,6 +211,32 @@ impl AgentPlanner {
         Self::fallback_plan(objective)
     }
 
+    /// `plan` ile aynı, ama AI planı yoksa/başarısızsa sabit fallback yerine
+    /// niyet boru hattını (`aetheros-intent`) dener: AI → intent → fallback.
+    ///
+    /// `plan()` bilerek değişmedi: mevcut testler/akışlar router yokken sabit
+    /// fallback'e bağlı. Çalışma zamanında bu yola geçmek için çağrı noktasını
+    /// (`agents/runtime/loops.rs`) bu metoda çevirmek yeterli.
+    pub async fn plan_with_intent(
+        objective: String,
+        router: Option<Arc<ProviderRouter>>,
+        tools: &[Arc<dyn AgentTool>],
+        constraints: aetheros_intent::Constraints,
+    ) -> AgentPlan {
+        if let Some(router) = router
+            && let Some(plan) = Self::ai_plan(objective.clone(), &router, tools).await
+        {
+            return plan;
+        }
+        match crate::agents::planning::intent_plan::plan_from_intent(&objective, constraints) {
+            Ok(plan) => plan,
+            Err(e) => {
+                tracing::warn!(err = %e, "intent planı üretilemedi — sabit fallback");
+                Self::fallback_plan(objective)
+            }
+        }
+    }
+
     /// Aktif provider ile objective → structured plan.
     async fn ai_plan(
         objective: String,
