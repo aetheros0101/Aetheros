@@ -154,13 +154,23 @@ impl WasmEngine {
             .set_fuel(self.limits.fuel_limit)
             .map_err(|_| WasmError::ResourceLimitExceeded)?;
 
+        // `create_engine()` epoch_interruption(true) açar; ama hiçbir yer
+        // `engine.increment_epoch()` çağırmıyor. Varsayılan deadline ile
+        // Wasm ilk epoch kontrolünde hemen trap'e düşebilir ("execution panic").
+        // Süre sınırı zaten fuel + tokio timeout ile uygulanıyor; epoch'u fiilen
+        // devre dışı bırakmak için deadline'ı sonsuza çekiyoruz.
+        store.set_epoch_deadline(u64::MAX);
+
         let exec_timeout = self.limits.execution_timeout;
 
         let execution = async {
             let instance: Instance = linker
                 .instantiate_async(&mut store, &module)
                 .await
-                .map_err(|_| WasmError::ExecutionPanic)?;
+                .map_err(|e| {
+                    tracing::warn!(err = %e, "wasmtime: instantiate başarısız");
+                    WasmError::ExecutionPanic
+                })?;
 
             let function = instance
                 .get_typed_func::<(), ()>(&mut store, &task.entrypoint)
@@ -169,7 +179,10 @@ impl WasmEngine {
             function
                 .call_async(&mut store, ())
                 .await
-                .map_err(|_| WasmError::ExecutionPanic)?;
+                .map_err(|e| {
+                    tracing::warn!(err = %e, "wasmtime: çağrı trap'e düştü");
+                    WasmError::ExecutionPanic
+                })?;
 
             Ok::<Vec<u8>, WasmError>(Vec::new())
         };

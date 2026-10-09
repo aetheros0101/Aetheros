@@ -461,13 +461,23 @@ mod tests {
         assert!(saw_exit, "event bus did not observe PTY exit");
 
         manager.remove(session.id);
-        match events.recv().await.unwrap() {
-            TerminalEvent::PtyDetached { session_id } => assert_eq!(session_id, session.id),
-            other => panic!("unexpected event: {other:?}"),
-        }
-        match events.recv().await.unwrap() {
-            TerminalEvent::SessionRemoved { session_id } => assert_eq!(session_id, session.id),
-            other => panic!("unexpected event: {other:?}"),
+        // PtyExited'tan sonra gecikmiş PtyOutput olayları gelebilir; sıralama
+        // garantisi yalnızca Detached → Removed için geçerlidir.
+        let mut saw_detached = false;
+        loop {
+            match events.recv().await.unwrap() {
+                TerminalEvent::PtyOutput { .. } => continue,
+                TerminalEvent::PtyDetached { session_id } => {
+                    assert_eq!(session_id, session.id);
+                    saw_detached = true;
+                }
+                TerminalEvent::SessionRemoved { session_id } => {
+                    assert_eq!(session_id, session.id);
+                    assert!(saw_detached, "SessionRemoved, PtyDetached'tan önce geldi");
+                    break;
+                }
+                other => panic!("unexpected event: {other:?}"),
+            }
         }
     }
 
