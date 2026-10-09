@@ -63,10 +63,25 @@ fn max_depth_is_enforced() {
         parent = g.add_node(n);
     }
     assert_eq!(g.hierarchy_depth(), 5);
-    let ok = Constraints { max_depth: 5, require_verification: false, ..Constraints::default() };
+
+    let ok = Constraints {
+        max_depth: 5,
+        max_parallel_branches: 5,
+        require_verification: false,
+        ..Constraints::default()
+    };
     assert!(validate_graph(&g, &ok).is_ok());
-    let tight = Constraints { max_depth: 4, require_verification: false, ..Constraints::default() };
-    assert!(matches!(validate_graph(&g, &tight), Err(IntentError::Constraint(_))));
+
+    let tight = Constraints {
+        max_depth: 4,
+        max_parallel_branches: 5,
+        require_verification: false,
+        ..Constraints::default()
+    };
+    assert!(matches!(
+        validate_graph(&g, &tight),
+        Err(IntentError::Constraint(_))
+    ));
 }
 
 #[test]

@@ -184,7 +184,7 @@ fn expand_auth(fr: &FunctionalRequirement, acc: &[String], pri: TaskPriority) ->
         .iter()
         .enumerate()
         .map(|(i, (title, role, caps))| {
-            let mut n = TaskNode::new(*role, (*title))
+            let mut n = TaskNode::new(*role, *title)
                 .with_source(fr.id)
                 .with_acceptance(acc.to_vec())
                 .with_capabilities(caps);
