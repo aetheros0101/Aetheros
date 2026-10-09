@@ -206,4 +206,3 @@ pub async fn resubmit_task(task_id: String) -> Result<String, String> {
 
     Ok(new_id.0.to_string())
 }
-

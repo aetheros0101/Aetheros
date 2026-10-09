@@ -5,7 +5,7 @@
 // Runtime erişimi ve hata dönüşümleri burada toplanır.
 // ============================================================
 
-use crate::bridge::state::{get_runtime, MobileRuntime};
+use crate::bridge::state::{MobileRuntime, get_runtime};
 
 /// Runtime'ı alır; yoksa tutarlı "RuntimeNotInitialized" hatası döner.
 #[inline]

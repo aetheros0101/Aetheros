@@ -134,7 +134,10 @@ mod tests {
 
     #[test]
     fn parse_priority_valid() {
-        assert!(matches!(parse_priority("critical"), Ok(TaskPriority::Critical)));
+        assert!(matches!(
+            parse_priority("critical"),
+            Ok(TaskPriority::Critical)
+        ));
         assert!(matches!(parse_priority("HIGH"), Ok(TaskPriority::High)));
         assert!(matches!(parse_priority("normal"), Ok(TaskPriority::Normal)));
         assert!(matches!(parse_priority("low"), Ok(TaskPriority::Low)));

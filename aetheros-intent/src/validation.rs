@@ -27,7 +27,8 @@ pub fn validate_requirement_set(req: &RequirementSet) -> ValidationReport {
         r.warnings.push("no acceptance criteria".into());
     }
     if !req.unknowns.items.is_empty() {
-        r.warnings.push(format!("{} unknowns", req.unknowns.items.len()));
+        r.warnings
+            .push(format!("{} unknowns", req.unknowns.items.len()));
     }
     r
 }
@@ -36,7 +37,9 @@ pub fn validate_requirement_set(req: &RequirementSet) -> ValidationReport {
 pub fn validate_domains(req: &RequirementSet, constraints: &Constraints) -> Result<()> {
     for tag in &req.domain_tags {
         if !constraints.allows_domain(tag) {
-            return Err(IntentError::Constraint(format!("domain `{tag}` not allowed")));
+            return Err(IntentError::Constraint(format!(
+                "domain `{tag}` not allowed"
+            )));
         }
     }
     Ok(())
@@ -79,7 +82,10 @@ pub fn validate_graph(graph: &TaskGraph, constraints: &Constraints) -> Result<Va
     }
 
     let has_testing = graph.nodes.values().any(|n| n.role == TaskRole::Testing);
-    let has_ver = graph.nodes.values().any(|n| n.role == TaskRole::Verification);
+    let has_ver = graph
+        .nodes
+        .values()
+        .any(|n| n.role == TaskRole::Verification);
     let is_docs = graph.nodes.values().any(|n| n.role == TaskRole::Edit);
 
     if constraints.require_testing && !has_testing && !is_docs {

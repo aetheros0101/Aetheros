@@ -38,36 +38,36 @@
 mod error;
 mod helpers;
 
-mod runtime;
-mod task;
-mod module;
-mod script;
-mod log;
-mod metrics;
 mod agent_api;
+mod ai;
 mod approval;
 mod audit;
-mod workflow;
 mod cluster;
-mod ai;
+mod log;
+mod metrics;
+mod module;
+mod runtime;
+mod script;
+mod task;
 mod terminal;
+mod workflow;
 mod workspace;
 
 // Re-export all public FRB API surface so paths remain:
 //   crate::bridge::api::{submit_task, start_agent, ...}
-pub use runtime::*;
-pub use task::*;
-pub use module::*;
-pub use script::*;
-pub use log::*;
-pub use metrics::*;
 pub use agent_api::*;
+pub use ai::*;
 pub use approval::*;
 pub use audit::*;
-pub use workflow::*;
 pub use cluster::*;
-pub use ai::*;
+pub use log::*;
+pub use metrics::*;
+pub use module::*;
+pub use runtime::*;
+pub use script::*;
+pub use task::*;
 pub use terminal::*;
+pub use workflow::*;
 pub use workspace::*;
 
 // Internal helpers that may be used by sibling modules or tests

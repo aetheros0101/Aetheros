@@ -23,4 +23,3 @@ pub async fn get_metrics() -> Result<MetricsSnapshot, String> {
         retried_tasks: snap.retried_tasks,
     })
 }
-

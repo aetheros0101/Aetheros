@@ -1,7 +1,7 @@
 use crate::context::ProjectContextSnapshot;
 use crate::errors::Result;
 use crate::intent::{IntentKind, UserIntent};
-use crate::provider::{parse_json, StructuredLlm, StructuredRequest};
+use crate::provider::{StructuredLlm, StructuredRequest, parse_json};
 use serde::Deserialize;
 use std::sync::Arc;
 

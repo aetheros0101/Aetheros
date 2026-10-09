@@ -267,7 +267,10 @@ impl TaskGraph {
         }
         let key = |id: &Uuid| {
             (
-                self.nodes.get(id).map(|n| n.title.clone()).unwrap_or_default(),
+                self.nodes
+                    .get(id)
+                    .map(|n| n.title.clone())
+                    .unwrap_or_default(),
                 *id,
             )
         };
@@ -412,7 +415,12 @@ impl TaskGraph {
                 src
             ));
             let mut kids = self.children(id);
-            kids.sort_by_key(|k| self.nodes.get(k).map(|n| n.title.clone()).unwrap_or_default());
+            kids.sort_by_key(|k| {
+                self.nodes
+                    .get(k)
+                    .map(|n| n.title.clone())
+                    .unwrap_or_default()
+            });
             for c in kids {
                 self.outline_rec(c, depth + 1, lines, seen);
             }

@@ -97,10 +97,7 @@ fn t04_requirement_task_traceability() {
         .filter(|n| n.source_requirement.is_some())
         .collect();
 
-    assert!(
-        !traced.is_empty(),
-        "expected tasks with source_requirement"
-    );
+    assert!(!traced.is_empty(), "expected tasks with source_requirement");
 
     for n in &traced {
         let src = n.source_requirement.unwrap();
@@ -160,10 +157,7 @@ fn t06_constraint_preservation() {
 
     // Text also mentions tech → heuristic constraints
     let r = pipeline()
-        .process_with_context(
-            "React ve PostgreSQL ile basit profil sayfası ekle",
-            &ctx,
-        )
+        .process_with_context("React ve PostgreSQL ile basit profil sayfası ekle", &ctx)
         .expect("pipeline");
 
     // Tech choices from context and/or text
@@ -264,9 +258,7 @@ fn t08_critical_ambiguity_blocks_pipeline() {
 
 #[test]
 fn t09_small_request_small_graph() {
-    let small = pipeline()
-        .process("README dosyasını düzelt")
-        .expect("docs");
+    let small = pipeline().process("README dosyasını düzelt").expect("docs");
     let large = pipeline()
         .process("Facebook benzeri sosyal medya sitesi oluştur auth feed posts ile")
         .expect("fullstack");

@@ -176,13 +176,10 @@ impl WasmEngine {
                 .get_typed_func::<(), ()>(&mut store, &task.entrypoint)
                 .map_err(|_| WasmError::MissingEntrypoint)?;
 
-            function
-                .call_async(&mut store, ())
-                .await
-                .map_err(|e| {
-                    tracing::warn!(err = %e, "wasmtime: çağrı trap'e düştü");
-                    WasmError::ExecutionPanic
-                })?;
+            function.call_async(&mut store, ()).await.map_err(|e| {
+                tracing::warn!(err = %e, "wasmtime: çağrı trap'e düştü");
+                WasmError::ExecutionPanic
+            })?;
 
             Ok::<Vec<u8>, WasmError>(Vec::new())
         };

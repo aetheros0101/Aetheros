@@ -7,7 +7,6 @@
 use crate::bridge::api::error::require_runtime;
 use crate::bridge::types::LogRecord;
 
-
 /// Son `limit` kadar log entry döndür (yeniden eskiye sıralı).
 ///
 /// LogScreen 2 saniyede bir bu fonksiyonu polling ile çeker.

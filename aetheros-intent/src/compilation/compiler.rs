@@ -14,7 +14,6 @@ pub struct TaskGraphCompiler {
     pub constraints: Constraints,
 }
 
-
 impl TaskGraphCompiler {
     pub fn new(constraints: Constraints) -> Self {
         Self { constraints }
