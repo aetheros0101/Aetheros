@@ -31,10 +31,15 @@ Future<void> main() async {
     final dbPath = '${docDir.path}/aetheros.db';
 
     // 3. Rust runtime — DO NOT REMOVE
-    await aether.initializeRuntime(
-      dbPath: dbPath,
-      workerCount: 2,
-    );
+    // Android süreci activity kapansa da canlı kalabilir; Rust statik durumu
+    // da öyle. Dart tarafı yeniden başlarken runtime zaten hazırsa tekrar
+    // başlatma ("Runtime zaten başlatılmış" hatasını önler).
+    if (!await aether.isRuntimeReady()) {
+      await aether.initializeRuntime(
+        dbPath: dbPath,
+        workerCount: 2,
+      );
+    }
 
     // 4. Rehydrate AI providers into Rust router — DO NOT REMOVE
     await AiProviderService.rehydrateFromStorage();

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../state/app_state.dart';
 import '../../../state/workbench_state.dart';
 import '../../design/aether_theme.dart';
+import '../../../screens/ai_settings_screen.dart';
 
 /// Workbench Settings — real chrome toggles + planned sections.
 class SettingsView extends StatelessWidget {
@@ -109,7 +110,37 @@ class SettingsView extends StatelessWidget {
         _PlannedSection(title: 'Appearance', items: const ['Theme (light / dark)', 'Font size']),
         _PlannedSection(title: 'Editor', items: const ['Tab size', 'Word wrap', 'Minimap']),
         _PlannedSection(title: 'Workspace', items: const ['Exclude patterns', 'File watcher']),
-        _PlannedSection(title: 'AI / Agent', items: const ['Default model', 'Approval policy']),
+        Text(
+          'AI / Agent',
+          style: AetherTypography.uiCaption.copyWith(
+            color: AetherTextColors.secondary,
+            letterSpacing: 0.6,
+          ),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Icons.smart_toy_outlined,
+              color: AetherTextColors.secondary),
+          title: Text(
+            'AI sağlayıcıları',
+            style: AetherTypography.uiBody
+                .copyWith(color: AetherTextColors.primary),
+          ),
+          subtitle: Text(
+            'Anthropic / OpenAI / Gemini / Ollama ekle ve aktif et '
+            '(Agent bunsuz plan üretemez)',
+            style: AetherTypography.uiCaption
+                .copyWith(color: AetherTextColors.tertiary),
+          ),
+          trailing: Icon(Icons.chevron_right,
+              color: AetherTextColors.tertiary),
+          onTap: () => Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => const AiSettingsScreen(),
+            ),
+          ),
+        ),
+        const SizedBox(height: AetherSpacing.md),
         if (onOpenLegacy != null) ...[
           const SizedBox(height: AetherSpacing.lg),
           OutlinedButton(
