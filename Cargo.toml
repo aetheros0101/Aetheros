@@ -68,7 +68,7 @@ aetheros-intent = { path = "aetheros-intent" }
 tokio       = { version = "1", features = ["full", "signal"] }
 
 # ── WASM backend — sadece biri aktif olmalı ───────────────
-wasmtime      = { version = "38",  features = ["async", "component-model"], optional = true }
+wasmtime      = { version = "36",  features = ["async", "component-model"], optional = true }
 wasmi         = { version = "0.31", features = ["std"],                     optional = true }
 
 # ── Flutter-Rust Bridge ───────────────────────────────────
