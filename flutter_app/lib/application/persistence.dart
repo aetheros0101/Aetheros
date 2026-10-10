@@ -136,7 +136,9 @@ class WorkbenchPersistence {
 
     return AppState(
       workbench: workbench,
-      navigation: NavigationState(activeId: activeId),
+      navigation: activeId == null
+          ? const NavigationState()
+          : NavigationState(activeId: activeId),
       editor: editor,
       panel: panel,
     );

@@ -121,7 +121,7 @@ ThemeData buildAetherTheme({
     ),
 
     // ─── Cards (settings sections, agent cards — not workbench panels) ─────
-    cardTheme: CardThemeData(
+    cardTheme: CardTheme(
       color: AetherSurfaces.elevated,
       elevation: 0,
       margin: EdgeInsets.zero,
@@ -248,7 +248,7 @@ ThemeData buildAetherTheme({
     ),
 
     // ─── Dialogs & sheets (floating UI — may use shadow) ───────────────────
-    dialogTheme: DialogThemeData(
+    dialogTheme: DialogTheme(
       backgroundColor: AetherSurfaces.dialog,
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: AetherRadius.dialogR),
@@ -316,7 +316,7 @@ ThemeData buildAetherTheme({
       elevation: 0,
       shape: RoundedRectangleBorder(),
     ),
-    tabBarTheme: TabBarThemeData(
+    tabBarTheme: TabBarTheme(
       indicatorColor: AetherAccent.primary,
       labelColor: AetherTextColors.primary,
       unselectedLabelColor: AetherTextColors.secondary,

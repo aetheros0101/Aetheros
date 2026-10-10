@@ -1,3 +1,5 @@
+import 'command_context.dart';
+
 /// AetherOS Command — declarative action unit.
 ///
 /// UI never embeds business logic in onPressed; it dispatches a [Command.id].

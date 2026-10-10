@@ -268,3 +268,70 @@ class _ComposerState extends State<_Composer> {
     );
   }
 }
+
+
+/// Bekleyen onay isteği kartı (agent paneli içinde).
+class _ApprovalCard extends StatelessWidget {
+  const _ApprovalCard({
+    required this.approval,
+    required this.onApprove,
+    required this.onReject,
+  });
+
+  final AgentApproval approval;
+  final VoidCallback onApprove;
+  final VoidCallback onReject;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.gpp_maybe_outlined,
+                    size: 18, color: AetherStatus.warning),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    approval.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: AetherTextColors.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              approval.description,
+              style: TextStyle(color: AetherTextColors.secondary),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'risk: ${approval.risk}',
+              style: AetherTypography.uiMicro
+                  .copyWith(color: AetherTextColors.secondary),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(onPressed: onReject, child: const Text('Reddet')),
+                const SizedBox(width: 8),
+                FilledButton(onPressed: onApprove, child: const Text('Onayla')),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

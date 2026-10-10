@@ -2,6 +2,8 @@ export '../editor/editor_document.dart' show SaveResult, SaveConflict, SaveResul
 
 import 'dart:async';
 
+import '../editor/editor_document.dart' show SaveResult;
+
 import '../commands/built_in_commands.dart';
 import '../commands/command_executor.dart';
 import '../commands/command_registry.dart';

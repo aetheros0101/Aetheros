@@ -2,13 +2,9 @@ import 'package:flutter/widgets.dart';
 
 import '../design/foundation/breakpoints.dart';
 
-/// Layout mode derived from available width (not device type).
-enum AetherLayoutMode {
-  mobile,
-  tablet,
-  workbench,
-  wideWorkbench,
-}
+// AetherLayoutMode tek yerde (breakpoints.dart) tanımlıdır; bu dosyayı
+// import eden kod eskisi gibi görmeye devam etsin diye yeniden dışa aktarılır.
+export '../design/foundation/breakpoints.dart' show AetherLayoutMode;
 
 AetherLayoutMode layoutModeForWidth(double width) {
   if (width < AetherBreakpoints.compactMax) return AetherLayoutMode.mobile;
