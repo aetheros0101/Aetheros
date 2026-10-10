@@ -162,10 +162,12 @@ class FrbAgentService implements AgentService {
           .toList();
 
       List<AgentToolActivity> activity = const [];
+      final answers = <AgentMessageState>[];
       try {
         final audit = await AetherApi.listAuditEvents(executionId);
         activity = [
           for (final e in audit)
+            if (e.kindLabel != 'assistant_message')
             AgentToolActivity(
               id: e.id,
               kind: _toolKind('${e.kindLabel} ${e.summary}'),
@@ -173,6 +175,15 @@ class FrbAgentService implements AgentService {
               status: AgentToolStatus.completed,
             ),
         ];
+        for (final e in audit) {
+          if (e.kindLabel == 'assistant_message' && e.summary.isNotEmpty) {
+            answers.add(AgentMessageState(
+              id: 'ai-${e.id}',
+              role: 'assistant',
+              content: e.summary,
+            ));
+          }
+        }
       } catch (e) {
         // Audit is optional enrichment; session poll continues without it.
         debugPrint('[FrbAgentService] listAuditEvents: $e');
@@ -185,6 +196,8 @@ class FrbAgentService implements AgentService {
           status.status == 'cancelled';
 
       _patchSession(executionId, (s) {
+        final known = s.messages.map((m) => m.id).toSet();
+        final fresh = answers.where((a) => !known.contains(a.id)).toList();
         return s.copyWith(
           status: status.status,
           tasks: taskStatus,
@@ -199,7 +212,7 @@ class FrbAgentService implements AgentService {
                     : old,
           ],
           pendingApprovalId: status.pendingApprovalId,
-          messages: status.error != null &&
+          messages: [...(status.error != null &&
                   !s.messages.any((m) => m.content == status.error)
               ? [
                   ...s.messages,
@@ -209,7 +222,7 @@ class FrbAgentService implements AgentService {
                     content: status.error!,
                   ),
                 ]
-              : s.messages,
+              : s.messages), ...fresh],
         );
       });
 

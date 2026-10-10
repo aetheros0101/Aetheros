@@ -233,6 +233,19 @@ impl AgentRuntime {
                     );
                     break;
                 }
+                Some(NextStepDecision::Answer(text)) => {
+                    info!(
+                        agent_id = %context.agent_id,
+                        execution_id = %context.execution_id,
+                        "Autonomous loop: AI kullanıcıya cevap bıraktı, tamamlandı"
+                    );
+                    self.audit(
+                        context.agent_id,
+                        context.execution_id,
+                        AuditEventKind::AssistantMessage { text },
+                    );
+                    break;
+                }
                 Some(NextStepDecision::Step(step)) => step,
                 None => {
                     // Planlayıcıdan karar ALINAMADI. Eskiden burada sabit,
