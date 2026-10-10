@@ -62,7 +62,7 @@ harness = false
 # kirletmesin diye; entegrasyon src/agents/tools/terminal_tool.rs'te.
 aetheros-terminal = { path = "aetheros-terminal" }
 # Dosya/arama/git primitifleri; agent entegrasyonu src/agents/workspace_tool.rs
-aetheros-workspace = { path = "workspace_core" }
+aetheros-workspace = { path = "workspace_core", features = ["watcher"] }
 # Niyet → gereksinim → görev grafı derleyicisi (agents::planning::intent_plan).
 aetheros-intent = { path = "aetheros-intent" }
 tokio       = { version = "1", features = ["full", "signal"] }

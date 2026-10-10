@@ -5,34 +5,45 @@ import 'package:path_provider/path_provider.dart';
 
 import 'src/rust/frb_generated.dart';
 import 'src/rust/api/aetheros.dart' as aether;
-import 'screens/home_screen.dart';
 import 'services/ai_provider_service.dart';
-import 'core/app_theme.dart';
+import 'ui/design/aether_theme.dart';
+import 'application/application.dart';
+import 'ui/shell/aether_workbench.dart';
+import 'screens/home_screen.dart';
+import 'ui/shell/accessibility_scope.dart';
+
+/// Feature flag: when true, open Workbench shell; otherwise legacy HomeScreen.
+/// Toggle during migration without removing runtime init or old screens.
+const bool kUseWorkbench = true;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   String? initError;
+  AetherApplication? app;
 
   try {
-    // 1. FRB bridge başlat
+    // 1. FRB bridge — DO NOT REMOVE
     await RustLib.init();
 
-    // 2. DB yolu
+    // 2. DB path
     final docDir = await getApplicationDocumentsDirectory();
     final dbPath = '${docDir.path}/aetheros.db';
 
-    // 3. Rust runtime başlat
+    // 3. Rust runtime — DO NOT REMOVE
     await aether.initializeRuntime(
       dbPath: dbPath,
       workerCount: 2,
     );
 
-    // 4. Ayarlar'da kayıtlı AI provider'ları Rust router'a yeniden yükle.
-    //    ProviderRouter in-memory'dir — her runtime başlangıcında boştur.
+    // 4. Rehydrate AI providers into Rust router — DO NOT REMOVE
     await AiProviderService.rehydrateFromStorage();
+
+    // 5. Application composition (Workbench state/commands/services)
+    app = AetherApplication();
+    await app.initializeWorkspace();
+    await app.restoreLayout();
   } catch (e, stack) {
-    // Hata yakalandı — siyah ekran yerine hata göster
     initError = '$e\n\n$stack';
     debugPrint('AetherOS init error: $e\n$stack');
   }
@@ -41,14 +52,15 @@ Future<void> main() async {
     ProviderScope(
       child: initError != null
           ? _ErrorApp(error: initError!)
-          : const AetherOSApp(),
+          : AetherOSApp(application: app),
     ),
   );
 }
 
-/// Normal uygulama
 class AetherOSApp extends StatelessWidget {
-  const AetherOSApp({super.key});
+  const AetherOSApp({super.key, this.application});
+
+  final AetherApplication? application;
 
   @override
   Widget build(BuildContext context) {
@@ -63,12 +75,17 @@ class AetherOSApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: const HomeScreen(),
+      builder: (context, child) => AccessibilityHost(child: child ?? const SizedBox.shrink()),
+      home: kUseWorkbench && application != null
+          ? AetherWorkbench(app: application!)
+          : const HomeScreen(),
+      routes: {
+        '/legacy': (_) => const HomeScreen(),
+      },
     );
   }
 }
 
-/// Başlatma hatası ekranı — siyah ekran yerine hatayı gösterir
 class _ErrorApp extends StatelessWidget {
   final String error;
   const _ErrorApp({required this.error});
@@ -79,42 +96,15 @@ class _ErrorApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(),
       home: Scaffold(
-        backgroundColor: const Color(0xFF1a1a2e),
+        backgroundColor: Colors.black,
         body: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(children: [
-                  Icon(Icons.error_outline, color: Colors.red, size: 28),
-                  SizedBox(width: 8),
-                  Text('AetherOS Başlatma Hatası',
-                      style: TextStyle(
-                          color: Colors.red,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold)),
-                ]),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: SingleChildScrollView(
-                      child: SelectableText(
-                        error,
-                        style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 11,
-                            fontFamily: 'monospace'),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+            padding: const EdgeInsets.all(24),
+            child: SingleChildScrollView(
+              child: SelectableText(
+                'AetherOS başlatılamadı:\n\n$error',
+                style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+              ),
             ),
           ),
         ),

@@ -102,3 +102,12 @@ String capabilitySummary(Iterable<String> ids) {
 
 /// Terminal yetkisinin Rust'taki adı (Chat'ten "Agent ile yap" önceden seçer).
 const String kTerminalCapabilityId = 'terminal_execution';
+
+/// Workbench agent paneli yeni bir agent başlatırken verilen varsayılan
+/// yetkiler. Adlar Rust'taki `parse_capability` ile birebir aynı olmalı;
+/// bilinmeyen ad `start_agent`'ı reddeder (test: agent_capabilities_test).
+const List<String> kDefaultWorkbenchCapabilities = [
+  'workspace_read',
+  'workspace_write',
+  'terminal_execution',
+];

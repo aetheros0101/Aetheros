@@ -291,3 +291,36 @@ class AetherApi {
   }
 }
 
+  // ── Workspace search / watch / git (workspace_core) ────────
+
+  static Future<List<rust.WorkspaceSearchHitDto>> workspaceSearch(
+    String query, {
+    bool caseSensitive = false,
+    int maxResults = 200,
+    bool regex = false,
+  }) =>
+      rust.workspaceSearch(
+        query: query,
+        caseSensitive: caseSensitive,
+        maxResults: maxResults,
+        regex: regex,
+      );
+
+  static Future<void> workspaceWatchStart() => rust.workspaceWatchStart();
+
+  static Future<List<rust.WorkspaceWatchHitDto>> workspaceWatchDrain(
+          {int maxEvents = 64}) =>
+      rust.workspaceWatchDrain(maxEvents: maxEvents);
+
+  static Future<rust.GitStatusDto> gitStatus() => rust.workspaceGitStatus();
+
+  static Future<rust.GitDiffDto> gitDiff({bool staged = false, String? path}) =>
+      rust.workspaceGitDiff(staged: staged, path: path);
+
+  static Future<void> gitStage(String path) => rust.workspaceGitStage(path);
+
+  static Future<void> gitUnstage(String path) => rust.workspaceGitUnstage(path);
+
+  static Future<void> gitCommit(String message) =>
+      rust.workspaceGitCommit(message);
+}

@@ -847,3 +847,172 @@ Future<String> workspaceImportFile({
       destDir: destDir,
       fileName: fileName,
     );
+
+
+// ── Workspace search / watch / git ───────────────────────────
+// Adapter layer (same pattern as workspaceListDir).
+// Requires: flutter_rust_bridge_codegen generate after Rust bridge/api.rs symbols.
+
+class WorkspaceSearchHitDto {
+  final String path;
+  final int line;
+  final int column;
+  final String preview;
+  const WorkspaceSearchHitDto({
+    required this.path,
+    required this.line,
+    required this.column,
+    required this.preview,
+  });
+}
+
+class WorkspaceWatchHitDto {
+  final String kind;
+  final String path;
+  final String? oldPath;
+  const WorkspaceWatchHitDto({
+    required this.kind,
+    required this.path,
+    this.oldPath,
+  });
+}
+
+class GitStatusItemDto {
+  final String path;
+  final String kind;
+  final bool staged;
+  final bool worktree;
+  const GitStatusItemDto({
+    required this.path,
+    required this.kind,
+    required this.staged,
+    required this.worktree,
+  });
+}
+
+class GitStatusDto {
+  final String? branch;
+  final int ahead;
+  final int behind;
+  final bool isGitRepo;
+  final List<GitStatusItemDto> entries;
+  const GitStatusDto({
+    this.branch,
+    required this.ahead,
+    required this.behind,
+    required this.isGitRepo,
+    required this.entries,
+  });
+}
+
+class GitDiffHunkDto {
+  final String header;
+  final List<String> lines;
+  const GitDiffHunkDto({required this.header, required this.lines});
+}
+
+class GitDiffFileDto {
+  final String path;
+  final String? oldPath;
+  final String status;
+  final List<GitDiffHunkDto> hunks;
+  const GitDiffFileDto({
+    required this.path,
+    this.oldPath,
+    required this.status,
+    required this.hunks,
+  });
+}
+
+class GitDiffDto {
+  final bool staged;
+  final List<GitDiffFileDto> files;
+  const GitDiffDto({required this.staged, required this.files});
+}
+
+Future<List<WorkspaceSearchHitDto>> workspaceSearch({
+  required String query,
+  bool caseSensitive = false,
+  int maxResults = 200,
+  bool regex = false,
+}) async {
+  final list = await _bridge.workspaceSearch(
+    query: query,
+    caseSensitive: caseSensitive,
+    maxResults: BigInt.from(maxResults),
+    regex: regex,
+  );
+  return [
+    for (final m in list)
+      WorkspaceSearchHitDto(
+        path: m.path as String,
+        line: (m.line as dynamic).toInt() as int,
+        column: (m.column as dynamic).toInt() as int,
+        preview: m.preview as String,
+      ),
+  ];
+}
+
+Future<void> workspaceWatchStart() => _bridge.workspaceWatchStart();
+
+Future<List<WorkspaceWatchHitDto>> workspaceWatchDrain({int maxEvents = 64}) async {
+  final list = await _bridge.workspaceWatchDrain(maxEvents: BigInt.from(maxEvents));
+  return [
+    for (final e in list)
+      WorkspaceWatchHitDto(
+        kind: e.kind as String,
+        path: e.path as String,
+        oldPath: e.oldPath as String?,
+      ),
+  ];
+}
+
+Future<GitStatusDto> workspaceGitStatus() async {
+  final r = await _bridge.workspaceGitStatus();
+  return GitStatusDto(
+    branch: r.branch as String?,
+    ahead: (r.ahead as dynamic).toInt() as int,
+    behind: (r.behind as dynamic).toInt() as int,
+    isGitRepo: r.isGitRepo as bool,
+    entries: [
+      for (final e in (r.entries as List))
+        GitStatusItemDto(
+          path: e.path as String,
+          kind: e.kind as String,
+          staged: e.staged as bool,
+          worktree: e.worktree as bool,
+        ),
+    ],
+  );
+}
+
+Future<GitDiffDto> workspaceGitDiff({bool staged = false, String? path}) async {
+  final r = await _bridge.workspaceGitDiff(staged: staged, path: path);
+  return GitDiffDto(
+    staged: r.staged as bool,
+    files: [
+      for (final f in (r.files as List))
+        GitDiffFileDto(
+          path: f.path as String,
+          oldPath: f.oldPath as String?,
+          status: f.status as String,
+          hunks: [
+            for (final h in (f.hunks as List))
+              GitDiffHunkDto(
+                header: h.header as String,
+                lines: List<String>.from(h.lines as List),
+              ),
+          ],
+        ),
+    ],
+  );
+}
+
+Future<void> workspaceGitStage(String path) =>
+    _bridge.workspaceGitStage(path: path);
+
+Future<void> workspaceGitUnstage(String path) =>
+    _bridge.workspaceGitUnstage(path: path);
+
+Future<void> workspaceGitCommit(String message) =>
+    _bridge.workspaceGitCommit(message: message);
