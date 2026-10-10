@@ -42,12 +42,11 @@ impl TaskGraphCompiler {
                 analyze_id = Some(id);
                 g.root = Some(id);
             }
-            if role != TaskRole::Analyze {
-                if let Some(a) = analyze_id {
-                    if let Some(n) = g.nodes.get_mut(&id) {
-                        n.parent = Some(a);
-                    }
-                }
+            if role != TaskRole::Analyze
+                && let Some(a) = analyze_id
+                && let Some(n) = g.nodes.get_mut(&id)
+            {
+                n.parent = Some(a);
             }
 
             if let Some(prev) = prev_by_source.get(&source) {

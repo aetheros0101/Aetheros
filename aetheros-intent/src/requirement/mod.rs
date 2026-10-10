@@ -16,19 +16,14 @@ use crate::intent::{IntentKind, UserIntent};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Priority {
     Low,
+    #[default]
     Medium,
     High,
     Critical,
-}
-
-impl Default for Priority {
-    fn default() -> Self {
-        Priority::Medium
-    }
 }
 
 /// Kapsam özeti.
@@ -133,11 +128,8 @@ impl RequirementSet {
     }
 
     pub fn needs_testing(&self) -> bool {
-        !matches!(
-            // docs/chore often skip heavy testing in strategy
-            self.domain_tags.iter().any(|t| t == "docs" || t == "chore"),
-            true
-        )
+        // docs/chore often skip heavy testing in strategy
+        !self.domain_tags.iter().any(|t| t == "docs" || t == "chore")
     }
 }
 

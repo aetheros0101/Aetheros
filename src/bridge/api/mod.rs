@@ -3,8 +3,10 @@
 //
 // Flutter'ın doğrudan çağırdığı Rust fonksiyonları.
 //
-// flutter_rust_bridge_codegen bu modülü tarar ve
-// flutter_app/lib/src/rust/api/aetheros.dart dosyasını üretir.
+// flutter_rust_bridge_codegen bu modülü ve alt modüllerini tarar;
+// her alt modül için flutter_app/lib/src/rust/bridge/api/<modül>.dart
+// üretilir. Ekranların kullandığı adaptör (api/aetheros.dart) bunları
+// api/bridge_api.dart barrel dosyası üzerinden alır (CI üretir).
 //
 // KURALLAR:
 //   - pub async fn → Dart'ta Future<T> olur
@@ -35,23 +37,27 @@
 //   helpers   — parse / format yardımcıları
 // ============================================================
 
+// Dahili yardımcılar: FRB yüzeyine girmez (içlerinde `pub(crate)` var).
 mod error;
 mod helpers;
 
-mod agent_api;
-mod ai;
-mod approval;
-mod audit;
-mod cluster;
-mod log;
-mod metrics;
-mod module;
-mod runtime;
-mod script;
-mod task;
-mod terminal;
-mod workflow;
-mod workspace;
+// FRB codegen, fonksiyonları tanımlandıkları modül yoluyla çağırır
+// (`crate::bridge::api::<modül>::<fn>`); bu yüzden FRB modülleri `pub`.
+
+pub mod agent_api;
+pub mod ai;
+pub mod approval;
+pub mod audit;
+pub mod cluster;
+pub mod log;
+pub mod metrics;
+pub mod module;
+pub mod runtime;
+pub mod script;
+pub mod task;
+pub mod terminal;
+pub mod workflow;
+pub mod workspace;
 
 // Re-export all public FRB API surface so paths remain:
 //   crate::bridge::api::{submit_task, start_agent, ...}

@@ -13,7 +13,9 @@
 import 'dart:async';
 
 import '../frb_generated.dart';
-import '../bridge/api.dart' as _bridge;
+// FRB, Rust tarafındaki api/ alt modüllerini ayrı Dart dosyalarına böler;
+// bridge_api.dart bunları tek yüzeyde toplayan barrel'dır (CI üretir).
+import 'bridge_api.dart' as _bridge;
 import 'rest/router.dart' as rest_router;
 import '../bridge/types.dart' as _bt;
 import '../metrics/runtime.dart' as _bm;
