@@ -36,6 +36,8 @@ use crate::persistence::engine::{PersistenceEngine, RecordKind};
 const MAX_AUDIT_ARGS: usize = 32;
 const MAX_AUDIT_ARG_CHARS: usize = 512;
 const MAX_AUDIT_TEXT_CHARS: usize = 2_000;
+/// Agent'ın kullanıcıya yazdığı cevap metni için üst sınır.
+const MAX_ASSISTANT_TEXT_CHARS: usize = 4_000;
 const OUTPUT_PREVIEW_CHARS: usize = 120;
 const REDACTED: &str = "[REDACTED]";
 
@@ -171,6 +173,9 @@ pub enum AuditEventKind {
     ExecutionCompleted,
     /// Execution bir hatayla bitti (retryable olmayan adım hatası vb.).
     ExecutionFailed { error: String },
+    /// Agent'ın kullanıcıya yazdığı düz metin cevap (selamlama, soru
+    /// yanıtı, iş bitince kısa özet). Araç çağrısı değildir.
+    AssistantMessage { text: String },
 }
 
 impl AuditEventKind {
@@ -223,6 +228,9 @@ impl AuditEventKind {
             },
             AuditEventKind::ExecutionFailed { error } => AuditEventKind::ExecutionFailed {
                 error: clip(&error, MAX_AUDIT_TEXT_CHARS),
+            },
+            AuditEventKind::AssistantMessage { text } => AuditEventKind::AssistantMessage {
+                text: clip(&text, MAX_ASSISTANT_TEXT_CHARS),
             },
             other => other,
         }

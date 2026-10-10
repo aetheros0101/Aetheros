@@ -131,6 +131,9 @@ pub fn format_history(history: &[StepRecord]) -> String {
 pub enum NextStepDecision {
     Step(AgentPlanStep),
     Done,
+    /// Hedef bitti ve AI kullanıcıya yazılı bir cevap/özet bıraktı
+    /// (`{"done": true, "message": "…"}`). Araç adımı DEĞİLDİR.
+    Answer(String),
 }
 
 #[derive(Debug, Deserialize)]
@@ -138,6 +141,9 @@ struct NextStepResponse {
     // Bazı modeller adım yanıtında "done" alanını hiç yazmaz → varsayılan false.
     #[serde(default)]
     done: bool,
+    /// `done: true` ile birlikte gelen kullanıcıya cevap / bitiş özeti.
+    #[serde(default)]
+    message: Option<String>,
     #[serde(default)]
     name: Option<String>,
     #[serde(default)]
@@ -377,8 +383,9 @@ Output ONLY valid JSON, no explanation."#,
 taken so far (with their results), decide the SINGLE next step — or
 say the objective is already complete.
 
-Output ONLY valid JSON, no explanation, in exactly one of these two forms:
+Output ONLY valid JSON, no explanation, in exactly one of these three forms:
 {{"done": true}}
+{{"done": true, "message": "short reply to the user"}}
 {{"done": false, "name": "step_name", "retryable": true, "tool_name": "...", "arguments": ["..."]}}
 
 {tools_section}
@@ -390,6 +397,10 @@ Rules:
   arguments. If the steps so far already satisfy the objective, answer
   {{"done": true}}. An empty result ("çıktı yok") from a successful command
   is NORMAL (e.g. touch, mkdir) — it means it worked.
+- If the objective is a greeting, a question, or otherwise needs no tool,
+  do NOT invent a tool step: answer {{"done": true, "message": "..."}} with a
+  short reply in the user's language. When you finish after tool steps,
+  put a one or two sentence summary of what was done in "message".
 - Tool "arguments" is a JSON array of strings; follow each tool's description
   for the exact order.
 - For the terminal tool, arguments[0] is the program name only and every
@@ -426,7 +437,10 @@ Rules:
         })?;
 
         if parsed.done {
-            return Ok(NextStepDecision::Done);
+            return Ok(match parsed.message.map(|m| m.trim().to_string()) {
+                Some(m) if !m.is_empty() => NextStepDecision::Answer(m),
+                _ => NextStepDecision::Done,
+            });
         }
 
         let name = parsed

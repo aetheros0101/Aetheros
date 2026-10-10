@@ -146,7 +146,7 @@ pub struct AuditEventResponse {
     pub execution_id: String,
     /// "governor_decision" | "tool_invoked" | "execution_paused" |
     /// "execution_resumed" | "approval_denied" | "execution_completed" |
-    /// "execution_failed"
+    /// "execution_failed" | "assistant_message"
     pub kind_label: String,
     pub summary: String,
     pub details_json: String,

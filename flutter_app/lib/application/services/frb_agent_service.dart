@@ -162,10 +162,12 @@ class FrbAgentService implements AgentService {
           .toList();
 
       List<AgentToolActivity> activity = const [];
+      final answers = <AgentMessageState>[];
       try {
         final audit = await AetherApi.listAuditEvents(executionId);
         activity = [
           for (final e in audit)
+            if (e.kindLabel != 'assistant_message')
             AgentToolActivity(
               id: e.id,
               kind: _toolKind('${e.kindLabel} ${e.summary}'),
@@ -173,6 +175,15 @@ class FrbAgentService implements AgentService {
               status: AgentToolStatus.completed,
             ),
         ];
+        for (final e in audit) {
+          if (e.kindLabel == 'assistant_message' && e.summary.isNotEmpty) {
+            answers.add(AgentMessageState(
+              id: 'ai-${e.id}',
+              role: 'assistant',
+              content: e.summary,
+            ));
+          }
+        }
       } catch (e) {
         // Audit is optional enrichment; session poll continues without it.
         debugPrint('[FrbAgentService] listAuditEvents: $e');
@@ -181,16 +192,27 @@ class FrbAgentService implements AgentService {
       final taskStatus = _mapTasks(status.status);
       final done = status.status == 'completed' ||
           status.status == 'failed' ||
+          status.status == 'denied' ||
           status.status == 'cancelled';
 
       _patchSession(executionId, (s) {
+        final known = s.messages.map((m) => m.id).toSet();
+        final fresh = answers.where((a) => !known.contains(a.id)).toList();
         return s.copyWith(
           status: status.status,
           tasks: taskStatus,
           activity: activity.isEmpty ? s.activity : activity,
-          approvals: related.isEmpty ? s.approvals : related,
+          approvals: [
+            ...related,
+            // Artık bekleyen listede olmayan eski kartlar çözülmüştür.
+            for (final old in s.approvals)
+              if (!related.any((r) => r.id == old.id))
+                old.status == ApprovalStatus.pending
+                    ? old.copyWith(status: ApprovalStatus.expired)
+                    : old,
+          ],
           pendingApprovalId: status.pendingApprovalId,
-          messages: status.error != null &&
+          messages: [...(status.error != null &&
                   !s.messages.any((m) => m.content == status.error)
               ? [
                   ...s.messages,
@@ -200,7 +222,7 @@ class FrbAgentService implements AgentService {
                     content: status.error!,
                   ),
                 ]
-              : s.messages,
+              : s.messages), ...fresh],
         );
       });
 
@@ -227,6 +249,7 @@ class FrbAgentService implements AgentService {
               id: 'verify', title: 'Verify', status: AgentTaskStatus.completed),
         ];
       case 'failed':
+      case 'denied':
         return const [
           AgentTaskNode(
               id: 'plan', title: 'Plan', status: AgentTaskStatus.completed),
@@ -325,6 +348,19 @@ class FrbAgentService implements AgentService {
     _emit(_state.copyWith(sessions: sessions));
   }
 
+  void _markApproval(String approvalId, ApprovalStatus status) {
+    final sessions = [
+      for (final s in _state.sessions)
+        s.approvals.any((a) => a.id == approvalId)
+            ? s.copyWith(approvals: [
+                for (final a in s.approvals)
+                  a.id == approvalId ? a.copyWith(status: status) : a,
+              ])
+            : s,
+    ];
+    _emit(_state.copyWith(sessions: sessions));
+  }
+
   @override
   Future<void> stop(String sessionId) async {
     _pollers.remove(sessionId)?.cancel();
@@ -334,6 +370,7 @@ class FrbAgentService implements AgentService {
   @override
   Future<void> approve(String approvalId) async {
     await AetherApi.respondToApproval(approvalId: approvalId, approved: true);
+    _markApproval(approvalId, ApprovalStatus.approved);
     for (final s in _state.sessions) {
       if (s.pendingApprovalId == approvalId ||
           s.approvals.any((a) => a.id == approvalId)) {
@@ -348,6 +385,10 @@ class FrbAgentService implements AgentService {
   @override
   Future<void> reject(String approvalId) async {
     await AetherApi.respondToApproval(approvalId: approvalId, approved: false);
+    _markApproval(approvalId, ApprovalStatus.rejected);
+    for (final s in _state.sessions) {
+      if (s.approvals.any((a) => a.id == approvalId)) _startPoll(s.id);
+    }
     final active = _state.activeSessionId;
     if (active != null) await _pollOnce(active);
   }

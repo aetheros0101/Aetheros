@@ -125,6 +125,7 @@ pub(crate) fn describe_audit_event(
         }
         K::ExecutionCompleted => ("execution_completed", "tamamlandı".to_string()),
         K::ExecutionFailed { error } => ("execution_failed", format!("hata: {error}")),
+        K::AssistantMessage { text } => ("assistant_message", text.clone()),
     }
 }
 

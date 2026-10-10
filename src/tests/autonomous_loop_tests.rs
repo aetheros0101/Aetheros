@@ -628,3 +628,56 @@ fn capability_denial_tells_the_user_which_chip_to_pick() {
         other => panic!("{other:?}"),
     }
 }
+
+// ── Cevap yolu: araç gerektirmeyen hedefe düz metin cevap ──
+
+#[tokio::test]
+async fn plan_next_parses_a_text_answer() {
+    let (router, _p) = scripted_router(&[r#"{"done": true, "message": "  Merhaba!  "}"#]);
+    match AgentPlanner::plan_next_detailed("merhaba", &[], &router, &[]).await {
+        Ok(NextStepDecision::Answer(text)) => assert_eq!(text, "Merhaba!"),
+        other => panic!("cevap bekleniyordu: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn blank_message_is_plain_done() {
+    let (router, _p) = scripted_router(&[r#"{"done": true, "message": "   "}"#]);
+    assert!(matches!(
+        AgentPlanner::plan_next_detailed("hedef", &[], &router, &[]).await,
+        Ok(NextStepDecision::Done)
+    ));
+}
+
+#[tokio::test]
+async fn answer_is_recorded_for_the_user_and_the_run_completes() {
+    let (router, _p) = scripted_router(&[r#"{"done": true, "message": "Merhaba!"}"#]);
+    let audit = Arc::new(AuditLog::new(100));
+    let context = ctx();
+    let exec_id = context.execution_id;
+
+    let result = AgentExecutor::execute(
+        context,
+        "merhaba".to_string(),
+        test_budget(),
+        vec![],
+        Some(router),
+        None,
+        None,
+        None,
+        Some(audit.clone()),
+    )
+    .await;
+
+    assert_eq!(result.unwrap(), AgentOutcome::Completed);
+    let events = audit.list_for_execution(exec_id);
+    assert!(events.iter().any(|e| matches!(
+        &e.kind,
+        AuditEventKind::AssistantMessage { text } if text == "Merhaba!"
+    )));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e.kind, AuditEventKind::ExecutionCompleted))
+    );
+}
