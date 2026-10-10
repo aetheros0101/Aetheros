@@ -538,6 +538,28 @@ impl Workspace {
         git::diff(&self.root, staged, path)
     }
 
+    /// Dosyayı git sahnesine al. Yol doğrulanır; `.git` korumalıdır.
+    pub fn git_stage(&self, relative: &str) -> Result<()> {
+        let rel = self.git_pathspec(relative)?;
+        git::stage(&self.root, &rel)
+    }
+
+    /// Dosyanın sahnelenmiş değişikliğini geri al.
+    pub fn git_unstage(&self, relative: &str) -> Result<()> {
+        let rel = self.git_pathspec(relative)?;
+        git::unstage(&self.root, &rel)
+    }
+
+    /// Sahnelenmiş değişikliklerle commit oluştur.
+    pub fn git_commit(&self, message: &str) -> Result<()> {
+        git::commit(&self.root, message)
+    }
+
+    fn git_pathspec(&self, relative: &str) -> Result<String> {
+        let full = self.resolve_mutable_nofollow(relative)?;
+        Ok(self.rel(&full))
+    }
+
     pub fn git_worktree_list(&self) -> Result<Vec<GitWorktree>> {
         git::worktree_list(&self.root)
     }

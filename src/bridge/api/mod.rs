@@ -58,6 +58,7 @@ pub mod task;
 pub mod terminal;
 pub mod workflow;
 pub mod workspace;
+pub mod workspace_dev;
 
 // Re-export all public FRB API surface so paths remain:
 //   crate::bridge::api::{submit_task, start_agent, ...}
@@ -75,6 +76,7 @@ pub use task::*;
 pub use terminal::*;
 pub use workflow::*;
 pub use workspace::*;
+pub use workspace_dev::*;
 
 // Internal helpers that may be used by sibling modules or tests
 #[allow(unused_imports)]

@@ -3,12 +3,14 @@
 mod blame;
 mod diff;
 mod log;
+mod stage;
 mod status;
 mod worktree;
 
 pub use blame::blame;
 pub use diff::diff;
 pub use log::log;
+pub use stage::{commit, stage, unstage};
 pub use status::status;
 pub use worktree::{worktree_add, worktree_list, worktree_remove};
 
