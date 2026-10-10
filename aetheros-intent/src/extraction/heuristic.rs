@@ -34,9 +34,7 @@ fn classify(lower: &str) -> (IntentKind, f32, Vec<String>) {
         return (IntentKind::Docs, 0.9, tags);
     }
 
-    let chore_keys = [
-        "typo", "yazım", "format", "lint", "gitignore", "whitespace",
-    ];
+    let chore_keys = ["typo", "yazım", "format", "lint", "gitignore", "whitespace"];
     if chore_keys.iter().any(|k| lower.contains(k)) {
         tags.push("chore".into());
         return (IntentKind::Chore, 0.85, tags);
@@ -65,8 +63,18 @@ fn classify(lower: &str) -> (IntentKind, f32, Vec<String>) {
         ),
         (
             &[
-                "ekle", "add", "implement", "özellik", "feature", "yeni", "build",
-                "oluştur", "create", "site", "uygulama", "app",
+                "ekle",
+                "add",
+                "implement",
+                "özellik",
+                "feature",
+                "yeni",
+                "build",
+                "oluştur",
+                "create",
+                "site",
+                "uygulama",
+                "app",
             ],
             IntentKind::Feature,
             0.7,
@@ -94,7 +102,9 @@ mod tests {
 
     #[test]
     fn readme_is_docs() {
-        let i = HeuristicExtractor.extract("README dosyasını düzelt").unwrap();
+        let i = HeuristicExtractor
+            .extract("README dosyasını düzelt")
+            .unwrap();
         assert_eq!(i.kind, IntentKind::Docs);
     }
 }

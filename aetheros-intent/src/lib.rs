@@ -27,12 +27,12 @@ pub mod provider;
 pub mod requirement;
 pub mod validation;
 
-pub use adapter::{export_to_task_layer, IdentityTaskAdapter, TaskLayerAdapter};
-pub use ambiguity::{analyze as analyze_ambiguity, AmbiguityLevel, AmbiguityReport};
+pub use adapter::{IdentityTaskAdapter, TaskLayerAdapter, export_to_task_layer};
+pub use ambiguity::{AmbiguityLevel, AmbiguityReport, analyze as analyze_ambiguity};
 pub use compilation::{
-    expand_requirement_set, CompileStrategy, CompiledTask, DependencyEdge, DependencyKind,
-    TaskGraph, TaskGraphCompiler, TaskNode, TaskPriority, TaskRole, TaskSpec, TaskStatus,
-    TaskVerification,
+    CompileStrategy, CompiledTask, DependencyEdge, DependencyKind, TaskGraph, TaskGraphCompiler,
+    TaskNode, TaskPriority, TaskRole, TaskSpec, TaskStatus, TaskVerification,
+    expand_requirement_set,
 };
 pub use constraints::Constraints;
 pub use context::{ExtractionContext, ProjectContextSnapshot};
@@ -43,7 +43,7 @@ pub use extraction::{
 pub use intent::{Intent, IntentKind, UserIntent};
 pub use pipeline::{IntentPipeline, PipelineResult};
 pub use provider::{
-    parse_json, FailingLlm, StaticJsonLlm, StructuredLlm, StructuredRequest, StructuredResponse,
+    FailingLlm, StaticJsonLlm, StructuredLlm, StructuredRequest, StructuredResponse, parse_json,
 };
 pub use requirement::{
     AcceptanceCriterion, Entity, FuncArea, FunctionalRequirement, HeuristicRequirementExtractor,
@@ -51,7 +51,9 @@ pub use requirement::{
     Priority, ProjectConstraint, QualityAttribute, RequirementExtractor, RequirementSet, Scope,
     TechChoice, Unknowns,
 };
-pub use validation::{validate_domains, validate_graph, validate_requirement_set, ValidationReport};
+pub use validation::{
+    ValidationReport, validate_domains, validate_graph, validate_requirement_set,
+};
 
 pub fn compile_intent(
     input: &str,
@@ -140,6 +142,11 @@ mod tests {
             .process("Kullanıcı girişi auth ekle")
             .unwrap();
         assert!(r.graph.nodes.len() >= 5);
-        assert!(r.graph.nodes.values().any(|n| n.source_requirement.is_some()));
+        assert!(
+            r.graph
+                .nodes
+                .values()
+                .any(|n| n.source_requirement.is_some())
+        );
     }
 }

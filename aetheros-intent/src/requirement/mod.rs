@@ -10,25 +10,20 @@ pub use constraint::{ProjectConstraint, TechChoice};
 pub use functional::{FuncArea, FunctionalRequirement};
 pub use non_functional::{NonFunctionalRequirement, QualityAttribute};
 
-use crate::errors::{IntentError, Result};
 use crate::context::ProjectContextSnapshot;
+use crate::errors::{IntentError, Result};
 use crate::intent::{IntentKind, UserIntent};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Priority {
     Low,
+    #[default]
     Medium,
     High,
     Critical,
-}
-
-impl Default for Priority {
-    fn default() -> Self {
-        Priority::Medium
-    }
 }
 
 /// Kapsam özeti.
@@ -91,39 +86,50 @@ impl RequirementSet {
     }
 
     pub fn needs_frontend(&self) -> bool {
-        self.domain_tags.iter().any(|t| t == "frontend" || t == "fullstack" || t == "ui")
-            || self.functional.iter().any(|f| f.area == functional::FuncArea::Ui)
+        self.domain_tags
+            .iter()
+            .any(|t| t == "frontend" || t == "fullstack" || t == "ui")
+            || self
+                .functional
+                .iter()
+                .any(|f| f.area == functional::FuncArea::Ui)
     }
 
     pub fn needs_backend(&self) -> bool {
-        self.domain_tags.iter().any(|t| t == "backend" || t == "fullstack" || t == "api")
+        self.domain_tags
+            .iter()
+            .any(|t| t == "backend" || t == "fullstack" || t == "api")
             || self.functional.iter().any(|f| {
                 matches!(
                     f.area,
-                    functional::FuncArea::Api | functional::FuncArea::Data | functional::FuncArea::Auth
+                    functional::FuncArea::Api
+                        | functional::FuncArea::Data
+                        | functional::FuncArea::Auth
                 )
             })
     }
 
     pub fn needs_database(&self) -> bool {
         self.domain_tags.iter().any(|t| t == "database")
-            || self.functional.iter().any(|f| f.area == functional::FuncArea::Data)
+            || self
+                .functional
+                .iter()
+                .any(|f| f.area == functional::FuncArea::Data)
             || !self.entities.is_empty()
     }
 
     pub fn needs_auth(&self) -> bool {
-        self.functional.iter().any(|f| f.area == functional::FuncArea::Auth)
+        self.functional
+            .iter()
+            .any(|f| f.area == functional::FuncArea::Auth)
             || self.summary.to_ascii_lowercase().contains("auth")
             || self.summary.to_ascii_lowercase().contains("giriş")
             || self.summary.to_ascii_lowercase().contains("login")
     }
 
     pub fn needs_testing(&self) -> bool {
-        !matches!(
-            // docs/chore often skip heavy testing in strategy
-            self.domain_tags.iter().any(|t| t == "docs" || t == "chore"),
-            true
-        )
+        // docs/chore often skip heavy testing in strategy
+        !self.domain_tags.iter().any(|t| t == "docs" || t == "chore")
     }
 }
 
@@ -267,11 +273,21 @@ fn extract_heuristic(intent: &UserIntent, ctx: &ProjectContextSnapshot) -> Resul
 
             // Fullstack heuristics
             let big = [
-                "sosyal", "social", "facebook", "site", "uygulama", "app", "platform",
-                "marketplace", "e-ticaret", "ecommerce",
+                "sosyal",
+                "social",
+                "facebook",
+                "site",
+                "uygulama",
+                "app",
+                "platform",
+                "marketplace",
+                "e-ticaret",
+                "ecommerce",
             ];
             if big.iter().any(|k| lower.contains(k)) {
-                domain_tags.extend(["frontend", "backend", "database", "api", "fullstack"].map(str::to_string));
+                domain_tags.extend(
+                    ["frontend", "backend", "database", "api", "fullstack"].map(str::to_string),
+                );
                 non_functional.push(NonFunctionalRequirement {
                     id: Uuid::new_v4(),
                     attribute: QualityAttribute::Security,
@@ -304,7 +320,10 @@ fn extract_heuristic(intent: &UserIntent, ctx: &ProjectContextSnapshot) -> Resul
             if acceptance.is_empty() {
                 acceptance.push(AcceptanceCriterion {
                     id: Uuid::new_v4(),
-                    text: format!("'{}' kullanıcı tarafından doğrulanabilir", first_sentence(&intent.raw_text)),
+                    text: format!(
+                        "'{}' kullanıcı tarafından doğrulanabilir",
+                        first_sentence(&intent.raw_text)
+                    ),
                 });
             }
         }
@@ -416,10 +435,9 @@ pub struct Requirement {
     pub domain_tags: Vec<String>,
 }
 
-
 // ── Model + Hybrid requirement extractors (v0.4) ─────────────
 
-use crate::provider::{parse_json, StructuredLlm, StructuredRequest};
+use crate::provider::{StructuredLlm, StructuredRequest, parse_json};
 use std::sync::Arc;
 
 #[derive(Debug, serde::Deserialize)]

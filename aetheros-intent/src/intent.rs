@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum IntentKind {
     Feature,
@@ -15,13 +15,8 @@ pub enum IntentKind {
     Architecture,
     /// Tek dosya / küçük metin düzenlemesi.
     Chore,
+    #[default]
     General,
-}
-
-impl Default for IntentKind {
-    fn default() -> Self {
-        IntentKind::General
-    }
 }
 
 /// Çıkarılmış kullanıcı niyeti.

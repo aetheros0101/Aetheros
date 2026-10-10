@@ -5,6 +5,8 @@ use tokio::process::Command;
 
 use crate::{CommandSpec, ProcessOutput, ProcessResult, TerminalError};
 
+// async_trait, dönüş tipi zaten #[must_use] olan metotlara ek #[must_use] ekliyor.
+#[allow(clippy::double_must_use)]
 #[async_trait::async_trait]
 pub trait ExecutionBackend: Send + Sync {
     async fn execute(&self, command: CommandSpec) -> Result<ProcessResult, TerminalError>;

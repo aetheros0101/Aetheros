@@ -24,7 +24,10 @@ async fn without_router_a_clear_objective_uses_the_intent_plan() {
 async fn ambiguous_objective_falls_back_to_the_fixed_plan() {
     let plan =
         AgentPlanner::plan_with_intent("yap".to_string(), None, &[], Constraints::default()).await;
-    assert_eq!(plan.planned_steps.first().map(|s| s.name.as_str()), Some("initialize"));
+    assert_eq!(
+        plan.planned_steps.first().map(|s| s.name.as_str()),
+        Some("initialize")
+    );
 }
 
 #[tokio::test]

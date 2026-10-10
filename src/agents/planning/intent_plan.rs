@@ -57,12 +57,21 @@ mod tests {
         assert!(plan.planned_steps[0].name.starts_with("Analyze"));
         assert!(plan.planned_steps.iter().all(|s| s.tool_call.is_none()));
         let ids: HashSet<_> = plan.planned_steps.iter().map(|s| s.id).collect();
-        assert_eq!(ids.len(), plan.planned_steps.len(), "adım id'leri benzersiz");
+        assert_eq!(
+            ids.len(),
+            plan.planned_steps.len(),
+            "adım id'leri benzersiz"
+        );
     }
 
     #[test]
     fn step_order_is_stable_across_runs_in_shape() {
-        let names = |p: &AgentPlan| p.planned_steps.iter().map(|s| s.name.clone()).collect::<Vec<_>>();
+        let names = |p: &AgentPlan| {
+            p.planned_steps
+                .iter()
+                .map(|s| s.name.clone())
+                .collect::<Vec<_>>()
+        };
         let a = plan_from_intent("API endpoint ekle", Constraints::default()).unwrap();
         let b = plan_from_intent("API endpoint ekle", Constraints::default()).unwrap();
         assert_eq!(names(&a), names(&b));

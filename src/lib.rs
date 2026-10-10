@@ -4,6 +4,9 @@
 // check-cfg deklarasyonu) — `cargo update -p flutter_rust_bridge_macros`
 // ile düzelebilir ama garanti değil, bu yüzden şimdilik susturuyoruz.
 #![allow(unexpected_cfgs)]
+// `async_trait`, Result döndüren metotlara ayrıca #[must_use] ekliyor; clippy
+// bunu çift must_use sayıyor (makro kaynaklı, kod hatası değil).
+#![allow(clippy::double_must_use)]
 
 pub mod errors;
 pub mod events;

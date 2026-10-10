@@ -17,9 +17,15 @@ pub struct Constraints {
     pub timebox_minutes: Option<u32>,
 }
 
-fn default_max_depth() -> usize { 8 }
-fn default_max_parallel() -> usize { 4 }
-fn default_true() -> bool { true }
+fn default_max_depth() -> usize {
+    8
+}
+fn default_max_parallel() -> usize {
+    4
+}
+fn default_true() -> bool {
+    true
+}
 
 impl Default for Constraints {
     fn default() -> Self {
@@ -37,7 +43,11 @@ impl Default for Constraints {
 
 impl Constraints {
     pub fn allows_domain(&self, domain: &str) -> bool {
-        if self.denied_domains.iter().any(|d| d.eq_ignore_ascii_case(domain)) {
+        if self
+            .denied_domains
+            .iter()
+            .any(|d| d.eq_ignore_ascii_case(domain))
+        {
             return false;
         }
         if self.allowed_domains.is_empty() {

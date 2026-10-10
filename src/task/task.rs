@@ -27,9 +27,9 @@ use serde::{Deserialize, Serialize};
 use crate::task::orchestration::TaskOrchestration;
 use crate::task::priority::TaskPriority;
 use crate::task::retry::RetryPolicy;
+use crate::types::ids::ModuleHash;
 use crate::types::ids::TaskId;
 use crate::types::timestamps::Timestamp;
-use crate::types::ids::ModuleHash;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskMetadata {

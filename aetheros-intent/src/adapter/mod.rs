@@ -10,7 +10,10 @@ pub trait TaskLayerAdapter: Send + Sync {
     type TaskId;
     type Error: std::fmt::Display;
 
-    fn import_compiled(&self, tasks: &[CompiledTask]) -> std::result::Result<Vec<Self::TaskId>, Self::Error>;
+    fn import_compiled(
+        &self,
+        tasks: &[CompiledTask],
+    ) -> std::result::Result<Vec<Self::TaskId>, Self::Error>;
 }
 
 /// Intent tarafı yardımcısı: graph → compiled → adapter.

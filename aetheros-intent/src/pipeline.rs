@@ -1,16 +1,13 @@
 //! IntentPipeline — dondurulmuş sorumluluk sınırı.
 
-use crate::ambiguity::{analyze as analyze_ambiguity, AmbiguityReport};
+use crate::ambiguity::{AmbiguityReport, analyze as analyze_ambiguity};
 use crate::compilation::{TaskGraph, TaskGraphCompiler};
 use crate::constraints::Constraints;
 use crate::context::ProjectContextSnapshot;
 use crate::errors::{IntentError, Result};
 use crate::extraction::{HeuristicExtractor, HybridIntentExtractor, IntentExtractor};
 use crate::intent::UserIntent;
-use crate::requirement::{
-    HybridRequirementExtractor, RequirementExtractor,
-    RequirementSet,
-};
+use crate::requirement::{HybridRequirementExtractor, RequirementExtractor, RequirementSet};
 use crate::validation::{validate_graph, validate_requirement_set};
 
 #[derive(Debug, Clone)]

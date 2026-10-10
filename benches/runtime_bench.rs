@@ -8,7 +8,6 @@ use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_m
 use std::hint::black_box;
 
 use chrono::Utc;
-use rmp_serde;
 use uuid::Uuid;
 
 use aetheros::task::priority::TaskPriority;

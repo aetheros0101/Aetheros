@@ -42,6 +42,19 @@ pub struct RuntimeMetrics {
     retried_tasks: AtomicU64,
 }
 
+/// Sayaç sıfırın altına düşmeden 1 azaltır.
+///
+/// `fetch_update`, Rust 1.99'da `try_update` adıyla yeniden adlandırıldı.
+/// Eski toolchain'lerle uyumu korumak için eski ad tek yerde kullanılır.
+#[allow(deprecated)]
+fn saturating_decrement(counter: &AtomicU64) {
+    counter
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+            Some(v.saturating_sub(1))
+        })
+        .ok();
+}
+
 impl Default for RuntimeMetrics {
     fn default() -> Self {
         Self::new()
@@ -64,20 +77,12 @@ impl RuntimeMetrics {
     pub fn increment_completed(&self) {
         self.completed_tasks.fetch_add(1, Ordering::Relaxed);
         // Sıfırın altına düşme koruması
-        self.queued_tasks
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
-                Some(v.saturating_sub(1))
-            })
-            .ok();
+        saturating_decrement(&self.queued_tasks);
     }
 
     pub fn increment_failed(&self) {
         self.failed_tasks.fetch_add(1, Ordering::Relaxed);
-        self.queued_tasks
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
-                Some(v.saturating_sub(1))
-            })
-            .ok();
+        saturating_decrement(&self.queued_tasks);
     }
 
     pub fn increment_queued(&self) {

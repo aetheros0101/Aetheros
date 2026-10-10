@@ -1,8 +1,6 @@
 //! FunctionalRequirement → somut task spesifikasyonları (role-template değil).
 
-use crate::compilation::task_graph::{
-    TaskNode, TaskPriority, TaskRole, TaskVerification,
-};
+use crate::compilation::task_graph::{TaskNode, TaskPriority, TaskRole, TaskVerification};
 use crate::requirement::FuncArea;
 use crate::requirement::{AcceptanceCriterion, FunctionalRequirement, Priority, RequirementSet};
 
@@ -50,10 +48,7 @@ pub fn expand_requirement_set(req: &RequirementSet) -> Vec<TaskSpec> {
 
     // NFR → verification / testing hints
     for nfr in &req.non_functional {
-        let mut n = TaskNode::new(
-            TaskRole::Custom,
-            format!("NFR: {:?}", nfr.attribute),
-        );
+        let mut n = TaskNode::new(TaskRole::Custom, format!("NFR: {:?}", nfr.attribute));
         n.description = nfr.description.clone();
         n.source_requirement = Some(nfr.id);
         n.capabilities = vec!["workspace_read".into()];
@@ -93,10 +88,7 @@ fn expand_docs(req: &RequirementSet, acceptance: &[String]) -> Vec<TaskSpec> {
     if let Some(fr) = req.functional.first() {
         edit.source_requirement = Some(fr.id);
     }
-    specs.push(TaskSpec {
-        node: edit,
-        seq: 2,
-    });
+    specs.push(TaskSpec { node: edit, seq: 2 });
     specs
 }
 
@@ -159,10 +151,7 @@ fn expand_functional(
                 .with_capabilities(&["workspace_read", "terminal_execution"]);
             test.acceptance_criteria = acc;
             test.priority = pri;
-            specs.push(TaskSpec {
-                node: test,
-                seq: 3,
-            });
+            specs.push(TaskSpec { node: test, seq: 3 });
             specs
         }
     }
@@ -170,15 +159,47 @@ fn expand_functional(
 
 fn expand_auth(fr: &FunctionalRequirement, acc: &[String], pri: TaskPriority) -> Vec<TaskSpec> {
     let steps: &[(&str, TaskRole, &[&str])] = &[
-        ("Analyze auth architecture", TaskRole::Architecture, &["workspace_read", "ai_reasoning"]),
-        ("Implement user model", TaskRole::Database, &["workspace_write"]),
-        ("Implement password hashing", TaskRole::Backend, &["workspace_write"]),
-        ("Implement login endpoint", TaskRole::Api, &["workspace_write"]),
-        ("Implement session/token handling", TaskRole::Backend, &["workspace_write"]),
+        (
+            "Analyze auth architecture",
+            TaskRole::Architecture,
+            &["workspace_read", "ai_reasoning"],
+        ),
+        (
+            "Implement user model",
+            TaskRole::Database,
+            &["workspace_write"],
+        ),
+        (
+            "Implement password hashing",
+            TaskRole::Backend,
+            &["workspace_write"],
+        ),
+        (
+            "Implement login endpoint",
+            TaskRole::Api,
+            &["workspace_write"],
+        ),
+        (
+            "Implement session/token handling",
+            TaskRole::Backend,
+            &["workspace_write"],
+        ),
         ("Implement login UI", TaskRole::UiAuth, &["workspace_write"]),
-        ("Implement logout", TaskRole::Implement, &["workspace_write"]),
-        ("Add auth tests", TaskRole::Testing, &["terminal_execution", "workspace_read"]),
-        ("Verify auth flow", TaskRole::Verification, &["workspace_read"]),
+        (
+            "Implement logout",
+            TaskRole::Implement,
+            &["workspace_write"],
+        ),
+        (
+            "Add auth tests",
+            TaskRole::Testing,
+            &["terminal_execution", "workspace_read"],
+        ),
+        (
+            "Verify auth flow",
+            TaskRole::Verification,
+            &["workspace_read"],
+        ),
     ];
     steps
         .iter()
@@ -191,11 +212,13 @@ fn expand_auth(fr: &FunctionalRequirement, acc: &[String], pri: TaskPriority) ->
             n.description = fr.description.clone();
             n.priority = pri;
             n.verification = TaskVerification {
-                method: Some(if matches!(role, TaskRole::Testing | TaskRole::Verification) {
-                    "test".into()
-                } else {
-                    "code_review".into()
-                }),
+                method: Some(
+                    if matches!(role, TaskRole::Testing | TaskRole::Verification) {
+                        "test".into()
+                    } else {
+                        "code_review".into()
+                    },
+                ),
                 expected: Some(title.to_string()),
                 done: false,
             };
@@ -288,10 +311,7 @@ fn with_verification_tail(mut specs: Vec<TaskSpec>, req: &RequirementSet) -> Vec
             expected: Some("All acceptance criteria met".into()),
             done: false,
         };
-        specs.push(TaskSpec {
-            node: v,
-            seq: 1000,
-        });
+        specs.push(TaskSpec { node: v, seq: 1000 });
     }
     specs
 }

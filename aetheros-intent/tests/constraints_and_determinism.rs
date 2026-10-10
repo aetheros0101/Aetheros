@@ -8,7 +8,8 @@ fn chain(n: usize) -> (TaskGraph, Vec<uuid::Uuid>) {
         .map(|i| g.add_node(TaskNode::new(TaskRole::Implement, format!("T{i:02}"))))
         .collect();
     for w in ids.windows(2) {
-        g.add_edge(w[0], w[1], DependencyKind::FinishToStart).unwrap();
+        g.add_edge(w[0], w[1], DependencyKind::FinishToStart)
+            .unwrap();
     }
     (g, ids)
 }
@@ -93,22 +94,39 @@ fn max_parallel_branches_is_enforced() {
         g.add_edge(root, n, DependencyKind::FinishToStart).unwrap();
     }
     assert_eq!(g.max_parallel_width().unwrap(), 5);
-    let c = Constraints { max_parallel_branches: 4, require_verification: false, ..Constraints::default() };
-    assert!(matches!(validate_graph(&g, &c), Err(IntentError::Constraint(_))));
-    let c = Constraints { max_parallel_branches: 5, require_verification: false, ..Constraints::default() };
+    let c = Constraints {
+        max_parallel_branches: 4,
+        require_verification: false,
+        ..Constraints::default()
+    };
+    assert!(matches!(
+        validate_graph(&g, &c),
+        Err(IntentError::Constraint(_))
+    ));
+    let c = Constraints {
+        max_parallel_branches: 5,
+        require_verification: false,
+        ..Constraints::default()
+    };
     assert!(validate_graph(&g, &c).is_ok());
 }
 
 #[test]
 fn denied_domain_blocks_compilation() {
-    let c = Constraints { denied_domains: vec!["docs".into()], ..Constraints::default() };
+    let c = Constraints {
+        denied_domains: vec!["docs".into()],
+        ..Constraints::default()
+    };
     let r = IntentPipeline::new(c).process("README dosyasını düzelt");
     assert!(matches!(r, Err(IntentError::Constraint(_))), "got {r:?}");
 }
 
 #[test]
 fn allowed_domains_whitelist_is_enforced() {
-    let c = Constraints { allowed_domains: vec!["backend".into()], ..Constraints::default() };
+    let c = Constraints {
+        allowed_domains: vec!["backend".into()],
+        ..Constraints::default()
+    };
     let r = IntentPipeline::new(c).process("README dosyasını düzelt");
     assert!(matches!(r, Err(IntentError::Constraint(_))), "got {r:?}");
 }
@@ -131,5 +149,9 @@ fn default_constraints_still_accept_typical_requests() {
 fn multi_word_vague_input_is_flagged() {
     let intent = UserIntent::new("bir şey yap", IntentKind::General, 0.9);
     let r = analyze_ambiguity(&intent);
-    assert!(r.reasons.iter().any(|x| x == "vague wording"), "{:?}", r.reasons);
+    assert!(
+        r.reasons.iter().any(|x| x == "vague wording"),
+        "{:?}",
+        r.reasons
+    );
 }

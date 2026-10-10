@@ -182,17 +182,9 @@ impl PtySession {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PtySessionManager {
     default_size: PtySizeSpec,
-}
-
-impl Default for PtySessionManager {
-    fn default() -> Self {
-        Self {
-            default_size: PtySizeSpec::default(),
-        }
-    }
 }
 
 impl PtySessionManager {

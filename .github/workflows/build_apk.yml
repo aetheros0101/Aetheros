@@ -57,6 +57,19 @@ jobs:
         run: |
           flutter pub get
           flutter_rust_bridge_codegen generate
+          # ── Barrel: Rust api/ alt modülleri → tek Dart yüzeyi ──
+          # FRB her alt modül için lib/src/rust/bridge/api/<modül>.dart üretir.
+          # api/aetheros.dart adaptörü bunları bridge_api.dart üzerinden alır.
+          barrel=lib/src/rust/api/bridge_api.dart
+          test -d lib/src/rust/bridge/api || { echo "❌ bridge/api/ üretilmedi"; ls -R lib/src/rust/bridge; exit 1; }
+          {
+            echo "// GENERATED (CI) — elle düzenlemeyin."
+            echo "// ignore_for_file: directives_ordering"
+            for f in $(ls lib/src/rust/bridge/api/*.dart | grep -v '\.\(freezed\|g\)\.dart$' | sort); do
+              echo "export '../bridge/api/$(basename "$f")';"
+            done
+          } > "$barrel"
+          echo "📦 bridge_api.dart:"; cat "$barrel"
           # ── Freezed & json_serializable implementation üret ──
           # bridge/types.dart @freezed sınıfları için gerekli
           dart run build_runner build --delete-conflicting-outputs

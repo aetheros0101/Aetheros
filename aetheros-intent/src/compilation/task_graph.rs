@@ -219,10 +219,10 @@ impl TaskGraph {
             return Err(IntentError::DependencyCycle(format!("{from} -> {to}")));
         }
         self.edges.push(DependencyEdge { from, to, kind });
-        if let Some(n) = self.nodes.get_mut(&to) {
-            if !n.dependencies.contains(&from) {
-                n.dependencies.push(from);
-            }
+        if let Some(n) = self.nodes.get_mut(&to)
+            && !n.dependencies.contains(&from)
+        {
+            n.dependencies.push(from);
         }
         Ok(())
     }
@@ -239,10 +239,10 @@ impl TaskGraph {
             if n == target {
                 return true;
             }
-            if seen.insert(n) {
-                if let Some(next) = adj.get(&n) {
-                    stack.extend(next.iter().copied());
-                }
+            if seen.insert(n)
+                && let Some(next) = adj.get(&n)
+            {
+                stack.extend(next.iter().copied());
             }
         }
         false
@@ -267,7 +267,10 @@ impl TaskGraph {
         }
         let key = |id: &Uuid| {
             (
-                self.nodes.get(id).map(|n| n.title.clone()).unwrap_or_default(),
+                self.nodes
+                    .get(id)
+                    .map(|n| n.title.clone())
+                    .unwrap_or_default(),
                 *id,
             )
         };
@@ -412,7 +415,12 @@ impl TaskGraph {
                 src
             ));
             let mut kids = self.children(id);
-            kids.sort_by_key(|k| self.nodes.get(k).map(|n| n.title.clone()).unwrap_or_default());
+            kids.sort_by_key(|k| {
+                self.nodes
+                    .get(k)
+                    .map(|n| n.title.clone())
+                    .unwrap_or_default()
+            });
             for c in kids {
                 self.outline_rec(c, depth + 1, lines, seen);
             }
