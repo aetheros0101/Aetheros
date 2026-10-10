@@ -289,7 +289,6 @@ class AetherApi {
   static Future<rust.MetricsSnapshot> getMetrics() async {
     return rust.getMetrics();
   }
-}
 
   // ── Workspace search / watch / git (workspace_core) ────────
 
