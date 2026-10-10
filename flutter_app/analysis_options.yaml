@@ -1,13 +1,21 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
+  exclude:
+    - lib/src/rust/frb_generated*.dart
+    - lib/src/rust/bridge/**
+    - lib/src/rust/api/rest/**
+    - lib/src/rust/metrics/**
+    - lib/src/rust/registry/**
+    - lib/src/rust/types/**
+    - '**/*.freezed.dart'
+    - '**/*.g.dart'
   language:
     strict-casts: true
     strict-inference: true
     strict-raw-types: true
   errors:
     invalid_assignment: error
-    invalid_return_type: error
     missing_return: error
     dead_code: warning
     unused_import: warning

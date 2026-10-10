@@ -122,7 +122,7 @@ class _BackupScreenState extends State<BackupScreen> {
         final file = _findArchiveFile(archive, 'manifest.json');
         if (file == null) throw const FormatException('manifest.json bulunamadı.');
         final content = file.content;
-        manifest = jsonDecode(utf8.decode(content is List<int> ? content : List<int>.from(content))) as Map<String, dynamic>;
+        manifest = jsonDecode(utf8.decode(content is List<int> ? content : List<int>.from(content as Iterable<dynamic>))) as Map<String, dynamic>;
       }
 
       final version = (manifest['aetheros_backup_version'] as num?)?.toInt();
@@ -150,7 +150,9 @@ class _BackupScreenState extends State<BackupScreen> {
           final file = _findArchiveFile(decodedArchive, path);
           if (file != null) {
             final content = file.content;
-            final wasm = content is List<int> ? content : List<int>.from(content);
+            final wasm = content is List<int>
+                ? content
+                : List<int>.from(content as Iterable<dynamic>);
             final uploaded = await AetherApi.uploadWasmModule(bytes: wasm);
             map['hash'] = uploaded.hash;
             map['size'] = uploaded.size;

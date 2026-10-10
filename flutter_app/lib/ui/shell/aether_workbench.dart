@@ -334,7 +334,8 @@ class _AetherWorkbenchState extends State<AetherWorkbench> {
       bindings: _shortcutBindings(),
       child: Focus(
         autofocus: true,
-        child: Stack(
+        child: Scaffold(
+          body: SafeArea(child: Stack(
           children: [
             Column(
               children: [
@@ -530,6 +531,7 @@ class _AetherWorkbenchState extends State<AetherWorkbench> {
                 onClose: () => setState(() => _overlay = _OverlayKind.none),
               ),
           ],
+        )),
         ),
       ),
     );

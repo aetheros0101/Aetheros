@@ -75,16 +75,12 @@ jobs:
           dart run build_runner build --delete-conflicting-outputs
           echo "✅ Codegen + build_runner tamamlandı"
 
-      - name: 🔍 flutter analyze (bilgilendirici)
+      - name: 🔍 flutter analyze (yalnız error)
         working-directory: flutter_app
-        # Workbench kodu ilk kez burada analiz ediliyor; bulguları görmek için
-        # şimdilik işi düşürmez. Temizlenince continue-on-error kaldırılır.
-        continue-on-error: true
-        run: flutter analyze --no-fatal-infos
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
-      - name: 🧪 flutter test (bilgilendirici)
+      - name: 🧪 flutter test
         working-directory: flutter_app
-        continue-on-error: true
         run: flutter test
 
       - name: 📤 Üretilen dosyaları artifact olarak yükle

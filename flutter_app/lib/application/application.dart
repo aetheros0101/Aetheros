@@ -242,7 +242,7 @@ class AetherApplication {
     updateState((s) => s.copyWith(
           workbench: saved.workbench,
           navigation: s.navigation.copyWith(
-            activeId: saved.navigation.activeId ?? s.navigation.activeId,
+            activeId: saved.navigation.activeId,
           ),
           editor: saved.editor,
           panel: saved.panel,
